@@ -8,6 +8,8 @@ account_id = "6d4b74aeb10f455fbf88141901e7595d"
 # Custom domain attached via Workers Domains API (wrangler routes hit 10013 on apex).
 # Re-attach: PUT /accounts/{account_id}/workers/domains
 #   { hostname, service: reactable-web, environment: production, zone_id }
+
+[assets]
 directory = "public"
 binding = "ASSETS"
 
