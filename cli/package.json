@@ -1,0 +1,40 @@
+{
+  "name": "reactable-cli",
+  "version": "0.1.0",
+  "description": "Reactable agent CLI — decks, takes, stage, YouTube search, HyperFrames post",
+  "type": "module",
+  "bin": {
+    "reactable": "./bin/reactable.ts"
+  },
+  "engines": {
+    "bun": ">=1.0"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "README.md"
+  ],
+  "keywords": [
+    "reactable",
+    "recording",
+    "deck",
+    "reveal",
+    "hyperframes",
+    "youtube",
+    "cli",
+    "macos"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shinyobjectz/reactable.git",
+    "directory": "cli"
+  },
+  "homepage": "https://reactable.app",
+  "bugs": {
+    "url": "https://github.com/shinyobjectz/reactable/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT"
+}

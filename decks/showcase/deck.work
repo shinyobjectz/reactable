@@ -1,0 +1,133 @@
+# Media formats showcase
+
+A tour of every slide type Reactable can render on the recorded stage.
+
+deck do
+  id: showcase
+  title: Media Formats Showcase
+end
+
+preload do
+  /reactable/labs/chart.html?deck=showcase
+  /reactable/labs/whiteboard.html?deck=demo
+  https://tldraw.com
+end
+
+script do
+  id: open
+  on: deck.open
+  run: echo 'showcase deck — media formats tour'
+  detach: true
+end
+
+slide do
+  id: start
+  type: client
+  unit: showcase_title
+  notes: Title slide — designed client island
+end
+
+client :showcase_title do
+  <div style="position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:10vh 10vw;background:radial-gradient(ellipse 90% 70% at 15% -10%,rgba(99,102,241,.35),transparent 55%),radial-gradient(ellipse 50% 40% at 95% 90%,rgba(236,72,153,.15),transparent 50%),#050508;color:#fff;font-family:ui-sans-serif,system-ui,sans-serif;overflow:hidden">
+    <div style="font:600 11px/1 ui-monospace,monospace;letter-spacing:.18em;text-transform:uppercase;color:#818cf8;margin-bottom:20px">Reactable · stage showcase</div>
+    <h1 style="font-size:clamp(2.75rem,6vw,4.25rem);font-weight:650;letter-spacing:-.03em;line-height:1.05;margin:0 0 16px;max-width:14ch">Media formats</h1>
+    <p style="font-size:clamp(1.1rem,2vw,1.5rem);color:#a1a1aa;margin:0 0 48px;max-width:28ch;line-height:1.4;font-weight:400">Everything you can drop into a recorded deck — prose, apps, embeds, and video.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:auto">
+      <span style="font:500 12px ui-monospace,monospace;padding:8px 14px;border-radius:999px;background:rgba(99,102,241,.18);border:1px solid rgba(129,140,248,.35);color:#c4b5fd">prose</span>
+      <span style="font:500 12px ui-monospace,monospace;padding:8px 14px;border-radius:999px;background:rgba(99,102,241,.18);border:1px solid rgba(129,140,248,.35);color:#c4b5fd">client</span>
+      <span style="font:500 12px ui-monospace,monospace;padding:8px 14px;border-radius:999px;background:rgba(99,102,241,.18);border:1px solid rgba(129,140,248,.35);color:#c4b5fd">iframe</span>
+      <span style="font:500 12px ui-monospace,monospace;padding:8px 14px;border-radius:999px;background:rgba(99,102,241,.18);border:1px solid rgba(129,140,248,.35);color:#c4b5fd">video</span>
+      <span style="font:500 12px ui-monospace,monospace;padding:8px 14px;border-radius:999px;background:rgba(99,102,241,.18);border:1px solid rgba(129,140,248,.35);color:#c4b5fd">youtube</span>
+    </div>
+  </div>
+end
+
+slide do
+  id: format-prose
+  type: prose
+  theme: section
+  notes: Prose slides use theme title / section / closing
+end
+
+## Prose slides
+
+# Authored in `.work`
+
+Speaker notes live in the slide header. Body text supports **emphasis**, lists, and `inline code` — rendered with deck typography before the stage loads.
+
+slide do
+  id: format-client
+  type: client
+  unit: pulse_slide
+  notes: Client islands — full custom HTML
+end
+
+client :pulse_slide do
+  <div style="position:absolute;inset:0;background:linear-gradient(165deg,#0c0c12,#151528 45%,#0a0a0f);color:#f2f2f2;font:16px/1.45 ui-sans-serif,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;padding:48px">
+    <div style="max-width:520px;text-align:center">
+      <div style="display:inline-block;font:600 10px ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;color:#6ee7b7;padding:6px 12px;border-radius:8px;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.35);margin-bottom:24px">client :unit</div>
+      <h2 style="font-size:2rem;font-weight:600;margin:0 0 12px;letter-spacing:-.02em">Custom HTML islands</h2>
+      <p style="color:#9ca3af;margin:0 0 32px;line-height:1.55">Design title slides, diagrams, or UI mockups as reusable <code style="font:0.9em ui-monospace;color:#a5b4fc;background:rgba(99,102,241,.15);border:1px solid rgba(129,140,248,.3);padding:2px 8px;border-radius:5px">client :name</code> blocks in deck.work.</p>
+      <div style="width:72px;height:72px;margin:0 auto;border-radius:50%;background:linear-gradient(135deg,#6366f1,#a855f7);box-shadow:0 0 60px rgba(99,102,241,.45);animation:pulse 2.4s ease-in-out infinite"></div>
+    </div>
+    <style>@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.08);opacity:.9}}</style>
+  </div>
+end
+
+slide do
+  id: format-iframe-local
+  type: iframe
+  url: /reactable/labs/chart.html?deck=showcase
+  title: Local iframe app
+  notes: Same-origin lab — full bleed in stage frame
+  action: wait 500
+end
+
+slide do
+  id: format-iframe-remote
+  type: iframe
+  url: https://tldraw.com
+  title: Remote iframe
+  notes: Cross-origin embed when network allows
+  action: wait 1500
+end
+
+slide do
+  id: format-video
+  type: video
+  src: /reactable/labs/sample.mp4?deck=showcase
+  notes: Native HTML5 video — local MP4 from decks/showcase/labs/
+  action: play
+end
+
+slide do
+  id: format-youtube
+  type: youtube
+  videoId: aqz-KE-bpKQ
+  notes: Big Buck Bunny on YouTube — embed-friendly; some videos block embedding
+  action: wait 800
+end
+
+slide do
+  id: format-whiteboard
+  type: iframe
+  url: /reactable/labs/whiteboard.html?deck=demo
+  title: Whiteboard lab
+  notes: Interactive canvas lab
+  action: wait 300
+end
+
+slide do
+  id: end
+  type: prose
+  theme: closing
+  notes: Closing slide
+end
+
+# Ready to record
+
+Press record on the bar — the rounded stage frame is exactly what lands in `stage.mov`.
+
+1. Author slides in `deck.work`
+2. Preview with **Stage** on the bar
+3. Ship takes to HyperFrames or ffmpeg

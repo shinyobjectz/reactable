@@ -1,0 +1,21 @@
+# Native
+native/.build/
+native/spike-out/
+dist/
+
+# Web
+web/node_modules/
+web/.wrangler/
+
+# Runtime / local
+.reactable/
+.nexus/
+takes/
+*.mov
+.env
+
+# OS
+.DS_Store
+
+# Bun
+node_modules/

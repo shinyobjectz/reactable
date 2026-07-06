@@ -1,0 +1,78 @@
+# Reactable CLI — plan of record
+
+**Status:** v0.1 shipped — agent CLI + deck script DSL + HyperFrames bridge.
+
+Home: [[index]]. Agent skill: `skill/SKILL.md`.
+
+## Why a CLI (not MCP)
+
+Agents in Cursor / Claude Code already run shell commands. A flat **`reactable`
+verb tree** plus a **project-local skill** gives:
+
+- deterministic file edits (`deck.work`, `edit.json`, HF HTML)
+- JSON stdout (`--json`) for machine reads
+- no extra server beyond the existing nexus sidecar
+
+MCP can be added later as a thin wrapper over the same verbs.
+
+## Architecture
+
+```
+Agent (Cursor / Claude Code)
+    │  reactable decks|takes|stage|serve|plan …
+    ▼
+cli/bin/reactable.ts  ──writes──► decks/*/deck.work  (slide do / script do)
+    │                              takes/*
+    │  POST /reactable/stage  (open native preview)
+    │  curl /reactable/deck
+    ▼
+nexus (:4020)  present/api.work
+    │  /reactable/deck  /reactable/exec  /reactable/stage  /reactable/labs/*
+    ▼
+present/index.work  ──►  StageWindow WKWebView  ──►  Aperture stage.mov
+         ▲                      │
+         └──── same URL ────────┘   preview = record
+```
+
+**Stage rule:** preview and capture share one WKWebView. Agents use
+`reactable stage open --deck <slug>` — never `open` a browser URL for decks.
+
+Weave reference: [[skill/references/stage-pipeline]].
+
+## Deck DSL
+
+Native `.work` blocks — `slide do`, `script do`, `preload do`, `client :unit`.
+See [[skill/references/deck-dsl]].
+
+- `deck.open` — stage boot
+- `record.start` — Swift fires before capture
+- `slide.enter` / `slide.leave` — navigation hooks
+- `at` — delayed execution (seconds)
+
+Dev servers: `detach: true` + `cwd` under deck folder.
+
+## Post lanes
+
+| Lane | Tool | When |
+|------|------|------|
+| Fast | `composite.py` / `takes render` | PIP, zoom, captions, aspects |
+| Rich | `takes hf init` + HyperFrames | agent-authored motion/overlays |
+
+## Commands (v0.1)
+
+See `reactable help` or [[skill/SKILL.md]].
+
+## Validate
+
+```bash
+reactable doctor
+just reactable validate
+bun run cli/bin/reactable.ts decks validate demo
+```
+
+## Next (optional)
+
+- `reactable decks import` from URL markdown outline
+- `reactable record start --deck` via `/reactable/stage` (partial — use `stage open`)
+- MCP server exposing same verbs
+- Script sandbox allowlist per deck

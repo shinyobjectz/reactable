@@ -1,0 +1,211 @@
+# Bar — control surface
+
+Floating always-on-top Screen Studio-style bar. Loaded in native `NSPanel` at `/bar`.
+
+client :bar do
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: visible; background: transparent; font: 12px/1 ui-sans-serif, system-ui, sans-serif; color: #f2f2f2; -webkit-font-smoothing: antialiased; user-select: none; -webkit-user-select: none; }
+    .shell { display: flex; align-items: flex-start; justify-content: center; min-height: 48px; overflow: visible; user-select: none; -webkit-user-select: none; }
+    .bar {
+      display: flex; align-items: center; gap: 4px; flex-shrink: 0;
+      user-select: none; -webkit-user-select: none;
+      cursor: grab;
+      height: 48px; padding: 0 8px 0 4px;
+      background: rgba(22,22,24,.88);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 14px;
+      backdrop-filter: blur(18px);
+      box-shadow: 0 8px 32px rgba(0,0,0,.35);
+    }
+    .ic { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+    .ic.sm { width: 14px; height: 14px; }
+    .drag {
+      display: flex; align-items: center; justify-content: center;
+      width: 20px; height: 32px; border-radius: 6px; cursor: grab; color: #666;
+      touch-action: none;
+    }
+    .drag:hover { color: #aaa; background: rgba(255,255,255,.05); }
+    .drag:active { cursor: grabbing; color: #ccc; }
+    .sep { width: 1px; height: 22px; background: rgba(255,255,255,.1); margin: 0 2px; flex-shrink: 0; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+      height: 32px; padding: 0 10px; border: 0; border-radius: 8px;
+      background: rgba(255,255,255,.06); color: #ccc; cursor: pointer; font: inherit;
+    }
+    .bar:active { cursor: grabbing; }
+    .btn:hover { background: rgba(255,255,255,.12); color: #eee; }
+    .btn.on { background: rgba(255,255,255,.16); color: #fff; }
+    .btn.mode { min-width: 76px; justify-content: flex-start; gap: 6px; padding: 0 11px; }
+    .btn.mode.collapsed { opacity: 0.55; }
+    .btn.picker { max-width: 140px; min-width: 0; padding: 0 8px; gap: 4px; }
+    .btn.picker .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100px; font-size: 11px; color: #bbb; }
+    .btn.picker .sub { font-size: 10px; color: #666; }
+    .btn.rec { background: #e11; color: #fff; min-width: 36px; }
+    .btn.rec.on { background: #b00; }
+    .btn.rec.paused { background: #c60; }
+    .btn.icon { width: 32px; padding: 0; }
+    .btn.close { width: 28px; color: #888; margin-left: 2px; }
+    .btn.close:hover { color: #fff; background: rgba(255,80,80,.25); }
+    .timer { font: 11px ui-monospace, monospace; color: #888; min-width: 42px; text-align: center; user-select: none; -webkit-user-select: none; }
+  </style>
+  <div class="shell">
+  <div class="bar" id="bar">
+    <div class="drag" id="drag" title="Drag to move">
+      <svg class="ic" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.25" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.25" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.25" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.25" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.25" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.25" fill="currentColor" stroke="none"/></svg>
+    </div>
+    <button class="btn picker" id="picker" type="button" title="Project and deck">
+      <svg class="ic sm" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+      <span class="lbl" id="picker-label">demo</span>
+    </button>
+    <div class="sep"></div>
+    <button class="btn mode" id="mode-stage" type="button" title="Toggle stage preview (capture surface)">
+      <svg class="ic sm" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="m9 8 2 2 4-4"/></svg>
+      Stage
+    </button>
+    <button class="btn mode" id="mode-window" type="button" title="Record a specific window">
+      <svg class="ic sm" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/><circle cx="6" cy="7" r=".8" fill="currentColor" stroke="none"/><circle cx="8.5" cy="7" r=".8" fill="currentColor" stroke="none"/></svg>
+      Window
+    </button>
+    <div class="sep"></div>
+    <button class="btn icon" id="cam" title="Camera"><svg class="ic" viewBox="0 0 24 24"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg></button>
+    <button class="btn icon" id="mic" title="Microphone"><svg class="ic" viewBox="0 0 24 24"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></svg></button>
+    <button class="btn icon on" id="sys" title="System audio"><svg class="ic" viewBox="0 0 24 24"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 5.636a9 9 0 0 1 0 12.728"/></svg></button>
+    <div class="sep"></div>
+    <button class="btn icon" id="prev" title="Previous slide"><svg class="ic" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+    <button class="btn icon" id="next" title="Next slide"><svg class="ic" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+    <div class="sep"></div>
+    <span class="timer" id="timer">0:00</span>
+    <button class="btn rec icon" id="record" title="Record (⌘R)"><svg class="ic" viewBox="0 0 24 24" style="fill:currentColor;stroke:none"><circle cx="12" cy="12" r="6"/></svg></button>
+    <button class="btn icon" id="stop" title="Stop" style="display:none"><svg class="ic" viewBox="0 0 24 24" style="fill:currentColor;stroke:none"><rect x="7" y="7" width="10" height="10" rx="1"/></svg></button>
+    <div class="sep"></div>
+    <div class="gear-wrap">
+      <button class="btn icon" id="gear" title="Settings"><svg class="ic" viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.015 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.015 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.015 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.015"/><circle cx="12" cy="12" r="3"/></svg></button>
+    </div>
+    <button class="btn icon close" id="close" title="Close bar and stage"><svg class="ic" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+  </div>
+  </div>
+  <script>
+  (function () {
+    const $ = (id) => document.getElementById(id);
+    let state = {};
+
+    function send(action, payload = {}) {
+      window.webkit?.messageHandlers?.reactable?.postMessage({ action, payload });
+    }
+
+    function anchor(el) {
+      const r = el.getBoundingClientRect();
+      return { x: r.left, y: r.top, w: r.width, h: r.height };
+    }
+
+    function fmt(sec) {
+      const m = Math.floor(sec / 60), s = sec % 60;
+      return m + ':' + String(s).padStart(2, '0');
+    }
+
+    function render() {
+      const kind = state.sourceKind || 'stage';
+      const stageBtn = $('mode-stage');
+      stageBtn.classList.toggle('on', kind === 'stage');
+      stageBtn.classList.toggle('collapsed', kind === 'stage' && !state.stageVisible);
+      stageBtn.title = kind === 'stage' && state.stageVisible
+        ? 'Hide stage preview'
+        : 'Show stage preview';
+      $('mode-window').classList.toggle('on', kind === 'window');
+      $('cam').classList.toggle('on', !!state.camOn);
+      $('mic').classList.toggle('on', !!state.micOn);
+      $('sys').classList.toggle('on', state.systemAudioOn !== false);
+      $('timer').textContent = fmt(state.elapsed || 0);
+      const rec = $('record');
+      rec.classList.toggle('on', !!state.recording);
+      rec.classList.toggle('paused', !!state.paused);
+      $('stop').style.display = state.recording ? '' : 'none';
+      const proj = state.projectName || 'project';
+      const deck = state.deckTitle || state.deckSlug || 'deck';
+      $('picker-label').textContent = deck;
+      $('picker').title = proj + ' · ' + deck + ' — click for decks (⌘ click projects in menu bar ◉)';
+      syncBarWidth();
+    }
+
+    function syncBarWidth() {
+      const bar = $('bar');
+      if (!bar) return;
+      const w = Math.ceil(bar.getBoundingClientRect().width);
+      send('bar.resize', { width: w });
+    }
+
+    const DRAG_SLOP = 6;
+
+    function handleTap(target, ev) {
+      const btn = target.closest('button');
+      if (!btn) return;
+      if (btn.id === 'mode-stage') return send('capture.selectStage');
+      if (btn.id === 'mode-window') return send('capture.selectWindow', anchor(btn));
+      if (btn.id === 'picker') {
+        if (ev?.metaKey) return send('bar.menu.projects', anchor(btn));
+        return send('bar.menu.decks', anchor(btn));
+      }
+      if (btn.id === 'gear') return send('bar.menu.settings', anchor(btn));
+      if (btn.id === 'cam') return send('cam.toggle', { on: !state.camOn });
+      if (btn.id === 'mic') return send('mic.toggle', { on: !state.micOn });
+      if (btn.id === 'sys') return send('systemAudio.toggle', { on: !state.systemAudioOn });
+      if (btn.id === 'prev') return send('slide.prev');
+      if (btn.id === 'next') return send('slide.next');
+      if (btn.id === 'record') {
+        if (state.recording) return send('record.pause');
+        const countdown = (state.settings?.countdownSeconds ?? 3) > 0 ? 3 : 0;
+        return send('record.start', { countdown });
+      }
+      if (btn.id === 'stop') return send('record.stop');
+      if (btn.id === 'close') return send('bar.close');
+    }
+
+    (function () {
+      const shell = document.querySelector('.shell');
+      shell.addEventListener('pointerdown', (e) => {
+        const down = { x: e.screenX, y: e.screenY, id: e.pointerId };
+        let dragging = false;
+        let lastX = e.screenX;
+        let lastY = e.screenY;
+
+        const move = (ev) => {
+          if (ev.pointerId !== down.id) return;
+          if (!dragging && Math.hypot(ev.screenX - down.x, ev.screenY - down.y) >= DRAG_SLOP) {
+            dragging = true;
+          }
+          if (dragging) {
+            send('bar.moveBy', { dx: ev.screenX - lastX, dy: ev.screenY - lastY });
+            lastX = ev.screenX;
+            lastY = ev.screenY;
+          }
+        };
+        const up = (ev) => {
+          if (ev.pointerId !== down.id) return;
+          window.removeEventListener('pointermove', move);
+          window.removeEventListener('pointerup', up);
+          if (!dragging) handleTap(e.target, e);
+        };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+        e.preventDefault();
+      });
+    })();
+
+    window.ReactableBar = {
+      setState(s) { state = s; render(); },
+      setDevices() { /* window list refreshed natively when picker opens */ },
+    };
+
+    document.addEventListener('selectstart', (e) => e.preventDefault());
+
+    if (typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(() => syncBarWidth()).observe($('bar'));
+    }
+    window.addEventListener('load', syncBarWidth);
+
+    send('devices.list');
+    render();
+  })();
+  </script>
+end

@@ -1,0 +1,25 @@
+name = "reactable-web"
+main = "src/worker.ts"
+compatibility_date = "2025-03-01"
+workers_dev = true
+
+account_id = "6d4b74aeb10f455fbf88141901e7595d"
+
+# Custom domain attached via Workers Domains API (wrangler routes hit 10013 on apex).
+# Re-attach: PUT /accounts/{account_id}/workers/domains
+#   { hostname, service: reactable-web, environment: production, zone_id }
+directory = "public"
+binding = "ASSETS"
+
+# Secrets (wrangler secret put):
+#   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET — Web OAuth client for reactable.app
+#   SESSION_SECRET — openssl rand -hex 32
+# Desktop YouTube still uses ~/.shinyobjectz/youtube_client.json (installed-app, studio stack).
+
+[vars]
+SITE_URL = "https://reactable.app"
+APP_NAME = "Reactable"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "ff030257db05481c9436fe9ee6261a1c"

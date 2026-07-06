@@ -1,0 +1,982 @@
+# Present API
+
+Serves deck JSON from `decks/<slug>/deck.work` for the reveal.js stage.
+
+server :reactable_api do
+  route "GET /reactable/deck", :deck, auth: :public
+  route "GET /reactable/health", :health, auth: :public
+  route "GET /reactable/takes", :takes_list, auth: :public
+  route "GET /reactable/takes/:id", :take_get, auth: :public
+  route "GET /reactable/takes/:id/edit", :take_edit_get, auth: :public
+  route "POST /reactable/takes/:id/edit", :take_edit_save, auth: :public
+  route "POST /reactable/takes/:id/render", :take_render, auth: :public
+  route "POST /reactable/takes/:id/pipeline", :take_pipeline, auth: :public
+  route "POST /reactable/exec", :exec_scripts, auth: :public
+  route "GET /reactable/decks", :decks_list, auth: :public
+  route "GET /reactable/labs/:file", :lab_file, auth: :public
+  route "GET /reactable/stage", :stage_status, auth: :public
+  route "GET /reactable/stage/poll", :stage_poll, auth: :public
+  route "POST /reactable/stage", :stage_command, auth: :public
+  route "POST /reactable/stage/ack", :stage_ack, auth: :public
+  route "POST /reactable/stage/heartbeat", :stage_heartbeat, auth: :public
+
+  def health(_req), do: %{ok: true, service: "reactable"}
+
+  def decks_list(_req) do
+    root = Path.join(wb_data(), "decks")
+    slugs =
+      if File.dir?(root) do
+        root
+        |> File.ls!()
+        |> Enum.filter(fn name ->
+          File.dir?(Path.join(root, name)) and
+            File.exists?(Path.join([root, name, "deck.work"]))
+        end)
+        |> Enum.sort()
+      else
+        []
+      end
+
+    decks =
+      Enum.map(slugs, fn slug ->
+        path = Path.join([root, slug, "deck.work"])
+        %{slug: slug, title: deck_title_from_file(path) || slug}
+      end)
+
+    %{ok: true, decks: decks}
+  end
+
+  def takes_list(_req) do
+    root = Path.join(wb_data(), "takes")
+    ids =
+      if File.dir?(root) do
+        root
+        |> File.ls!()
+        |> Enum.filter(&String.starts_with?(&1, "take-"))
+        |> Enum.sort(:desc)
+      else
+        []
+      end
+
+    takes =
+      Enum.map(ids, fn id ->
+        manifest = read_manifest(Path.join(root, id))
+        Map.merge(%{id: id}, manifest_summary(manifest))
+      end)
+
+    %{ok: true, takes: takes}
+  end
+
+  def take_get(req) do
+    id = safe_take_id(req.params["id"])
+    dir = Path.join([wb_data(), "takes", id])
+
+    cond do
+      id == "" -> {400, %{ok: false, error: "id required"}}
+      not File.dir?(dir) -> {404, %{ok: false, error: "no such take"}}
+      true ->
+        manifest = read_manifest(dir)
+        events = read_events(Path.join(dir, "events.jsonl"))
+        tracks = tracks_for(dir, manifest)
+        edit = read_edit(dir)
+
+        %{
+          ok: true,
+          id: id,
+          manifest: manifest,
+          events: events,
+          tracks: tracks,
+          edit: edit,
+          render: read_render(dir)
+        }
+    end
+  end
+
+  def take_edit_get(req) do
+    id = safe_take_id(req.params["id"])
+    dir = Path.join([wb_data(), "takes", id])
+    cond do
+      id == "" -> {400, %{ok: false, error: "id required"}}
+      not File.dir?(dir) -> {404, %{ok: false, error: "no such take"}}
+      true -> %{ok: true, id: id, edit: read_edit(dir)}
+    end
+  end
+
+  def take_edit_save(req) do
+    id = safe_take_id(req.params["id"])
+    dir = Path.join([wb_data(), "takes", id])
+    body = body_map(req)
+    cond do
+      id == "" -> {400, %{ok: false, error: "id required"}}
+      not File.dir?(dir) -> {404, %{ok: false, error: "no such take"}}
+      true ->
+        edit = Map.get(body, "edit", body)
+        path = Path.join(dir, "edit.json")
+        File.write!(path, Jason.encode!(edit, pretty: true))
+        %{ok: true, id: id, edit: edit}
+    end
+  end
+
+  def take_render(req) do
+    id = safe_take_id(req.params["id"])
+    dir = Path.join([wb_data(), "takes", id])
+    body = body_map(req)
+
+    cond do
+      id == "" -> {400, %{ok: false, error: "id required"}}
+      not File.dir?(dir) -> {404, %{ok: false, error: "no such take"}}
+      true ->
+        if body["edit"], do: File.write!(Path.join(dir, "edit.json"), Jason.encode!(body["edit"], pretty: true))
+        aspects = body["aspects"] || ["16:9", "9:16", "1:1"]
+        case run_composite(dir, aspects) do
+          {:ok, manifest} -> Map.put(manifest, :ok, true)
+          {:error, msg} -> {500, %{ok: false, error: msg}}
+        end
+    end
+  end
+
+  def take_pipeline(req) do
+    id = safe_take_id(req.params["id"])
+    body = body_map(req)
+    slug = safe(Map.get(body, "slug", "reactable-demo"))
+    script = Path.join([wb_data(), "scripts", "to-video.sh"])
+    cond do
+      id == "" -> {400, %{ok: false, error: "id required"}}
+      not File.exists?(script) -> {500, %{ok: false, error: "pipeline script missing"}}
+      true ->
+        {out, code} = System.cmd("bash", [script, id, slug], cd: wb_data(), stderr_to_stdout: true)
+        if code == 0, do: %{ok: true, id: id, slug: slug, log: String.trim(out)}, else: {500, %{ok: false, error: out}}
+    end
+  end
+
+  def deck(req) do
+    slug = safe(req.query["slug"] || "demo")
+    path = Path.join([wb_data(), "decks", slug, "deck.work"])
+    cond do
+      slug == "" -> {400, %{ok: false, error: "slug required"}}
+      not File.exists?(path) -> {404, %{ok: false, error: "no such deck"}}
+      true -> parse_deck(path, slug)
+    end
+  end
+
+  def exec_scripts(req) do
+    body = body_map(req)
+    slug = safe(body["deck"] || req.query["deck"] || "demo")
+    trigger = to_string(body["on"] || body["trigger"] || "")
+    slide = body["slide"]
+    script_id = body["id"] || body["script_id"]
+    path = Path.join([wb_data(), "decks", slug, "deck.work"])
+
+    cond do
+      slug == "" -> {400, %{ok: false, error: "deck required"}}
+      trigger == "" -> {400, %{ok: false, error: "on/trigger required"}}
+      not File.exists?(path) -> {404, %{ok: false, error: "no such deck"}}
+      true ->
+        deck = parse_deck(path, slug)
+        scripts = Map.get(deck, :scripts) || Map.get(deck, "scripts") || []
+        matched =
+          Enum.filter(scripts, fn s ->
+            on = s["on"] || s[:on]
+            id_ok =
+              if script_id in [nil, ""] do
+                true
+              else
+                to_string(s["id"] || s[:id] || "") == to_string(script_id)
+              end
+
+            id_ok and to_string(on) == trigger and slide_match?(s, slide)
+          end)
+
+        results = Enum.map(matched, fn s -> run_deck_script(slug, s) end)
+        %{ok: true, deck: slug, trigger: trigger, slide: slide, ran: length(results), results: results}
+    end
+  end
+
+  def lab_file(req) do
+    file = safe_file(req.params["file"])
+    slug = safe(req.query["deck"] || "demo")
+    path = Path.join([wb_data(), "decks", slug, "labs", file])
+
+    cond do
+      file == "" -> {400, %{ok: false, error: "file required"}}
+      not File.regular?(path) -> {404, %{ok: false, error: "not found"}}
+      true -> {200, MIME.from_path(path), File.read!(path)}
+    end
+  end
+
+  def stage_status(_req) do
+    %{
+      ok: true,
+      live: read_stage_live(),
+      pending: read_stage_cmd()
+    }
+  end
+
+  def stage_poll(_req) do
+    case read_stage_cmd() do
+      nil -> %{ok: true, command: nil}
+      cmd -> %{ok: true, command: cmd}
+    end
+  end
+
+  def stage_command(req) do
+    body = body_map(req)
+    action = safe(to_string(body["action"] || ""))
+
+    cond do
+      action not in ["open", "hide", "load"] ->
+        {400, %{ok: false, error: "action must be open, hide, or load"}}
+
+      true ->
+        cmd = %{
+          "id" => Base.encode16(:crypto.strong_rand_bytes(8), case: :lower),
+          "action" => action,
+          "deck" => blank_to_nil(body["deck"]),
+          "ts" => System.system_time(:second)
+        }
+
+        write_stage_cmd(cmd)
+        %{ok: true, id: cmd["id"], command: cmd}
+    end
+  end
+
+  def stage_ack(req) do
+    body = body_map(req)
+    id = to_string(body["id"] || "")
+
+    if id != "" and stage_cmd_id() == id do
+      clear_stage_cmd()
+    end
+
+    %{ok: true}
+  end
+
+  def stage_heartbeat(req) do
+    body = body_map(req)
+
+    write_stage_live(%{
+      "deck" => blank_to_nil(body["deck"]),
+      "visible" => body["visible"] in [true, "true", 1, "1"],
+      "projectId" => blank_to_nil(body["projectId"]),
+      "ts" => body["ts"] || System.system_time(:second)
+    })
+
+    %{ok: true}
+  end
+
+  defp stage_dir, do: Path.join(wb_data(), ".reactable")
+  defp stage_cmd_path, do: Path.join(stage_dir(), "stage-cmd.json")
+  defp stage_live_path, do: Path.join(stage_dir(), "stage-live.json")
+
+  defp ensure_stage_dir do
+    File.mkdir_p!(stage_dir())
+  end
+
+  defp read_stage_json(path) do
+    if File.exists?(path) do
+      case File.read(path) do
+        {:ok, body} ->
+          case Jason.decode(body) do
+            {:ok, m} when is_map(m) -> m
+            _ -> nil
+          end
+
+        _ ->
+          nil
+      end
+    else
+      nil
+    end
+  end
+
+  defp write_stage_json(path, map) do
+    ensure_stage_dir()
+    File.write!(path, Jason.encode!(map))
+  end
+
+  defp read_stage_cmd, do: read_stage_json(stage_cmd_path())
+  defp read_stage_live, do: read_stage_json(stage_live_path())
+  defp stage_cmd_id, do: read_stage_cmd() |> cmd_id()
+
+  defp cmd_id(%{"id" => id}), do: to_string(id)
+  defp cmd_id(_), do: ""
+
+  defp write_stage_cmd(cmd), do: write_stage_json(stage_cmd_path(), cmd)
+  defp write_stage_live(live), do: write_stage_json(stage_live_path(), live)
+  defp clear_stage_cmd, do: File.rm(stage_cmd_path())
+
+  defp blank_to_nil(v) when v in [nil, ""], do: nil
+  defp blank_to_nil(v), do: to_string(v)
+
+  defp wb_data, do: System.get_env("WB_DATA") || "."
+
+  defp body_map(req) do
+    case req.body do
+      m when is_map(m) -> m
+      _ -> %{}
+    end
+  end
+
+  defp read_edit(dir) do
+    path = Path.join(dir, "edit.json")
+    if File.exists?(path) do
+      case File.read(path) do
+        {:ok, body} ->
+          case Jason.decode(body) do
+            {:ok, m} -> m
+            _ -> %{}
+          end
+        _ -> %{}
+      end
+    else
+      %{}
+    end
+  end
+
+  defp read_render(dir) do
+    path = Path.join(dir, "out/render.json")
+    if File.exists?(path) do
+      case File.read(path) do
+        {:ok, body} ->
+          case Jason.decode(body) do
+            {:ok, m} -> m
+            _ -> %{}
+          end
+        _ -> %{}
+      end
+    else
+      %{}
+    end
+  end
+
+  defp run_composite(dir, aspects) do
+    script = Path.join([wb_data(), "scripts", "composite.py"])
+    if File.exists?(script) do
+      args = [script, dir | Enum.map(aspects, &to_string/1)]
+      {out, code} = System.cmd("python3", args, cd: wb_data(), stderr_to_stdout: true)
+      if code != 0 do
+        {:error, String.trim(out)}
+      else
+        case Jason.decode(out) do
+          {:ok, m} -> {:ok, m}
+          _ -> {:ok, %{raw: String.trim(out)}}
+        end
+      end
+    else
+      {:error, "composite.py missing"}
+    end
+  end
+
+  defp safe_take_id(s) when is_binary(s) do
+    s |> String.trim() |> String.replace(~r/[^a-z0-9_-]/, "")
+  end
+  defp safe_take_id(_), do: ""
+
+  defp safe_file(s) when is_binary(s) do
+    s |> String.trim() |> Path.basename()
+  end
+  defp safe_file(_), do: ""
+
+  defp read_manifest(dir) do
+    path = Path.join(dir, "manifest.json")
+    if File.exists?(path) do
+      case File.read(path) do
+        {:ok, body} ->
+          case Jason.decode(body) do
+            {:ok, m} -> m
+            _ -> %{}
+          end
+        _ -> %{}
+      end
+    else
+      %{}
+    end
+  end
+
+  defp manifest_summary(m) when is_map(m) do
+    %{
+      deck: Map.get(m, "deck"),
+      source_kind: Map.get(m, "source_kind"),
+      capture_target_label: Map.get(m, "capture_target_label"),
+      recorded_at: Map.get(m, "recorded_at")
+    }
+  end
+  defp manifest_summary(_), do: %{}
+
+  defp read_events(path) do
+    if File.exists?(path) do
+      path
+      |> File.stream!()
+      |> Enum.map(fn line ->
+        case Jason.decode(String.trim(line)) do
+          {:ok, ev} -> ev
+          _ -> nil
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+    else
+      []
+    end
+  end
+
+  defp tracks_for(dir, manifest) do
+    declared = get_in(manifest, ["tracks"]) || %{}
+    base = "/takes/#{Path.basename(dir)}"
+
+    for {key, file} <- declared, into: %{} do
+      full = Path.join(dir, file)
+      {key, %{file: file, url: base <> "/" <> file, exists: File.regular?(full)}}
+    end
+  end
+
+  defp parse_deck(path, slug) do
+    content = File.read!(path)
+    deck_dir = Path.dirname(path)
+    title = deck_title(content) || slug
+
+    work = parse_work_deck(content, deck_dir)
+
+    slides =
+      case work.slides do
+        [] -> json_block(content, "slides") || []
+        s -> s
+      end
+
+    preload =
+      case work.preload do
+        [] -> json_block(content, "preload") || []
+        p -> p
+      end
+
+    scripts =
+      case work.scripts do
+        [] -> json_block(content, "scripts") || []
+        s -> s
+      end
+
+    %{ok: true, slug: slug, title: title, slides: slides, preload: preload, scripts: scripts}
+  end
+
+  defp parse_work_deck(content, deck_dir) do
+    clients = extract_clients(content)
+    file_slides = load_slide_files(Path.join(deck_dir, "slides"))
+    inline = parse_inline_work(content, clients)
+
+    slides =
+      case {file_slides, inline} do
+        {fs, []} when fs != [] -> fs
+        {_, ins} -> ins
+        {fs, ins} -> ins ++ fs
+      end
+
+    %{
+      slides: slides,
+      preload: parse_preload_blocks(content),
+      scripts: parse_script_blocks(content)
+    }
+  end
+
+  defp load_slide_files(dir) do
+    if File.dir?(dir) do
+      dir
+      |> File.ls!()
+      |> Enum.filter(&String.ends_with?(&1, ".work"))
+      |> Enum.sort()
+      |> Enum.flat_map(fn name ->
+        path = Path.join(dir, name)
+        clients = extract_clients(File.read!(path))
+        parse_inline_work(File.read!(path), clients)
+      end)
+    else
+      []
+    end
+  end
+
+  defp extract_clients(content) do
+    Regex.scan(~r/^client\s+:(\S+)\s+do\r?\n([\s\S]*?)^end\s*$/m, content)
+    |> Enum.into(%{}, fn [_, name, body] -> {name, String.trim(body)} end)
+  end
+
+  defp parse_inline_work(content, clients) do
+    Regex.scan(~r/^slide\s+do\r?\n([\s\S]*?)^end/m, content)
+    |> Enum.map(fn [full, attrs_text] ->
+      attrs = parse_attrs(attrs_text)
+      rest = content |> String.split(full, parts: 2) |> Enum.at(1, "")
+      body = slide_trailing_body(rest)
+      build_slide(attrs, body, clients)
+    end)
+  end
+
+  defp slide_trailing_body(rest) do
+    case Regex.run(~r/^([\s\S]*?)(?=^(?:slide|script|preload|client\s*:)|\z)/m, rest) do
+      [_, body] -> String.trim(body)
+      _ -> ""
+    end
+  end
+
+  defp parse_attrs(text) do
+    {attrs, actions} =
+      text
+      |> String.split("\n")
+      |> Enum.reduce({%{}, []}, fn line, {acc, acts} ->
+        case String.split(line, ":", parts: 2) do
+          ["action", v] -> {acc, [String.trim(v) | acts]}
+          [k, v] -> {Map.put(acc, String.trim(k), String.trim(v)), acts}
+          _ -> {acc, acts}
+        end
+      end)
+
+    if actions == [], do: attrs, else: Map.put(attrs, "_actions", Enum.reverse(actions))
+  end
+
+  defp build_slide(attrs, body, clients) do
+    type = Map.get(attrs, "type", "prose")
+    id = Map.get(attrs, "id", "slide")
+
+    slide =
+      %{
+        "id" => id,
+        "type" => normalize_type(type),
+        "notes" => Map.get(attrs, "notes")
+      }
+      |> maybe_put("url", Map.get(attrs, "url"))
+      |> maybe_put("src", Map.get(attrs, "src"))
+      |> maybe_put("title", Map.get(attrs, "title"))
+      |> maybe_put("videoId", Map.get(attrs, "videoId"))
+      |> maybe_put("layout", slide_layout(attrs, type))
+      |> maybe_put("actions", parse_actions_list(Map.get(attrs, "_actions", [])))
+
+    case type do
+      "client" ->
+        unit = Map.get(attrs, "unit", "")
+        html = Map.get(clients, unit, "")
+
+        slide
+        |> Map.put("type", "html")
+        |> Map.put("body", html)
+        |> Map.put("layout", "fill")
+
+      "html" ->
+        slide |> Map.put("body", body) |> Map.put("layout", Map.get(attrs, "layout", "fill"))
+
+      t when t in ["prose", "work", "document"] ->
+        theme = Map.get(attrs, "theme", "default")
+
+        slide
+        |> Map.put("type", "html")
+        |> Map.put("body", prose_to_html(body, theme))
+        |> Map.put("layout", "prose")
+        |> Map.put("theme", theme)
+
+      t when t in ["iframe", "video", "youtube", "dev", "artifact"] ->
+        slide
+
+      _ ->
+        slide |> Map.put("type", "html") |> Map.put("body", prose_to_html(body, Map.get(attrs, "theme", "default")))
+    end
+    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+    |> Map.new()
+  end
+
+  defp normalize_type("prose"), do: "html"
+  defp normalize_type("work"), do: "html"
+  defp normalize_type("document"), do: "html"
+  defp normalize_type(t), do: t
+
+  defp slide_layout(attrs, type) do
+    case Map.get(attrs, "layout") do
+      nil ->
+        case type do
+          t when t in ["iframe", "video", "youtube", "dev", "artifact", "client"] -> "fill"
+          t when t in ["prose", "work", "document"] -> "prose"
+          "html" -> "fill"
+          _ -> "prose"
+        end
+
+      layout ->
+        layout
+    end
+  end
+
+  defp maybe_put(map, _k, nil), do: map
+  defp maybe_put(map, k, v), do: Map.put(map, k, v)
+
+  defp parse_actions_list(actions) when is_list(actions) do
+    actions
+    |> Enum.flat_map(fn
+      "wait " <> ms ->
+        case Integer.parse(ms) do
+          {n, _} -> [%{"type" => "wait", "ms" => n}]
+          _ -> []
+        end
+
+      "play" ->
+        [%{"type" => "play"}]
+
+      "fragment " <> step ->
+        case Integer.parse(step) do
+          {n, _} -> [%{"type" => "fragment", "step" => n}]
+          _ -> []
+        end
+
+      _ ->
+        []
+    end)
+    |> case do
+      [] -> nil
+      list -> list
+    end
+  end
+
+  defp parse_preload_blocks(content) do
+    Regex.scan(~r/^preload\s+do\r?\n([\s\S]*?)^end/m, content)
+    |> Enum.flat_map(fn [_, body] ->
+      body
+      |> String.split("\n")
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.map(fn line ->
+        case String.split(line, ":", parts: 2) do
+          ["url", u] -> String.trim(u)
+          _ -> line
+        end
+      end)
+    end)
+  end
+
+  defp parse_script_blocks(content) do
+    Regex.scan(~r/^script\s+do\r?\n([\s\S]*?)^end/m, content)
+    |> Enum.map(fn [_, attrs_text] ->
+      attrs = parse_attrs(attrs_text)
+
+      %{
+        "id" => Map.get(attrs, "id"),
+        "on" => Map.get(attrs, "on"),
+        "slide" => Map.get(attrs, "slide"),
+        "run" => Map.get(attrs, "run"),
+        "shell" => Map.get(attrs, "shell"),
+        "cwd" => Map.get(attrs, "cwd"),
+        "url" => Map.get(attrs, "url"),
+        "at" => parse_float(Map.get(attrs, "at")),
+        "detach" => Map.get(attrs, "detach") in ["true", "yes", "1"]
+      }
+      |> Enum.reject(fn {_k, v} -> is_nil(v) or v == false end)
+      |> Map.new()
+    end)
+  end
+
+  defp parse_float(nil), do: nil
+
+  defp parse_float(s) when is_binary(s) do
+    case Float.parse(s) do
+      {f, _} -> f
+      _ -> nil
+    end
+  end
+
+  defp prose_to_html(""), do: wrap_prose_html("<p></p>", "default")
+
+  defp prose_to_html(text, theme \\ "default") do
+    text
+    |> String.split("\n")
+    |> render_prose_lines([])
+    |> Enum.reverse()
+    |> Enum.join("\n")
+    |> wrap_prose_html(theme)
+  end
+
+  defp wrap_prose_html(inner, theme \\ "default") do
+    class =
+      case theme do
+        "title" -> "work-prose deck-title"
+        "section" -> "work-prose deck-section"
+        "closing" -> "work-prose deck-closing"
+        _ -> "work-prose deck-body"
+      end
+
+    "<div class=\"#{class}\">#{inner}</div>"
+  end
+
+  defp render_prose_lines([], acc), do: acc
+
+  defp render_prose_lines([line | rest], acc) do
+    line = String.trim(line)
+
+    cond do
+      line == "" ->
+        render_prose_lines(rest, acc)
+
+      String.starts_with?(line, "### ") ->
+        render_prose_lines(rest, ["<h3>#{inline_prose(String.slice(line, 4..-1//1))}</h3>" | acc])
+
+      String.starts_with?(line, "## ") ->
+        render_prose_lines(rest, ["<h2 class=\"deck-h2\">#{inline_prose(String.slice(line, 3..-1//1))}</h2>" | acc])
+
+      String.starts_with?(line, "# ") ->
+        render_prose_lines(rest, ["<h1 class=\"deck-h1\">#{inline_prose(String.slice(line, 2..-1//1))}</h1>" | acc])
+
+      String.starts_with?(line, "- ") ->
+        {items, rest2} = collect_list(rest, [String.slice(line, 2..-1//1)])
+        ul = "<ul class=\"deck-list\">" <> Enum.map_join(items, "", fn i -> "<li>#{inline_prose(i)}</li>" end) <> "</ul>"
+        render_prose_lines(rest2, [ul | acc])
+
+      Regex.match?(~r/^\d+\.\s/, line) ->
+        {items, rest2} = collect_olist(rest, [Regex.replace(~r/^\d+\.\s/, line, "")])
+        ol = "<ol class=\"deck-list\">" <> Enum.map_join(items, "", fn i -> "<li>#{inline_prose(i)}</li>" end) <> "</ol>"
+        render_prose_lines(rest2, [ol | acc])
+
+      true ->
+        render_prose_lines(rest, ["<p>#{inline_prose(line)}</p>" | acc])
+    end
+  end
+
+  defp collect_list(lines, acc) do
+    case lines do
+      [h | t] ->
+        h = String.trim(h)
+
+        if String.starts_with?(h, "- ") do
+          collect_list(t, [String.slice(h, 2..-1//1) | acc])
+        else
+          {Enum.reverse(acc), lines}
+        end
+
+      _ ->
+        {Enum.reverse(acc), []}
+    end
+  end
+
+  defp collect_olist(lines, acc) do
+    case lines do
+      [h | t] ->
+        h = String.trim(h)
+
+        if Regex.match?(~r/^\d+\.\s/, h) do
+          collect_olist(t, [Regex.replace(~r/^\d+\.\s/, h, "") | acc])
+        else
+          {Enum.reverse(acc), lines}
+        end
+
+      _ ->
+        {Enum.reverse(acc), []}
+    end
+  end
+
+  defp inline_prose(text) do
+    text
+    |> escape_html()
+    |> String.replace(~r/\*\*(.+?)\*\*/, "<strong>\\1</strong>")
+    |> String.replace(~r/`([^`]+)`/, "<code class=\"deck-code\">\\1</code>")
+  end
+
+  defp escape_html(text) do
+    text
+    |> String.replace("&", "&amp;")
+    |> String.replace("<", "&lt;")
+    |> String.replace(">", "&gt;")
+  end
+
+  defp slide_match?(script, slide) do
+    want = script["slide"] || script[:slide]
+    if want in [nil, ""] do
+      true
+    else
+      slide != nil and to_string(want) == to_string(slide)
+    end
+  end
+
+  defp run_deck_script(slug, script) do
+    cmd = script["run"] || script[:run] || script["cmd"] || script[:cmd]
+    shell = script["shell"] || script[:shell] || "bash"
+    cwd_rel = script["cwd"] || script[:cwd] || "."
+    detach = script["detach"] || script[:detach] || false
+    id = script["id"] || script[:id]
+
+    deck_root = Path.join([wb_data(), "decks", slug])
+    cwd = Path.expand(Path.join(deck_root, to_string(cwd_rel)))
+
+    if not String.starts_with?(cwd, Path.expand(deck_root)) do
+      %{id: id, ok: false, error: "cwd escapes deck"}
+    else
+      env =
+        (script["env"] || script[:env] || %{})
+        |> Enum.map(fn {k, v} -> {to_string(k), to_string(v)} end)
+
+      run_line = to_string(cmd || "")
+
+      if run_line == "" do
+        %{id: id, ok: false, error: "empty run"}
+      else
+        args = if shell == "bash", do: ["-lc", run_line], else: ["-c", run_line]
+        opts = [cd: cwd, env: env, stderr_to_stdout: true]
+
+        if detach do
+          Task.start(fn ->
+            System.cmd(to_string(shell), args, opts)
+          end)
+
+          %{id: id, ok: true, detach: true, cmd: run_line, cwd: cwd}
+        else
+          {out, code} = System.cmd(to_string(shell), args, opts)
+          %{id: id, ok: code == 0, code: code, cmd: run_line, cwd: cwd, log: String.trim(out)}
+        end
+      end
+    end
+  end
+
+  defp deck_title(content) do
+    case Regex.run(~r/title:\s*(.+)/, content) do
+      [_, t] -> String.trim(t)
+      _ -> nil
+    end
+  end
+
+  defp deck_title_from_file(path) do
+    if File.exists?(path) do
+      deck_title(File.read!(path))
+    else
+      nil
+    end
+  end
+
+  defp json_block(content, name) do
+    re = ~r/```json\s+#{name}\s*\n([\s\S]*?)```/
+    case Regex.run(re, content) do
+      [_, body] ->
+        case Jason.decode(String.trim(body)) do
+          {:ok, v} -> v
+          _ -> nil
+        end
+      _ -> nil
+    end
+  end
+
+  defp safe(s) when is_binary(s) do
+    s |> String.trim() |> String.replace(~r/[^a-z0-9_-]/, "")
+  end
+  defp safe(_), do: ""
+end
+
+# YouTube — same OAuth stack as studio (~/.shinyobjectz/youtube_client.json + tools/youtube_auth.py)
+server :reactable_youtube_api do
+  route "GET /reactable/youtube/status", :yt_status, auth: :public
+  route "POST /reactable/youtube/connect", :yt_connect, auth: :public
+  route "POST /reactable/youtube/disconnect", :yt_disconnect, auth: :public
+  route "GET /reactable/youtube/search", :yt_search, auth: :public
+  route "GET /reactable/youtube/proxy", :yt_proxy, auth: :public
+
+  def yt_disconnect(_req) do
+    t = yt_token()
+    if File.exists?(t), do: File.rm!(t)
+    %{ok: true, connected: false}
+  end
+
+  defp yt_token, do: Path.expand("~/.shinyobjectz/youtube_token.json")
+  defp yt_client, do: System.get_env("YOUTUBE_CLIENT_SECRETS") || Path.expand("~/.shinyobjectz/youtube_client.json")
+  defp yt_result, do: Path.expand("~/.shinyobjectz/youtube_auth_result.json")
+  defp yt_url, do: Path.expand("~/.shinyobjectz/youtube_auth_url.txt")
+
+  defp tools_root do
+    System.get_env("SHINYOBJECTZ_ROOT") || Path.expand("../../", wb_data())
+  end
+
+  defp wait_for_url(ms) when ms <= 0, do: nil
+  defp wait_for_url(ms) do
+    case File.read(yt_url()) do
+      {:ok, u} when byte_size(u) > 0 -> String.trim(u)
+      _ -> Process.sleep(100); wait_for_url(ms - 100)
+    end
+  end
+
+  defp py(script, args) do
+    {out, code} =
+      System.cmd("python3", [Path.join(tools_root(), "tools/#{script}") | args],
+        env: [{"PYTHONWARNINGS", "ignore"}],
+        stderr_to_stdout: true
+      )
+
+    case last_json(out) do
+      {:ok, m} -> m
+      :error -> %{"ok" => false, "error" => "exit #{code}: #{String.slice(String.trim(out), 0, 400)}"}
+    end
+  rescue
+    e -> %{"ok" => false, "error" => Exception.message(e)}
+  end
+
+  defp last_json(out) do
+    out
+    |> String.split("\n", trim: true)
+    |> Enum.reverse()
+    |> Enum.find_value(:error, fn line ->
+      case Jason.decode(line) do
+        {:ok, m} when is_map(m) -> {:ok, m}
+        _ -> nil
+      end
+    end)
+  end
+
+  def yt_status(_req) do
+    connected = File.exists?(yt_token())
+    %{ok: true, connected: connected, client: File.exists?(yt_client()), error: (if connected, do: nil, else: yt_last_error())}
+  end
+
+  defp yt_last_error do
+    with {:ok, j} <- File.read(yt_result()),
+         {:ok, %{"ok" => false, "error" => e}} <- Jason.decode(j) do
+      e
+    else
+      _ -> nil
+    end
+  end
+
+  def yt_connect(_req) do
+    cond do
+      not File.exists?(yt_client()) ->
+        {400, %{ok: false, error: "no OAuth client — add ~/.shinyobjectz/youtube_client.json (same as studio)"}}
+
+      File.exists?(yt_token()) ->
+        %{ok: true, connected: true}
+
+      true ->
+        File.rm(yt_result())
+        File.rm(yt_url())
+        spawn(fn ->
+          res = py("youtube_auth.py", [])
+          File.write(yt_result(), Jason.encode!(res))
+        end)
+        %{ok: true, started: true, url: wait_for_url(2500)}
+    end
+  end
+
+  def yt_search(req) do
+    q = safe(String.trim(req.query["q"] || ""))
+    if q == "", do: {400, %{ok: false, error: "q required"}}, else: py("youtube_search.py", [q])
+  end
+
+  def yt_proxy(req) do
+    vid = safe(String.trim(req.query["v"] || ""))
+    start = String.replace(String.trim(req.query["start"] || "0"), ~r/[^0-9]/, "")
+
+    if vid == "" do
+      {400, %{ok: false, error: "v required"}}
+    else
+      origin = "http://127.0.0.1:#{System.get_env("PORT") || "4020"}"
+      embed = "https://www.youtube.com/embed/#{vid}?start=#{start}&rel=0&modestbranding=1&playsinline=1&origin=#{URI.encode(origin)}"
+
+      %{
+        ok: true,
+        videoId: vid,
+        embed: embed,
+        proxyUrl: "/reactable/youtube/proxy?v=#{vid}&start=#{start}"
+      }
+    end
+  end
+
+  defp wb_data, do: System.get_env("WB_DATA") || "."
+
+  defp safe(s) when is_binary(s) do
+    s |> String.trim() |> String.replace(~r/[^a-z0-9_-]/, "")
+  end
+
+  defp safe(_), do: ""
+end

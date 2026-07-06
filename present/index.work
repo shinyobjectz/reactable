@@ -1,0 +1,518 @@
+# Present — the stage
+
+The **only** presentation surface. Native `StageWindowController` loads this
+page in WKWebView at `/present?deck=<slug>`. Preview and metal capture use the
+same shell — agents open it with `reactable stage open`, not a browser tab.
+Decks live in [[decks]].
+
+client :present do
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/black.css">
+  <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+  <style>
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000 !important;
+      color: #eee;
+    }
+    section.file, #index-work {
+      margin: 0 !important;
+      padding: 0 !important;
+      border: none !important;
+      display: block;
+      width: 100%;
+      height: 100%;
+      min-height: 100vh;
+      background: #000;
+    }
+    .reveal {
+      position: fixed !important;
+      inset: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      background: #000;
+    }
+    /* No reveal chrome — navigation is native (arrow keys / bar) */
+    .reveal .controls,
+    .reveal .progress,
+    .reveal .slide-number,
+    .reveal .playback-menu,
+    .reveal .pause-overlay {
+      display: none !important;
+    }
+    .reveal .slides {
+      text-align: left;
+      width: 100% !important;
+      height: 100% !important;
+    }
+    .reveal .slides section {
+      padding: 0 !important;
+      margin: 0 !important;
+      box-sizing: border-box;
+    }
+    /* Full-bleed media slides — edge-to-edge in the capture rect */
+    .reveal .slides section.fill {
+      position: absolute !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      display: block !important;
+      overflow: hidden;
+      background: #000;
+    }
+    .reveal .slides section.fill > iframe,
+    .reveal .slides section.fill > video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      max-width: none;
+      max-height: none;
+      border: 0;
+      display: block;
+      background: #000;
+    }
+    .reveal .slides section.fill > video {
+      object-fit: contain;
+    }
+    .reveal .slides section.fill .video-wrap {
+      position: absolute;
+      inset: 0;
+      background: #000;
+    }
+    .reveal .slides section.fill .video-wrap video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .reveal .slides section.fill .video-fallback {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 32px;
+      text-align: center;
+      color: #a1a1aa;
+      font: 14px/1.5 ui-sans-serif, system-ui, sans-serif;
+    }
+    .reveal .slides section.fill .video-fallback .sub { font-size: 12px; color: #71717a; }
+    .reveal .slides section.fill > .slide-inner {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    /* Prose deck typography — overrides workbook SSR code styles */
+    .reveal .slides section.work-slide {
+      background: #000;
+      display: flex !important;
+      align-items: stretch;
+      justify-content: center;
+    }
+    .reveal .slides section.work-slide .slide-inner {
+      width: 100%;
+      min-height: 100%;
+      display: flex;
+      align-items: stretch;
+    }
+    .work-prose {
+      box-sizing: border-box;
+      width: 100%;
+      color: #e8e8ec;
+      font: 20px/1.55 ui-sans-serif, system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .work-prose .deck-h1 {
+      font-size: clamp(2.4rem, 5vw, 3.75rem);
+      font-weight: 650;
+      letter-spacing: -0.03em;
+      line-height: 1.08;
+      margin: 0 0 0.35em;
+      color: #fff;
+    }
+    .work-prose .deck-h2 {
+      font-size: clamp(1.5rem, 3vw, 2.25rem);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      margin: 0 0 0.5em;
+      color: #fff;
+    }
+    .work-prose .deck-h3 { font-size: 1.25rem; font-weight: 600; margin: 0 0 0.4em; color: #f4f4f5; }
+    .work-prose p { margin: 0 0 1em; color: #a1a1aa; max-width: 42rem; }
+    .work-prose strong { color: #f4f4f5; font-weight: 600; }
+    .work-prose code, .work-prose .deck-code {
+      font: 0.86em ui-monospace, SFMono-Regular, Menlo, monospace !important;
+      color: #c4b5fd !important;
+      background: rgba(99, 102, 241, 0.14) !important;
+      border: 1px solid rgba(129, 140, 248, 0.35) !important;
+      padding: 0.12em 0.5em !important;
+      border-radius: 6px !important;
+    }
+    .work-prose .deck-list {
+      margin: 0.5em 0 1.25em;
+      padding: 0;
+      list-style: none;
+      max-width: 44rem;
+    }
+    .work-prose .deck-list li {
+      position: relative;
+      padding: 0.65em 0 0.65em 1.35em;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      color: #a1a1aa;
+    }
+    .work-prose .deck-list li:last-child { border-bottom: 0; }
+    .work-prose .deck-list li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 1.05em;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #6366f1;
+    }
+    .work-prose ol.deck-list { counter-reset: deck-ol; }
+    .work-prose ol.deck-list li::before {
+      counter-increment: deck-ol;
+      content: counter(deck-ol);
+      width: auto;
+      height: auto;
+      background: none;
+      color: #818cf8;
+      font: 600 0.85em ui-monospace, monospace;
+      top: 0.75em;
+    }
+    /* Title slide */
+    .work-prose.deck-title {
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 8vh 10vw;
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 0%, rgba(99,102,241,.22), transparent 55%),
+        radial-gradient(ellipse 60% 50% at 100% 100%, rgba(168,85,247,.12), transparent 50%),
+        #050508;
+    }
+    .work-prose.deck-title .deck-h1 { font-size: clamp(2.8rem, 6vw, 4.5rem); margin-bottom: 0.25em; }
+    .work-prose.deck-title .deck-h2 {
+      font-size: clamp(1.15rem, 2.2vw, 1.65rem);
+      font-weight: 450;
+      color: #a1a1aa;
+      margin-bottom: 2rem;
+    }
+    .work-prose.deck-title p { font-size: 1rem; color: #71717a; margin-top: auto; }
+    /* Section slide */
+    .work-prose.deck-section {
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 8vh 10vw;
+      background: #050508;
+      border-top: 3px solid #6366f1;
+    }
+    .work-prose.deck-section .deck-h2 { color: #818cf8; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 0.75em; }
+    .work-prose.deck-section .deck-h1 { margin-bottom: 0.4em; }
+    /* Closing slide */
+    .work-prose.deck-closing {
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 8vh 10vw;
+      background: linear-gradient(180deg, #050508 0%, #0f0a1a 100%);
+    }
+    .work-prose.deck-closing .deck-h1 { max-width: 16ch; }
+    .work-prose.deck-closing p { margin-left: auto; margin-right: auto; }
+    .work-prose.deck-body {
+      padding: 8vh 10vw;
+      background: #050508;
+    }
+    #preload-pool {
+      position: fixed; left: -9999px; top: -9999px;
+      width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none;
+    }
+    #deck-status {
+      position: fixed; left: 12px; bottom: 10px; z-index: 99;
+      font: 11px/1.3 ui-monospace, monospace; color: #f87171;
+      pointer-events: none; display: none;
+    }
+    #deck-status:not(:empty) { display: block; }
+  </style>
+  <div id="preload-pool"></div>
+  <div class="reveal">
+    <div class="slides" id="slides"></div>
+  </div>
+  <div id="deck-status" aria-live="polite"></div>
+  <script>
+  (function () {
+    const params = new URLSearchParams(location.search);
+    const slug = params.get('deck') || 'demo';
+    const status = document.getElementById('deck-status');
+    const pool = document.getElementById('preload-pool');
+
+    function showError(msg) {
+      status.textContent = msg;
+    }
+
+    function isFillSlide(s) {
+      if (['iframe', 'dev', 'artifact', 'video', 'youtube'].includes(s.type)) return true;
+      if (s.layout === 'fill') return true;
+      if (s.layout === 'prose') return false;
+      /* client / raw html islands — no work-prose wrapper */
+      if (s.type === 'html' && s.body && !s.body.includes('work-prose')) return true;
+      return false;
+    }
+
+    function mountSlides(slides) {
+      const root = document.getElementById('slides');
+      root.replaceChildren();
+      for (const s of slides || []) {
+        const id = s.id || '';
+        const fill = isFillSlide(s);
+        const section = document.createElement('section');
+        section.dataset.id = id;
+        section.className = fill ? 'fill' : 'work-slide';
+
+        switch (s.type) {
+          case 'markdown':
+          case 'prose':
+          case 'work':
+          case 'html': {
+            if (fill) {
+              section.innerHTML = s.body || '';
+            } else {
+              const inner = document.createElement('div');
+              inner.className = 'slide-inner';
+              inner.innerHTML = s.body || '';
+              section.appendChild(inner);
+            }
+            break;
+          }
+          case 'iframe':
+          case 'dev':
+          case 'artifact': {
+            const frame = document.createElement('iframe');
+            frame.src = s.url || s.src || '';
+            frame.title = s.title || id || 'slide';
+            frame.allow = 'autoplay; fullscreen; picture-in-picture';
+            frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox');
+            section.appendChild(frame);
+            break;
+          }
+          case 'video': {
+            const wrap = document.createElement('div');
+            wrap.className = 'video-wrap';
+            const vid = document.createElement('video');
+            vid.src = s.src || '';
+            vid.controls = true;
+            vid.preload = 'auto';
+            vid.playsInline = true;
+            vid.setAttribute('playsinline', '');
+            vid.muted = true;
+            const fallback = document.createElement('div');
+            fallback.className = 'video-fallback';
+            fallback.innerHTML = '<p>Video failed to load</p><p class="sub">Host MP4 under decks/&lt;slug&gt;/labs/ and use /reactable/labs/sample.mp4?deck=&lt;slug&gt;</p>';
+            fallback.hidden = true;
+            vid.addEventListener('error', () => { fallback.hidden = false; vid.style.visibility = 'hidden'; });
+            vid.addEventListener('loadeddata', () => { fallback.hidden = true; vid.style.visibility = ''; });
+            wrap.appendChild(vid);
+            wrap.appendChild(fallback);
+            section.appendChild(wrap);
+            break;
+          }
+          case 'youtube': {
+            const frame = document.createElement('iframe');
+            const vid = s.videoId || id || '';
+            const origin = encodeURIComponent(location.origin);
+            frame.src = `https://www.youtube.com/embed/${vid}?rel=0&modestbranding=1&playsinline=1&origin=${origin}`;
+            frame.title = 'YouTube';
+            frame.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
+            frame.allowFullscreen = true;
+            frame.referrerPolicy = 'strict-origin-when-cross-origin';
+            section.appendChild(frame);
+            break;
+          }
+          default:
+            section.className = 'work-slide';
+            section.textContent = 'Unknown slide type: ' + (s.type || '?');
+        }
+        root.appendChild(section);
+      }
+    }
+
+    function preload(urls) {
+      (urls || []).forEach((u) => {
+        const f = document.createElement('iframe');
+        f.src = u; f.setAttribute('aria-hidden', 'true');
+        pool.appendChild(f);
+      });
+    }
+
+    function stamp(action, payload) {
+      if (window.webkit?.messageHandlers?.reactable) {
+        window.webkit.messageHandlers.reactable.postMessage({ action, payload, t: Date.now() });
+      }
+    }
+
+    function stageMetrics() {
+      return { w: window.innerWidth, h: window.innerHeight };
+    }
+
+    async function boot() {
+      status.textContent = '';
+      let deck;
+      try {
+        const res = await fetch(`/reactable/deck?slug=${encodeURIComponent(slug)}`);
+        deck = await res.json();
+      } catch (e) {
+        showError('fetch failed: ' + e);
+        return;
+      }
+      if (!deck.ok) { showError(deck.error || 'deck load failed'); return; }
+      if (!deck.slides?.length) { showError('deck has no slides'); return; }
+
+      mountSlides(deck.slides);
+      preload(deck.preload);
+
+      if (typeof Reveal === 'undefined') {
+        showError('Reveal.js failed to load');
+        return;
+      }
+
+      const { w, h } = stageMetrics();
+      await Reveal.initialize({
+        hash: false,
+        controls: false,
+        progress: false,
+        slideNumber: false,
+        center: false,
+        transition: 'slide',
+        width: w,
+        height: h,
+        margin: 0,
+        minScale: 1,
+        maxScale: 1,
+      });
+      Reveal.layout();
+      Reveal.slide(0, 0, 0);
+
+      window.addEventListener('resize', () => {
+        const m = stageMetrics();
+        Reveal.configure({ width: m.w, height: m.h, margin: 0, minScale: 1, maxScale: 1 });
+        Reveal.layout();
+      });
+
+      async function execScript(script) {
+        try {
+          const res = await fetch('/reactable/exec', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              deck: slug,
+              on: script.on,
+              slide: script.slide || null,
+              id: script.id || null,
+            }),
+          });
+          return await res.json();
+        } catch (e) {
+          return { ok: false, error: String(e) };
+        }
+      }
+
+      async function runDeckScripts(trigger, slideId) {
+        const scripts = (deck.scripts || []).filter((s) => {
+          if (s.on !== trigger) return false;
+          if (s.slide && slideId && s.slide !== slideId) return false;
+          if (s.slide && !slideId) return false;
+          return true;
+        });
+        for (const s of scripts) {
+          if (s.at) await new Promise((r) => setTimeout(r, (s.at || 0) * 1000));
+          await execScript(s);
+        }
+      }
+
+      async function runActions(actions) {
+        for (const a of actions || []) {
+          if (a.type === 'wait') await new Promise((r) => setTimeout(r, a.ms || 500));
+          if (a.type === 'fragment') Reveal.sync();
+          if (a.type === 'play') {
+            const v = Reveal.getCurrentSlide()?.querySelector('video');
+            if (v) {
+              try {
+                v.muted = true;
+                await v.play();
+                v.muted = false;
+              } catch (_) {
+                v.controls = true;
+              }
+            }
+          }
+          if (a.type === 'scroll' && a.y != null) window.scrollTo(0, a.y);
+        }
+      }
+
+      function pauseOffstageMedia(current) {
+        document.querySelectorAll('.slides section.fill video').forEach((v) => {
+          if (!current?.contains(v)) v.pause();
+        });
+      }
+
+      function emitSlideState(idx, el) {
+        const slide = deck.slides[idx];
+        const slideId = el?.dataset?.id || slide?.id || null;
+        stamp('event.slide', { idx, id: slideId, notes: slide?.notes || null });
+        if (slide?.notes) stamp('event.notes', { idx, text: slide.notes });
+        else stamp('event.notes', { idx, text: '' });
+      }
+
+      Reveal.on('slidechanged', (ev) => {
+        const el = ev.currentSlide;
+        const idx = ev.indexh;
+        const slide = deck.slides[idx];
+        pauseOffstageMedia(el);
+        const vid = el?.querySelector('video');
+        if (vid && slide?.type === 'video') {
+          vid.muted = true;
+          vid.play().then(() => { vid.muted = false; }).catch(() => { vid.controls = true; });
+        }
+        emitSlideState(idx, el);
+        runActions(slide?.actions);
+        runDeckScripts('slide.enter', el?.dataset?.id || slide?.id || null);
+      });
+
+      await runDeckScripts('deck.open', null);
+
+      window.RevealDeck = {
+        next() { Reveal.next(); },
+        prev() { Reveal.prev(); },
+        indices() { return Reveal.getIndices(); },
+        currentNotes() {
+          const idx = Reveal.getIndices().h;
+          return deck.slides[idx]?.notes || '';
+        },
+        slug,
+      };
+      stamp('event.deck', { slug, slides: deck.slides.length });
+      emitSlideState(0, document.querySelector('.slides section'));
+    }
+
+    boot().catch((e) => { showError(String(e)); });
+  })();
+  </script>
+end

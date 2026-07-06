@@ -1,0 +1,37 @@
+# reactable
+
+A native macOS recording app: **Screen Studio ⋂ reveal.js**. Record yourself
+presenting a *drivable browser stage* — reveal.js slides that can be a live
+website, a dev server, a `.work` HTML artifact, a video, or YouTube — with the
+full webcam and screen captured on metal, then composited deterministically in
+post.
+
+Ground-up redesign of the old studio recorder. A thin native Swift shell
+(capture + windows) over a `.work`/web application layer served by a headless
+nexus sidecar. The plan of record is [[docs/PLAN]].
+
+## Layout (as it fills in)
+
+| Piece | Path | Route |
+|-------|------|-------|
+| Plan of record | [[docs/PLAN]] | — |
+| Agent CLI | `cli/` (`reactable` bin) | shell |
+| CLI plan | [[docs/CLI]] | — |
+| User projects | [[docs/PROJECTS]] | — |
+| Agent skill | `skill/SKILL.md` | — |
+| Native shell | `native/` (Swift + Aperture) | metal (fixed) |
+| npm CLI | `cli/` → `reactable-cli` on npm | shell |
+| GitHub | [github.com/shinyobjectz/reactable](https://github.com/shinyobjectz/reactable) | own repo / submodule |
+| Stage | `present/` | `/present` |
+| Bar | `bar/` | `/bar` |
+| Editor | `editor/` | `/editor` |
+| Decks / takes | `decks/`, `takes/` | `.work` |
+
+**Showcase deck** (all media formats): `decks/showcase/` → `/present?deck=showcase`
+
+Serves on its **own** nexus (like OOTA/typeaway), never the studio server.
+
+```bash
+bun run cli/bin/reactable.ts help    # agent CLI
+just reactable validate              # headless P0–P5
+```

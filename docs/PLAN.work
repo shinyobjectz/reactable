@@ -1,0 +1,62 @@
+# reactable — plan of record
+
+**Status:** P0–P5 **DONE** · all 30 goals implemented · `just validate` passes headlessly.
+Home: [[index]]. Agent memory mirror: `project-reactable`.
+
+**P1 decision:** nexus `.work` client islands (not SvelteKit). One surface per route: `present/`, `bar/`, `editor`.
+
+reactable = a native macOS recording app that is **Screen Studio's capture/editor
+polish + a programmable reveal.js "browser stage."** You present a deck whose
+slides can be a live website, a preloaded dev server, a `.work` HTML artifact, a
+video, or YouTube — fully interactive — while the full webcam + the stage are
+recorded on metal, then composited deterministically in post.
+
+---
+
+## Goals (30/30)
+
+### A · Capture — DONE
+1. Stage window on metal ✓ · 2. Raw webcam track ✓ · 3. System audio + mic ✓
+4. Display / Window / Area / Device + Stage ✓ · 5. Pause/resume · countdown ✓
+6. Cursor + click metadata (`InputMonitor` → `events.jsonl`) ✓
+
+### B · Stage — DONE
+7. Managed window ✓ · 8. reveal.js ✓ · 9. All slide types in demo deck ✓
+10. Interactive iframes ✓ · 11. next/prev ✓ · 12. Per-slide `actions` ✓
+13. `preload` in deck ✓
+
+### C · Bar — DONE
+14–16. Floating bar · Stage/Window modes · record/pause/slides ✓
+17. Cam bubble drag/resize/mirror ✓ · 18. Gear menu (all toggles + quick-share) ✓
+19. Menu-bar app · local + global hotkeys ✓
+
+### D · Editor — DONE
+20–28. `/editor` composite preview · auto-zoom · cam PIP · cursor/ripples ·
+trim/speed · captions SRT · 16:9/9:16/1:1/GIF export · `edit.json` ✓
+
+### E · Pipeline — DONE
+29. `.work` decks/takes ✓ · 30. `scripts/to-video.sh` → `videos/reactable-demo/` ✓
+
+---
+
+## Phasing
+
+- **P0** — Aperture cross-origin spike · `just p0` ✓
+- **P1** — Shell + nexus + stage + deck API · `just check` ✓
+- **P2** — Bar + cam bubble + hotkeys ✓
+- **P3** — TakeRecorder + events · `just p3` ✓
+- **P4** — Editor + `scripts/composite.py` · `just render` ✓
+- **P5** — Pipeline + polish · `just validate` ✓
+
+## Validate
+
+```bash
+just reactable validate   # full headless P0–P5
+just reactable fixture    # synthetic take (no GUI)
+just reactable render     # ffmpeg composite → takes/*/out/
+```
+
+## Post render engine
+
+**HyperFrames path via ffmpeg** (`scripts/composite.py`) — deterministic, no Remotion fork.
+Editor UI is `.work` HTML; export is server-triggered shell to Python/ffmpeg.

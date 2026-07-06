@@ -1,0 +1,51 @@
+# User projects
+
+Reactable discovers project roots at the **user level** so you can switch decks without leaving the recorder.
+
+## Layout
+
+```
+~/Reactable/
+  projects.json          # optional extra absolute paths
+  projects/
+    reactable/           # symlink to dev tree (created on first launch)
+    my-talk/             # your cloned / copied projects
+```
+
+A valid project is any folder containing `index.work` and a `decks/` directory.
+
+## Register a project
+
+1. Clone or copy a Reactable project into `~/Reactable/projects/<name>/`
+2. Or add its absolute path to `~/Reactable/projects.json`:
+
+```json
+{
+  "version": 1,
+  "paths": [
+    "/Users/you/Apps/shinyobjectz/projects/reactable",
+    "/Users/you/Reactable/projects/my-talk"
+  ]
+}
+```
+
+## Switch in the app
+
+| UI | Action |
+|----|--------|
+| **Menu bar ◉** | **Project** → pick project · **Deck** → pick deck |
+| **Recorder bar** | Folder button → decks · **⌘+click** → projects |
+| **Settings (gear)** | **Project** / **Deck** submenus |
+
+Switching projects restarts the nexus sidecar for that project's `WB_DATA`. Stop recording first.
+
+Last project + deck are remembered via UserDefaults.
+
+## Decks in this repo
+
+| slug | title |
+|------|-------|
+| `demo` | Reactable Demo |
+| `showcase` | Media Formats Showcase |
+
+Open showcase: `/present?deck=showcase`

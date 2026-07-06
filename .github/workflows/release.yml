@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Publish CLI to npm
+        working-directory: cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          npm publish --access public
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Reactable.app
+        run: |
+          cd native && swift build -c release
+          APP="dist/Reactable.app"
+          rm -rf "$APP"
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp native/.build/release/reactable "$APP/Contents/MacOS/"
+          cp native/Resources/Info.plist "$APP/Contents/"
+          chmod +x "$APP/Contents/MacOS/reactable"
+          ditto -c -k --sequesterRsrc --keepParent dist/Reactable.app dist/Reactable-macOS.zip
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/Reactable-macOS.zip
+          generate_release_notes: true
