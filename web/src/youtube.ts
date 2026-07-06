@@ -1,5 +1,5 @@
 import type { Env, Session } from "./types";
-import { json, oauthClient, openSession, saveSession } from "./auth";
+import { json, oauthClient, openSession, redirect, saveSession } from "./auth";
 
 const YT_SCOPES = [
   "https://www.googleapis.com/auth/youtube.readonly",
@@ -158,8 +158,4 @@ export async function youtubeProxy(req: Request, env: Env): Promise<Response> {
     proxyUrl: `${env.SITE_URL}/api/youtube/proxy?v=${videoId}&start=${start}`,
     downloadHint: "Use reactable youtube clip for high-res replacement after recording",
   });
-}
-
-function redirect(url: string): Response {
-  return Response.redirect(url, 302);
 }
