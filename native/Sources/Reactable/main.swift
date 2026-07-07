@@ -80,6 +80,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             inputMonitor = nil
             Task { _ = try? await takeRecorder?.stop(cam: cam) }
         }
+        terminateDevProcesses()
         stage?.close()
         stagePoller?.stop()
         bar?.close()
@@ -761,6 +762,10 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             try? data.write(to: url)
         }
         lineup = newLineup
+        // Slide order in the lineup IS the deck order — keep deck.work true.
+        let ids = newLineup.compactMap { ($0["kind"] as? String) == "slide" ? $0["slideId"] as? String : nil }
+        let deckIds = cachedSlides.compactMap { $0["id"] as? String }.filter { ids.contains($0) }
+        if !ids.isEmpty, ids != deckIds { applyDeckOrder(ids) }
         // The first entry IS the opening shot — reflect it immediately.
         lineupIndex = 0
         if let first = lineup.first { activateScene(first) }
@@ -778,7 +783,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             lineup = cachedSlides.map { slide in
                 let idx = slide["idx"] as? Int ?? 0
                 let id = slide["id"] as? String ?? "slide-\(idx + 1)"
-                return ["kind": "slide", "ref": String(idx), "slideId": id, "title": "\(idx + 1) · \(id)"]
+                return ["kind": "slide", "ref": String(idx), "slideId": id, "title": id]
             }
         }
         lineupIndex = 0
@@ -859,11 +864,16 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         fputs("reactable: scene → \(kind) \(title)\n", stderr)
     }
 
-    private var launchedDevCommands: Set<String> = []
+    private var devProcesses: [String: Process] = [:]
+
+    func terminateDevProcesses() {
+        for (_, proc) in devProcesses where proc.isRunning { proc.terminate() }
+        devProcesses.removeAll()
+    }
 
     private func launchDevScene(cmd: String, cwd: String?, url: String, title: String) {
-        if !cmd.isEmpty, !launchedDevCommands.contains(cmd) {
-            launchedDevCommands.insert(cmd)
+        let alive = devProcesses[cmd]?.isRunning == true
+        if !cmd.isEmpty, !alive {
             let proc = Process()
             proc.executableURL = URL(fileURLWithPath: "/bin/zsh")
             proc.arguments = ["-lc", cmd]
@@ -871,6 +881,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             proc.standardOutput = FileHandle.nullDevice
             proc.standardError = FileHandle.nullDevice
             try? proc.run()
+            devProcesses[cmd] = proc
             fputs("reactable: dev scene launched: \(cmd)\n", stderr)
         }
         guard let target = URL(string: url) else { return }
