@@ -588,6 +588,12 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         let projects = ProjectRegistry.discover(extraBundled: bundledProjectRoot)
         guard let project = projects.first(where: { $0.id == id }) else { return }
         guard project.url != activeProjectURL else { return }
+        // A registered-but-missing project (stale registry entry) used to
+        // crash in NexusSidecar.start (ObjC exception in Process setup).
+        guard FileManager.default.fileExists(atPath: project.url.appending(path: "index.work").path) else {
+            fputs("reactable: project \(id) missing on disk — not switching\n", stderr)
+            return
+        }
 
         activeProjectURL = project.url
         sidecar?.setProjectRoot(project.url)
@@ -714,6 +720,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     /// Kanban state shared with the CLI: columns + per-project stage.
     private func projectsBoardData() -> [String: Any] {
         let projects = ProjectRegistry.discover(extraBundled: bundledProjectRoot)
+            .filter { FileManager.default.fileExists(atPath: $0.url.appending(path: "index.work").path) }
             .map { ["id": $0.id, "name": $0.name] }
         var columns = ["idea", "recording", "editing", "done"]
         var stages: [String: String] = [:]

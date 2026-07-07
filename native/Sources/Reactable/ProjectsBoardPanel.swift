@@ -93,6 +93,15 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
                let stage = parsed.payload["stage"] as? String {
                 onStage?(id, stage)
             }
+        case "projects.moveBy":
+            if let win = window {
+                let dx = parsed.payload["dx"] as? Double ?? 0
+                let dy = parsed.payload["dy"] as? Double ?? 0
+                var origin = win.frame.origin
+                origin.x += dx
+                origin.y -= dy
+                win.setFrameOrigin(origin)
+            }
         case "projects.close":
             hide()
         default:
