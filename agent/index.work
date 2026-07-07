@@ -82,6 +82,27 @@ client :agent do
       border: 1px solid rgba(255,255,255,.08);
       border-bottom-left-radius: 4px;
     }
+    /* Rendered markdown inside assistant messages */
+    .msg.assistant p { margin: 0 0 8px; }
+    .msg.assistant p:last-child { margin-bottom: 0; }
+    .msg.assistant h1, .msg.assistant h2, .msg.assistant h3, .msg.assistant h4 {
+      margin: 10px 0 6px; font-weight: 650; letter-spacing: -.01em; color: #fafafa;
+    }
+    .msg.assistant h1 { font-size: 16px; } .msg.assistant h2 { font-size: 15px; }
+    .msg.assistant h3, .msg.assistant h4 { font-size: 13px; }
+    .msg.assistant ul { margin: 4px 0 8px; padding-left: 20px; }
+    .msg.assistant li { margin: 2px 0; }
+    .msg.assistant strong { font-weight: 650; color: #fafafa; }
+    .msg.assistant a { color: #a5b4fc; }
+    .msg.assistant code {
+      font: 11.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+      background: rgba(255,255,255,.08); padding: 1px 5px; border-radius: 5px;
+    }
+    .msg.assistant pre {
+      background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.07);
+      border-radius: 10px; padding: 10px 12px; overflow-x: auto; margin: 6px 0;
+    }
+    .msg.assistant pre code { background: none; padding: 0; color: #e4e4e7; }
     .msg.typing {
       color: #a1a1aa;
       font-style: italic;
@@ -217,17 +238,51 @@ client :agent do
       stroke: currentColor; fill: none;
       stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round;
     }
-  </style>
+
+    /* ── Model picker ── */
+    .badge-btn {
+      margin-left: auto; flex-shrink: 0;
+      font: 11px/1 ui-sans-serif, system-ui, sans-serif; color: #a1a1aa;
+      background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
+      padding: 5px 10px; border-radius: 999px; cursor: pointer;
+    }
+    .badge-btn:hover { background: rgba(255,255,255,.1); color: #e4e4e7; }
+    #models { overflow: auto; padding: 16px; display: none; flex-direction: column; gap: 12px; }
+    #models.show { display: flex; }
+    .models-intro { font-size: 13px; color: #a1a1aa; }
+    .models-intro b { color: #fafafa; }
+    .hw { font: 11px ui-monospace, monospace; color: #71717a; }
+    .tier {
+      border: 1px solid rgba(255,255,255,.1); border-radius: 14px;
+      padding: 14px 16px; background: rgba(24,24,27,.7);
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .tier.rec { border-color: rgba(129,140,248,.5); box-shadow: 0 0 0 1px rgba(99,102,241,.2); }
+    .tier-top { display: flex; align-items: center; gap: 8px; }
+    .tier-name { font-size: 15px; font-weight: 650; color: #fafafa; text-transform: capitalize; }
+    .tier-label { font-size: 12px; color: #a5b4fc; }
+    .tier-pill {
+      font: 10px/1 ui-monospace, monospace; padding: 3px 7px; border-radius: 999px;
+      border: 1px solid rgba(129,140,248,.3); color: #a5b4fc; background: rgba(99,102,241,.12);
+    }
+    .tier-pill.warn { color: #fbbf24; border-color: rgba(251,191,36,.3); background: rgba(251,191,36,.1); }
+    .tier-pill.ok { color: #6ee7b7; border-color: rgba(52,211,153,.3); background: rgba(16,185,129,.12); }
+    .tier-blurb { font-size: 12px; color: #a1a1aa; }
+    .tier-meta { font: 11px ui-monospace, monospace; color: #71717a; }
+    .tier-actions { display: flex; gap: 8px; margin-top: 4px; }
+    .tier-actions .btn { height: 30px; padding: 0 14px; }
   <div class="app">
     <header>
       <div class="header-row">
         <h1>Reactable Agent</h1>
         <span class="badge" id="engine">gemma · mlx</span>
+        <button type="button" class="badge-btn" id="models-btn" title="Choose model">Models</button>
       </div>
       <div class="header-meta" id="status">Checking model…</div>
     </header>
 
     <div id="log"></div>
+    <div id="models" hidden></div>
 
     <div class="composer-wrap">
       <div class="composer">
@@ -267,10 +322,57 @@ client :agent do
       input.style.height = Math.min(input.scrollHeight, 160) + 'px';
     }
 
+    function escapeHtml(s) {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // Minimal, self-contained markdown → HTML (no external libs; escapes first).
+    function renderMarkdown(src) {
+      const blocks = escapeHtml(src).split(/```/);
+      let out = '';
+      blocks.forEach((chunk, i) => {
+        if (i % 2 === 1) { // fenced code block
+          const body = chunk.replace(/^[a-zA-Z0-9]*\n/, '');
+          out += '<pre><code>' + body.replace(/\n$/, '') + '</code></pre>';
+          return;
+        }
+        const lines = chunk.split('\n');
+        let inList = false;
+        for (let line of lines) {
+          let m;
+          if ((m = line.match(/^(#{1,4})\s+(.*)$/))) {
+            if (inList) { out += '</ul>'; inList = false; }
+            const lvl = m[1].length;
+            out += '<h' + lvl + '>' + inline(m[2]) + '</h' + lvl + '>';
+          } else if ((m = line.match(/^\s*(?:[-*]|\d+\.)\s+(.*)$/))) {
+            if (!inList) { out += '<ul>'; inList = true; }
+            out += '<li>' + inline(m[1]) + '</li>';
+          } else if (line.trim() === '') {
+            if (inList) { out += '</ul>'; inList = false; }
+          } else {
+            if (inList) { out += '</ul>'; inList = false; }
+            out += '<p>' + inline(line) + '</p>';
+          }
+        }
+        if (inList) out += '</ul>';
+      });
+      return out;
+    }
+
+    function inline(s) {
+      return s
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>')
+        .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$1" target="_blank">$1</a>');
+    }
+
     function append(role, text, extra) {
       const el = document.createElement('div');
       el.className = 'msg ' + role;
-      el.textContent = text;
+      // Assistant replies render markdown; user/system stay literal.
+      if (role === 'assistant') el.innerHTML = renderMarkdown(text);
+      else el.textContent = text;
       if (extra) {
         const t = document.createElement('div');
         t.className = 'tools';
@@ -294,22 +396,103 @@ client :agent do
       return id.split('/').slice(-1)[0] || 'mlx-lm';
     }
 
+    const modelsEl = document.getElementById('models');
+    const composerWrap = document.querySelector('.composer-wrap');
+    let pollTimer = null;
+
+    function showModels(on) {
+      modelsEl.classList.toggle('show', on);
+      log.style.display = on ? 'none' : '';
+      composerWrap.style.display = on ? 'none' : '';
+    }
+
+    async function loadModels() {
+      const res = await fetch('/reactable/agent/models');
+      const data = await res.json();
+      renderModels(data);
+      return data;
+    }
+
+    function bytesGB(g) { return g + ' GB'; }
+
+    function renderModels(data) {
+      const hw = data.hardware || {};
+      let html = '<div class="models-intro">Pick a model to run locally. '
+        + '<span class="hw">' + (hw.chip || 'this Mac') + ' · ' + (hw.ram_gb || '?') + ' GB RAM</span></div>';
+      (data.tiers || []).forEach(t => {
+        const pills = [];
+        if (t.recommended) pills.push('<span class="tier-pill">Recommended</span>');
+        if (!t.fits) pills.push('<span class="tier-pill warn">Needs ' + t.min_ram_gb + ' GB</span>');
+        if (t.cached) pills.push('<span class="tier-pill ok">Downloaded</span>');
+        let actions = '';
+        if (t.cached) {
+          actions = (t.current ? '<button class="btn btn-ghost" disabled>In use</button>'
+                                : '<button class="btn btn-primary" data-use="' + t.tier + '">Use this</button>')
+                  + '<button class="btn btn-ghost" data-rm="' + t.tier + '">Delete</button>';
+        } else {
+          actions = '<button class="btn btn-primary" data-pull="' + t.tier + '">Download ' + t.size_gb + ' GB</button>';
+        }
+        html += '<div class="tier' + (t.recommended ? ' rec' : '') + '" id="tier-' + t.tier + '">'
+          + '<div class="tier-top"><span class="tier-name">' + t.tier + '</span>'
+          + '<span class="tier-label">' + t.label + '</span>' + pills.join('') + '</div>'
+          + '<div class="tier-blurb">' + t.blurb + '</div>'
+          + '<div class="tier-meta">' + t.repo + ' · ' + bytesGB(t.size_gb) + ' · needs ' + t.min_ram_gb + ' GB</div>'
+          + '<div class="tier-actions">' + actions + '</div></div>';
+      });
+      modelsEl.innerHTML = html;
+      modelsEl.querySelectorAll('[data-pull]').forEach(b => b.onclick = () => pullTier(b.dataset.pull));
+      modelsEl.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => rmTier(b.dataset.rm));
+      modelsEl.querySelectorAll('[data-use]').forEach(b => b.onclick = () => useTier(b.dataset.use));
+    }
+
+    async function pullTier(tier) {
+      const card = document.getElementById('tier-' + tier);
+      const actions = card.querySelector('.tier-actions');
+      actions.innerHTML = '<button class="btn btn-ghost" disabled>Downloading… (a few min)</button>';
+      await fetch('/reactable/agent/pull', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ tier }),
+      });
+      // Poll until the tier reports cached.
+      const iv = setInterval(async () => {
+        const data = await loadModels();
+        const t = (data.tiers || []).find(x => x.tier === tier);
+        if (t && t.cached) { clearInterval(iv); await useTier(tier); }
+      }, 4000);
+    }
+
+    async function rmTier(tier) {
+      await fetch('/reactable/agent/rm', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ tier }),
+      });
+      loadModels();
+    }
+
+    async function useTier(tier) {
+      // Downloading sets the tier server-side; just refresh + close if a model exists.
+      const data = await loadModels();
+      if (data.any_model) { showModels(false); checkStatus(); }
+    }
+
     async function checkStatus() {
       try {
         const res = await fetch('/reactable/agent/status');
         const data = await res.json();
         engineEl.textContent = shortEngine(data.engine, data.model);
+        // Gate: no model downloaded → force the picker, hide the chat.
+        if (!data.any_model) {
+          statusEl.textContent = 'Choose a model to get started';
+          statusEl.className = 'header-meta warn';
+          showModels(true);
+          loadModels();
+          return;
+        }
         if (data.ok) {
           statusEl.textContent = data.state === 'server-ready'
             ? 'Model ready · offline'
             : 'Model cached · loads on first message';
           statusEl.className = 'header-meta ok';
-        } else if (data.state === 'needs-pull') {
-          statusEl.textContent = 'Model not downloaded';
-          statusEl.className = 'header-meta warn';
-          showBanner(
-            'The local model is not downloaded yet (one-time ~2GB, no account needed).<code>reactable agent pull</code>'
-          );
         } else if (data.state === 'uv-missing') {
           statusEl.textContent = 'uv runtime missing';
           statusEl.className = 'header-meta warn';
@@ -319,7 +502,6 @@ client :agent do
         } else {
           statusEl.textContent = data.hint || 'Model not ready';
           statusEl.className = 'header-meta warn';
-          showBanner((data.error || data.hint || 'Model not ready') + '<code>reactable agent pull</code>');
         }
       } catch (e) {
         statusEl.textContent = 'Nexus unreachable';
@@ -390,10 +572,18 @@ client :agent do
 
     stageBtn.addEventListener('click', () => sendNative('agent.openStage', { deck }));
 
+    document.getElementById('models-btn').addEventListener('click', () => {
+      const showing = modelsEl.classList.contains('show');
+      if (showing) { showModels(false); checkStatus(); }
+      else { showModels(true); loadModels(); }
+    });
+
     append('system', 'Offline agent — plans decks, runs reactable CLI, edits files in your project sandbox.');
     // Spawn + warm the model as soon as the window opens, so the first
-    // message is fast instead of eating the cold-start.
-    fetch('/reactable/agent/prewarm', { method: 'POST' }).catch(() => {});
+    // message is fast instead of eating the cold-start. Only if a model exists.
+    fetch('/reactable/agent/status').then(r => r.json()).then(s => {
+      if (s.any_model) fetch('/reactable/agent/prewarm', { method: 'POST' }).catch(() => {});
+    }).catch(() => {});
     checkStatus();
     resizeInput();
     input.focus();

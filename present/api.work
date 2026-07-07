@@ -7,6 +7,7 @@ server :reactable_api do
   route "GET /reactable/health", :health, auth: :public
   route "GET /reactable/takes", :takes_list, auth: :public
   route "GET /reactable/takes/:id", :take_get, auth: :public
+  route "GET /reactable/takes/:id/video", :take_video, auth: :public
   route "GET /reactable/takes/:id/edit", :take_edit_get, auth: :public
   route "POST /reactable/takes/:id/edit", :take_edit_save, auth: :public
   route "POST /reactable/takes/:id/render", :take_render, auth: :public
@@ -27,6 +28,9 @@ server :reactable_api do
   route "POST /reactable/agent/chat", :agent_chat, auth: :public
   route "GET /reactable/agent/status", :agent_status, auth: :public
   route "POST /reactable/agent/prewarm", :agent_prewarm, auth: :public
+  route "GET /reactable/agent/models", :agent_models, auth: :public
+  route "POST /reactable/agent/pull", :agent_pull, auth: :public
+  route "POST /reactable/agent/rm", :agent_rm, auth: :public
   route "POST /reactable/projects/create", :project_create, auth: :public
   route "GET /reactable/projects/list", :projects_list, auth: :public
   route "GET /reactable/project", :project_get, auth: :public
@@ -257,6 +261,21 @@ server :reactable_api do
             {200, "text/html", surface_page(prose_to_html(File.read!(path)))}
         end
 
+      "take" ->
+        id = safe_take_id(ref)
+        dir = Path.join([wb_data(), "takes", id])
+
+        cond do
+          id == "" or not File.dir?(dir) ->
+            {404, "text/html", surface_page("<p class='err'>take not found: #{esc(ref)}</p>")}
+
+          take_video_path(dir) == nil ->
+            {200, "text/html", surface_page("<p>Take <b>#{esc(id)}</b> has no rendered video yet.</p><p>Composite it: <code>reactable takes render #{esc(id)}</code></p>")}
+
+          true ->
+            {200, "text/html", surface_video("/reactable/takes/#{id}/video")}
+        end
+
       _ ->
         {400, "text/html", surface_page("<p class='err'>unsupported surface: #{esc(kind)}</p>")}
     end
@@ -300,6 +319,42 @@ server :reactable_api do
     </head><body><iframe src="#{url}" allow="autoplay; fullscreen; encrypted-media"
       allowfullscreen></iframe></body></html>
     """
+  end
+
+  defp surface_video(url) do
+    """
+    <!doctype html><html><head><meta charset="utf-8">
+    <style>html,body{margin:0;height:100%;background:#000;display:flex;align-items:center;justify-content:center}
+      video{max-width:100%;max-height:100%;border-radius:8px}</style>
+    </head><body><video src="#{url}" controls autoplay playsinline></video></body></html>
+    """
+  end
+
+  # Prefer a composited output, else the raw stage capture.
+  defp take_video_path(dir) do
+    out = Path.join(dir, "out")
+    composited =
+      if File.dir?(out) do
+        out |> File.ls!() |> Enum.filter(&String.ends_with?(&1, ".mp4")) |> Enum.sort() |> List.first()
+      end
+
+    cond do
+      composited != nil -> Path.join(out, composited)
+      File.regular?(Path.join(dir, "stage.mov")) -> Path.join(dir, "stage.mov")
+      true -> nil
+    end
+  end
+
+  def take_video(req) do
+    id = safe_take_id(req.params["id"])
+    dir = Path.join([wb_data(), "takes", id])
+    path = if File.dir?(dir), do: take_video_path(dir), else: nil
+
+    cond do
+      id == "" -> {400, %{ok: false, error: "id required"}}
+      path == nil -> {404, %{ok: false, error: "no video for take"}}
+      true -> {200, MIME.from_path(path), File.read!(path)}
+    end
   end
 
   def stage_status(_req) do
@@ -1101,6 +1156,62 @@ server :reactable_api do
       else
         %{ok: false, error: "reactable-tools not found"}
       end
+    end
+  end
+
+  # Model catalog for the picker: tiers + hardware + recommendation + cached state.
+  def agent_models(_req) do
+    bin = tools_bin()
+
+    if File.exists?(bin) do
+      {out, _} = System.cmd(bin, ["agent-models"], cd: wb_data(), stderr_to_stdout: true)
+      case Jason.decode(String.trim(out)) do
+        {:ok, m} -> m
+        _ -> %{ok: false, error: String.trim(out)}
+      end
+    else
+      %{ok: false, error: "reactable-tools missing"}
+    end
+  end
+
+  # Kick a download in the background (R2-first, HF fallback). Poll agent/models
+  # for the tier's `cached` flag to know when it's done. Tracks a status file so
+  # the UI can show downloading/failed while it runs.
+  def agent_pull(req) do
+    body = body_map(req)
+    tier = safe(body["tier"] || body["model"] || "")
+    bin = tools_bin()
+
+    cond do
+      not File.exists?(bin) -> {500, %{ok: false, error: "reactable-tools missing"}}
+      tier == "" -> {400, %{ok: false, error: "tier required"}}
+      true ->
+        status_path = Path.join([System.tmp_dir!(), "reactable-pull-#{tier}.status"])
+        File.write!(status_path, "downloading")
+
+        Task.start(fn ->
+          {out, code} = System.cmd(bin, ["agent-pull", "--model", tier], cd: wb_data(), stderr_to_stdout: true)
+          File.write!(status_path, if(code == 0, do: "done", else: "failed: #{String.slice(out, -400, 400)}"))
+        end)
+
+        %{ok: true, tier: tier, status: "downloading"}
+    end
+  end
+
+  def agent_rm(req) do
+    body = body_map(req)
+    tier = safe(body["tier"] || body["model"] || "")
+    bin = tools_bin()
+
+    cond do
+      not File.exists?(bin) -> {500, %{ok: false, error: "reactable-tools missing"}}
+      tier == "" -> {400, %{ok: false, error: "tier required"}}
+      true ->
+        {out, code} = System.cmd(bin, ["agent-rm", tier], cd: wb_data(), stderr_to_stdout: true)
+        case Jason.decode(String.trim(out)) do
+          {:ok, m} -> m
+          _ -> {500, %{ok: code == 0, log: String.trim(out)}}
+        end
     end
   end
 

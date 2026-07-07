@@ -93,9 +93,13 @@ enum Commands {
         model: Option<String>,
     },
     AgentStatus,
+    AgentModels,
     AgentPull {
         #[arg(long)]
         model: Option<String>,
+    },
+    AgentRm {
+        model: String,
     },
     AgentServe {
         #[arg(long)]
@@ -148,7 +152,9 @@ fn main() {
             model,
         } => agent::chat(&input, output.as_deref(), model.as_deref()),
         Commands::AgentStatus => agent::status(),
+        Commands::AgentModels => agent::models(),
         Commands::AgentPull { model } => agent::pull(model.as_deref()),
+        Commands::AgentRm { model } => agent::remove(&model),
         Commands::AgentServe { stop } => agent::serve(stop),
     };
     process::exit(code);

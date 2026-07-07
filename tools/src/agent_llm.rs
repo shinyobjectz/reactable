@@ -10,6 +10,102 @@ pub const MLX_LM_PIN: &str = "mlx-lm==0.31.3";
 pub const TRANSFORMERS_PIN: &str = "transformers==5.0.0";
 pub const PYTHON_PIN: &str = "3.12";
 
+// ── Model tiers ──────────────────────────────────────────────────────────────
+// Three gemma-4 sizes exposed as low/medium/high. Users pick a tier; the exact
+// repo id is an implementation detail they can still see under "more info".
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ModelTier {
+    pub tier: &'static str,
+    pub repo: &'static str,
+    pub label: &'static str,
+    pub blurb: &'static str,
+    pub size_bytes: u64,
+    pub min_ram_gb: u32,
+}
+
+pub const TIERS: &[ModelTier] = &[
+    ModelTier {
+        tier: "low",
+        repo: "mlx-community/gemma-4-e2b-it-4bit",
+        label: "Fast",
+        blurb: "Smallest and quickest. Great for chat and light tool use; runs on 8 GB.",
+        size_bytes: 3_580_000_000,
+        min_ram_gb: 8,
+    },
+    ModelTier {
+        tier: "medium",
+        repo: "mlx-community/gemma-4-e4b-it-4bit",
+        label: "Balanced",
+        blurb: "The default. Strong tool-calling and reasoning; comfortable on 16 GB.",
+        size_bytes: 5_180_000_000,
+        min_ram_gb: 16,
+    },
+    ModelTier {
+        tier: "high",
+        repo: "mlx-community/gemma-4-12B-it-4bit",
+        label: "Most capable",
+        blurb: "Best quality. Needs 32 GB+ of unified memory.",
+        size_bytes: 6_770_000_000,
+        min_ram_gb: 32,
+    },
+];
+
+pub fn tier_by_name(name: &str) -> Option<&'static ModelTier> {
+    TIERS.iter().find(|t| t.tier == name || t.repo == name)
+}
+
+pub fn tier_for_repo(repo: &str) -> Option<&'static ModelTier> {
+    TIERS.iter().find(|t| t.repo == repo)
+}
+
+/// Total physical RAM in GiB (Apple Silicon unified memory).
+pub fn detect_ram_gb() -> u32 {
+    sysctl("hw.memsize")
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .map(|b| (b / 1024 / 1024 / 1024) as u32)
+        .unwrap_or(0)
+}
+
+pub fn detect_chip() -> String {
+    sysctl("machdep.cpu.brand_string").unwrap_or_default().trim().to_string()
+}
+
+fn sysctl(key: &str) -> Option<String> {
+    let out = Command::new("/usr/sbin/sysctl").args(["-n", key]).output().ok()?;
+    String::from_utf8(out.stdout).ok()
+}
+
+/// Recommend a tier from available unified memory. A model needs headroom for
+/// the KV cache + the OS, so we gate on total RAM well above the weight size.
+pub fn recommended_tier() -> &'static str {
+    let ram = detect_ram_gb();
+    if ram >= 32 {
+        "high"
+    } else if ram >= 16 {
+        "medium"
+    } else {
+        "low"
+    }
+}
+
+/// Persisted tier choice (~/.reactable/agent/tier). Falls back to the
+/// hardware recommendation.
+pub fn current_tier() -> &'static str {
+    let chosen = fs::read_to_string(agent_dir().join("tier"))
+        .ok()
+        .map(|s| s.trim().to_string());
+    match chosen.as_deref() {
+        Some(t) if tier_by_name(t).is_some() => tier_by_name(t).unwrap().tier,
+        _ => recommended_tier(),
+    }
+}
+
+pub fn set_tier(tier: &str) -> Result<(), String> {
+    let t = tier_by_name(tier).ok_or_else(|| format!("unknown tier: {tier}"))?;
+    fs::write(agent_dir().join("tier"), t.tier).map_err(|e| e.to_string())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: String,
@@ -34,8 +130,12 @@ pub struct ChatResponse {
 }
 
 pub fn default_model() -> String {
-    std::env::var("REACTABLE_AGENT_MODEL")
-        .unwrap_or_else(|_| "mlx-community/gemma-4-e4b-it-4bit".into())
+    // Explicit override wins; otherwise the persisted/recommended tier's repo.
+    std::env::var("REACTABLE_AGENT_MODEL").unwrap_or_else(|_| {
+        tier_by_name(current_tier())
+            .map(|t| t.repo.to_string())
+            .unwrap_or_else(|| "mlx-community/gemma-4-e4b-it-4bit".into())
+    })
 }
 
 pub fn server_port() -> u16 {
@@ -60,8 +160,39 @@ fn hf_hub_dir() -> PathBuf {
     Path::new(&home).join(".cache").join("huggingface").join("hub")
 }
 
-/// Offline check: model dir has a snapshot with config.json + at least one weight file.
+/// Where an R2-mirrored model lands — a plain dir mlx_lm.server loads by path,
+/// so we never have to reconstruct HF's blobs/snapshots/refs layout.
+pub fn local_model_dir(repo: &str) -> PathBuf {
+    agent_dir().join("models").join(repo.replace('/', "--"))
+}
+
+fn dir_has_model(dir: &Path) -> bool {
+    dir.join("config.json").exists()
+        && fs::read_dir(dir)
+            .map(|rd| {
+                rd.flatten()
+                    .any(|e| e.file_name().to_string_lossy().ends_with(".safetensors"))
+            })
+            .unwrap_or(false)
+}
+
+/// What to hand mlx_lm.server --model: the local mirror dir if present, else the
+/// repo id (HF resolves it).
+pub fn resolve_model_ref(repo: &str) -> String {
+    let dir = local_model_dir(repo);
+    if dir_has_model(&dir) {
+        dir.to_string_lossy().to_string()
+    } else {
+        repo.to_string()
+    }
+}
+
+/// Offline check — the model is usable without any network: either mirrored to
+/// our local dir (R2 pull) or present in the HF cache (hf download).
 pub fn model_cached(model: &str) -> bool {
+    if dir_has_model(&local_model_dir(model)) {
+        return true;
+    }
     let repo_dir = hf_hub_dir().join(format!("models--{}", model.replace('/', "--")));
     let snapshots = repo_dir.join("snapshots");
     let Ok(entries) = fs::read_dir(&snapshots) else {
@@ -82,6 +213,114 @@ pub fn model_cached(model: &str) -> bool {
         }
     }
     false
+}
+
+/// True if ANY tier is downloaded — the agent chat is gated on this.
+pub fn any_model_present() -> bool {
+    TIERS.iter().any(|t| model_cached(t.repo))
+}
+
+/// Delete a model to free space (local mirror + HF cache copy). Stops the
+/// server first if it's serving that model.
+pub fn remove_model(repo: &str) -> Result<u64, String> {
+    let mut freed = 0u64;
+    let local = local_model_dir(repo);
+    if local.exists() {
+        freed += dir_size(&local);
+        fs::remove_dir_all(&local).map_err(|e| e.to_string())?;
+    }
+    let hf = hf_hub_dir().join(format!("models--{}", repo.replace('/', "--")));
+    if hf.exists() {
+        freed += dir_size(&hf);
+        fs::remove_dir_all(&hf).map_err(|e| e.to_string())?;
+    }
+    Ok(freed)
+}
+
+fn dir_size(dir: &Path) -> u64 {
+    let mut total = 0;
+    if let Ok(rd) = fs::read_dir(dir) {
+        for e in rd.flatten() {
+            let p = e.path();
+            if let Ok(md) = fs::symlink_metadata(&p) {
+                if md.is_dir() {
+                    total += dir_size(&p);
+                } else {
+                    total += md.len();
+                }
+            }
+        }
+    }
+    total
+}
+
+pub const DOWNLOAD_BASE: &str = "https://reactable.app/download/models";
+
+/// Pull a model from our R2 mirror into local_model_dir with resumable
+/// (range) downloads. Returns Err if the mirror lacks the model (caller then
+/// falls back to Hugging Face).
+pub fn pull_from_r2(repo: &str, progress: bool) -> Result<(), String> {
+    let base = format!("{DOWNLOAD_BASE}/{repo}");
+    let manifest_url = format!("{base}/manifest.json");
+    let body = ureq::get(&manifest_url)
+        .timeout(Duration::from_secs(30))
+        .call()
+        .map_err(|e| format!("no R2 mirror ({e})"))?
+        .into_string()
+        .map_err(|e| e.to_string())?;
+    let files: Vec<String> =
+        serde_json::from_str(&body).map_err(|e| format!("bad manifest: {e}"))?;
+    if files.is_empty() {
+        return Err("empty manifest".into());
+    }
+
+    let dir = local_model_dir(repo);
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    for (i, file) in files.iter().enumerate() {
+        if progress {
+            eprintln!("  [{}/{}] {file}", i + 1, files.len());
+        }
+        download_resumable(&format!("{base}/{file}"), &dir.join(file))?;
+    }
+    Ok(())
+}
+
+fn download_resumable(url: &str, dest: &Path) -> Result<(), String> {
+    // Resume from a .part file if a prior attempt was interrupted.
+    let part = dest.with_extension("part");
+    let mut have: u64 = fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
+
+    for attempt in 0..6 {
+        let mut req = ureq::get(url).timeout(Duration::from_secs(60 * 30));
+        if have > 0 {
+            req = req.set("Range", &format!("bytes={have}-"));
+        }
+        match req.call() {
+            Ok(resp) => {
+                let mut file = fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&part)
+                    .map_err(|e| e.to_string())?;
+                let mut reader = resp.into_reader();
+                let copied = std::io::copy(&mut reader, &mut file).map_err(|e| e.to_string())?;
+                if copied == 0 && have == 0 {
+                    return Err(format!("empty response for {url}"));
+                }
+                fs::rename(&part, dest).map_err(|e| e.to_string())?;
+                return Ok(());
+            }
+            Err(e) => {
+                have = fs::metadata(&part).map(|m| m.len()).unwrap_or(have);
+                if attempt == 5 {
+                    return Err(format!("download failed: {e}"));
+                }
+                std::thread::sleep(Duration::from_secs(2 * (attempt + 1) as u64));
+            }
+        }
+    }
+    Err("download exhausted retries".into())
 }
 
 pub fn find_uv() -> Option<PathBuf> {
@@ -179,7 +418,9 @@ pub fn touch_last_used() {
 /// Ensure mlx_lm.server is running with `model`. Never downloads: requires cached weights.
 pub fn ensure_server(model: &str) -> Result<u16, String> {
     let port = server_port();
-    if server_ready(port, model) {
+    // Hand the server a local mirror path when we have one, else the repo id.
+    let served = resolve_model_ref(model);
+    if server_ready(port, &served) {
         return Ok(port);
     }
     // Server up but serving a different model → replace it.
@@ -216,7 +457,7 @@ pub fn ensure_server(model: &str) -> Result<u16, String> {
             TRANSFORMERS_PIN,
             "mlx_lm.server",
             "--model",
-            model,
+            &served,
             "--host",
             "127.0.0.1",
             "--port",
@@ -242,7 +483,7 @@ pub fn ensure_server(model: &str) -> Result<u16, String> {
         if server_model(port).is_some() {
             // Fire a throwaway completion so Metal kernels compile and weights
             // fault in NOW — otherwise the user's first real turn eats ~3s.
-            warmup(port, model);
+            warmup(port, &served);
             return Ok(port);
         }
         std::thread::sleep(Duration::from_millis(500));
@@ -319,7 +560,7 @@ pub fn complete(req: &ChatRequest, model: &str) -> ChatResponse {
     // land in `content` (REACTABLE_AGENT_THINKING=1 re-enables).
     let thinking = std::env::var("REACTABLE_AGENT_THINKING").ok().as_deref() == Some("1");
     let body = serde_json::json!({
-        "model": model,
+        "model": resolve_model_ref(model),
         "messages": messages,
         "max_tokens": req.max_tokens.unwrap_or(2048),
         "stream": false,

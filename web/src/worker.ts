@@ -211,6 +211,34 @@ async function downloadDmg(_req: Request, env: Env): Promise<Response> {
   return new Response(obj.body, { headers });
 }
 
+// Serve a mirrored model file from R2 with HTTP Range support (resumable multi-GB).
+async function downloadModel(req: Request, env: Env, key: string): Promise<Response> {
+  const range = req.headers.get("range");
+  const parsed = range?.match(/bytes=(\d+)-(\d*)/);
+  const opts = parsed
+    ? { range: { offset: Number(parsed[1]), length: parsed[2] ? Number(parsed[2]) - Number(parsed[1]) + 1 : undefined } }
+    : {};
+
+  const obj = await env.DOWNLOADS.get(key, opts as R2GetOptions);
+  if (!obj) return json({ ok: false, error: `not found: ${key}` }, { status: 404 });
+
+  const headers = new Headers();
+  obj.writeHttpMetadata(headers);
+  headers.set("accept-ranges", "bytes");
+  headers.set("cache-control", "public, max-age=86400");
+  const total = obj.size;
+
+  if (parsed && obj.range) {
+    const start = (obj.range as { offset: number }).offset ?? 0;
+    const len = (obj.range as { length?: number }).length ?? total - start;
+    headers.set("content-range", `bytes ${start}-${start + len - 1}/${total}`);
+    headers.set("content-length", String(len));
+    return new Response(obj.body, { status: 206, headers });
+  }
+  headers.set("content-length", String(total));
+  return new Response(obj.body, { headers });
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     try {
@@ -235,6 +263,9 @@ async function handle(req: Request, env: Env): Promise<Response> {
   if (path === "/api/auth/cli/poll" && req.method === "POST") return cliPoll(req, env);
   if (path === "/api/download" && req.method === "GET") return downloadInfo(req, env);
   if (path === "/download/Reactable.dmg" && req.method === "GET") return downloadDmg(req, env);
+  if (path.startsWith("/download/models/") && req.method === "GET") {
+    return downloadModel(req, env, "models/" + path.slice("/download/models/".length));
+  }
   if (path === "/api/youtube/connect" && req.method === "GET") return youtubeConnect(req, env);
   if (path === "/api/youtube/callback" && req.method === "GET") return youtubeCallback(req, env);
   if (path === "/api/youtube/status" && req.method === "GET") return youtubeStatus(req, env);
