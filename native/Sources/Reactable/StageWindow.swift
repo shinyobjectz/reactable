@@ -30,6 +30,7 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
 
     // Open surfaces (tabs) + the active one.
     private var surfaces: [StageSurface] = []
+    var openSurfaces: [StageSurface] { surfaces }
     private var activeIndex = 0
 
     var captureWindow: NSWindow? { window?.isVisible == true ? window : nil }

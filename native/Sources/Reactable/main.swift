@@ -6,6 +6,7 @@ import AVFoundation
 final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDelegate, StageCommandDelegate {
     private var agent: AgentWindowController?
     private var palette: PaletteWindowController?
+    private var stageManager: StageManagerPanel?
     private let micMeter = MicMeter()
     private var micTimer: Timer?
     private var sidecar: NexusSidecar?
@@ -228,6 +229,13 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                 self.stage?.openSurface(surface)
             }
             palette = pal
+            let mgr = StageManagerPanel(port: port)
+            mgr.dataProvider = { [weak self] in self?.stageManagerCatalog() ?? [:] }
+            mgr.onSaveLineup = { [weak self] lineup in self?.saveStageLineup(lineup) }
+            mgr.onActivate = { [weak self] kind, ref, title in
+                self?.activateScene(kind: kind, ref: ref, title: title)
+            }
+            stageManager = mgr
             syncBar()
         } catch {
             fputs("reactable boot failed: \(error)\n", stderr)
@@ -665,6 +673,74 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         UserDefaults.standard.set(on, forKey: "reactable.systemAudioOn")
         syncBar()
         prewarmCapture()  // stream audio flag changed — warm stream is stale
+    }
+
+    func bridgeOpenStageManager() {
+        stageManager?.toggle()
+    }
+
+    /// Everything recordable, for the Stage Manager's search: on-screen
+    /// windows, displays, project decks, open stage tabs + saved lineup.
+    private func stageManagerCatalog() -> [String: Any] {
+        var windows: [[String: Any]] = []
+        let opts: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        if let list = CGWindowListCopyWindowInfo(opts, kCGNullWindowID) as? [[String: Any]] {
+            for w in list {
+                guard (w[kCGWindowLayer as String] as? Int) == 0,
+                      let id = w[kCGWindowNumber as String] as? Int,
+                      let app = w[kCGWindowOwnerName as String] as? String,
+                      app != "Reactable"
+                else { continue }
+                let title = w[kCGWindowName as String] as? String ?? ""
+                windows.append(["id": id, "app": app, "title": title])
+            }
+        }
+        let displays: [[String: Any]] = NSScreen.screens.compactMap { screen in
+            guard let num = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+            else { return nil }
+            return ["id": num.intValue, "name": screen.localizedName]
+        }
+        var lineup: [[String: Any]] = []
+        let lineupURL = activeProjectURL.appending(path: "stage-lineup.json")
+        if let data = try? Data(contentsOf: lineupURL),
+           let parsed = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            lineup = parsed
+        }
+        let tabs: [[String: Any]] = (stage?.openSurfaces ?? []).map {
+            ["kind": $0.kind, "ref": $0.ref, "title": $0.title]
+        }
+        return [
+            "windows": windows,
+            "displays": displays,
+            "decks": state.decks,
+            "tabs": tabs,
+            "lineup": lineup,
+        ]
+    }
+
+    private func saveStageLineup(_ lineup: [[String: Any]]) {
+        let url = activeProjectURL.appending(path: "stage-lineup.json")
+        if let data = try? JSONSerialization.data(withJSONObject: lineup, options: [.prettyPrinted]) {
+            try? data.write(to: url)
+        }
+    }
+
+    /// Activate a lineup scene: decks/web tabs land on the stage; windows and
+    /// displays switch the capture target (and re-prewarm for it).
+    private func activateScene(kind: String, ref: String, title: String) {
+        switch kind {
+        case "deck":
+            bridgeSelectDeck(slug: ref)
+            bridgeSelectStage()
+            openStage()
+        case "window", "display":
+            bridgeCaptureSetTarget(kind: kind, id: ref)
+        default:
+            if stage == nil || stage?.isVisible != true { openStage() }
+            stage?.openSurface(StageSurface(kind: kind, ref: ref, title: title, project: ""))
+            bridgeSelectStage()
+        }
+        fputs("reactable: scene → \(kind) \(title)\n", stderr)
     }
 
     func bridgeMicSourceSet(uid: String?) {

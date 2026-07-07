@@ -1,0 +1,151 @@
+# Stage Manager — searchable lineup of recordable scenes
+
+Palette-style: search everything recordable (windows, displays, decks, open
+stage tabs, URLs), build an ordered lineup with drag-and-drop, walk it with
+Next while recording.
+
+client :manager do
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    html, body { height: 100%; background: transparent; font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; color: #ececf0; -webkit-font-smoothing: antialiased; user-select: none; }
+    .shell { display: flex; flex-direction: column; height: 100%; background: rgba(20,20,24,.96); border: 1px solid rgba(255,255,255,.1); border-radius: 14px; overflow: hidden; backdrop-filter: blur(24px); }
+    .search { padding: 12px; border-bottom: 1px solid rgba(255,255,255,.08); }
+    .search input { width: 100%; padding: 9px 12px; border-radius: 9px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.06); color: #fff; font: inherit; outline: none; }
+    .search input:focus { border-color: rgba(129,140,248,.6); }
+    .cols { display: flex; flex: 1; min-height: 0; }
+    .col { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .col + .col { border-left: 1px solid rgba(255,255,255,.08); }
+    .col h3 { font: 600 10px/1 ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; color: #8a8a94; padding: 10px 12px 6px; }
+    .list { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
+    .item { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 8px; cursor: pointer; }
+    .item:hover { background: rgba(255,255,255,.07); }
+    .item .kind { font: 600 9px/1 ui-monospace, monospace; letter-spacing: .06em; text-transform: uppercase; padding: 3px 6px; border-radius: 5px; flex-shrink: 0; }
+    .kind.window { background: rgba(59,130,246,.2); color: #93c5fd; }
+    .kind.display { background: rgba(236,72,153,.18); color: #f9a8d4; }
+    .kind.deck { background: rgba(16,185,129,.18); color: #6ee7b7; }
+    .kind.web, .kind.youtube, .kind.doc { background: rgba(168,85,247,.2); color: #d8b4fe; }
+    .item .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+    .item .sub { color: #77777f; font-size: 11px; flex-shrink: 0; }
+    .item .add { color: #8a8a94; flex-shrink: 0; }
+    .item:hover .add { color: #fff; }
+    /* lineup */
+    .lane .item { cursor: grab; }
+    .lane .item.dragging { opacity: .35; }
+    .lane .item.current { background: rgba(99,102,241,.18); outline: 1px solid rgba(129,140,248,.45); }
+    .lane .idx { color: #6b6b73; font: 600 11px ui-monospace, monospace; width: 16px; text-align: right; flex-shrink: 0; }
+    .lane .go, .lane .rm { color: #8a8a94; cursor: pointer; flex-shrink: 0; }
+    .lane .go:hover { color: #6ee7b7; } .lane .rm:hover { color: #f87171; }
+    .empty { color: #6b6b73; padding: 14px 12px; font-size: 12px; }
+    .foot { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid rgba(255,255,255,.08); }
+    .foot button { font: inherit; padding: 7px 14px; border-radius: 8px; border: 0; cursor: pointer; background: rgba(255,255,255,.08); color: #ddd; }
+    .foot button:hover { background: rgba(255,255,255,.14); }
+    .foot .next { background: #6366f1; color: #fff; margin-left: auto; }
+    .foot .next:hover { background: #818cf8; }
+  </style>
+  <div class="shell">
+    <div class="search"><input id="q" placeholder="Search windows, displays, decks, tabs — or paste a URL…" autofocus /></div>
+    <div class="cols">
+      <div class="col">
+        <h3>Available</h3>
+        <div class="list" id="results"></div>
+      </div>
+      <div class="col lane">
+        <h3>Lineup — drag to reorder</h3>
+        <div class="list" id="lineup"></div>
+      </div>
+    </div>
+    <div class="foot">
+      <button id="close">Close</button>
+      <button class="next" id="next">▶ Next</button>
+    </div>
+  </div>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const send = (action, payload = {}) =>
+      window.webkit?.messageHandlers?.reactable?.postMessage({ action, payload });
+
+    let data = { windows: [], displays: [], decks: [], tabs: [] };
+    let lineup = [];
+    let current = -1;
+
+    function catalog() {
+      const items = [];
+      for (const w of data.windows) items.push({ kind: 'window', ref: String(w.id), title: w.title || w.app, sub: w.app });
+      for (const d of data.displays) items.push({ kind: 'display', ref: String(d.id), title: d.name, sub: 'full screen' });
+      for (const k of data.decks) items.push({ kind: 'deck', ref: k.slug, title: k.title || k.slug, sub: 'deck' });
+      for (const t of data.tabs) items.push({ kind: t.kind, ref: t.ref, title: t.title || t.ref, sub: 'stage tab' });
+      return items;
+    }
+
+    function renderResults() {
+      const q = $('q').value.trim().toLowerCase();
+      const box = $('results');
+      box.innerHTML = '';
+      if (q && /^https?:\/\//.test($('q').value.trim())) {
+        box.appendChild(row({ kind: 'web', ref: $('q').value.trim(), title: $('q').value.trim(), sub: 'open URL' }, true));
+      }
+      const items = catalog().filter((i) =>
+        !q || (i.title + ' ' + (i.sub || '') + ' ' + i.kind).toLowerCase().includes(q));
+      for (const i of items.slice(0, 60)) box.appendChild(row(i, true));
+      if (!box.children.length) box.innerHTML = '<div class="empty">Nothing matches.</div>';
+    }
+
+    function row(item, addable) {
+      const el = document.createElement('div');
+      el.className = 'item';
+      el.innerHTML = `<span class="kind ${item.kind}">${item.kind}</span>
+        <span class="title">${item.title}</span>
+        <span class="sub">${item.sub || ''}</span>` + (addable ? '<span class="add">＋</span>' : '');
+      if (addable) el.onclick = () => { lineup.push({ kind: item.kind, ref: item.ref, title: item.title }); save(); renderLineup(); };
+      return el;
+    }
+
+    function renderLineup() {
+      const box = $('lineup');
+      box.innerHTML = '';
+      lineup.forEach((item, i) => {
+        const el = document.createElement('div');
+        el.className = 'item' + (i === current ? ' current' : '');
+        el.draggable = true;
+        el.innerHTML = `<span class="idx">${i + 1}</span>
+          <span class="kind ${item.kind}">${item.kind}</span>
+          <span class="title">${item.title}</span>
+          <span class="go" title="Activate">▶</span><span class="rm" title="Remove">✕</span>`;
+        el.querySelector('.go').onclick = () => activate(i);
+        el.querySelector('.rm').onclick = () => { lineup.splice(i, 1); if (current >= i) current--; save(); renderLineup(); };
+        el.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', String(i)); el.classList.add('dragging'); });
+        el.addEventListener('dragend', () => el.classList.remove('dragging'));
+        el.addEventListener('dragover', (e) => e.preventDefault());
+        el.addEventListener('drop', (e) => {
+          e.preventDefault();
+          const from = Number(e.dataTransfer.getData('text/plain'));
+          const [moved] = lineup.splice(from, 1);
+          lineup.splice(i, 0, moved);
+          if (current === from) current = i;
+          save(); renderLineup();
+        });
+        box.appendChild(el);
+      });
+      if (!lineup.length) box.innerHTML = '<div class="empty">Add scenes from the left — they play in order with ▶ Next.</div>';
+    }
+
+    function activate(i) {
+      current = i;
+      send('manager.activate', lineup[i]);
+      renderLineup();
+    }
+
+    function save() { send('manager.save', { lineup }); }
+
+    $('q').addEventListener('input', renderResults);
+    $('next').onclick = () => { if (lineup.length) activate((current + 1) % lineup.length); };
+    $('close').onclick = () => send('manager.close');
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') send('manager.close'); });
+
+    window.ReactableManager = {
+      setData(d) { data = d; lineup = d.lineup || lineup; renderResults(); renderLineup(); },
+      reset() { $('q').value = ''; $('q').focus(); renderResults(); },
+    };
+    renderResults(); renderLineup();
+  </script>
+end

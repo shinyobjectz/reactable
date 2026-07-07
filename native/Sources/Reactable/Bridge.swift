@@ -24,6 +24,7 @@ protocol ReactableBridgeDelegate: AnyObject {
     func bridgeMicToggle(on: Bool)
     func bridgeMicSourceSet(uid: String?)
     func bridgeCamSourceSet(uid: String?)
+    func bridgeOpenStageManager()
     func bridgeSystemAudioToggle(on: Bool)
     func bridgeSettingSet(key: String, value: Bool)
     func bridgeRequestDevices(includeIOS: Bool)
