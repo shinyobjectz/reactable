@@ -199,6 +199,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                     self?.syncBar()
                 }
             }
+            restoreCaptureToggles()
             installHotkeys()
             showBar()
             stagePoller = StageCommandPoller(port: port, delegate: self)
@@ -579,9 +580,25 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
 
     func bridgeCamToggle(on: Bool) {
         state.camOn = on
+        UserDefaults.standard.set(on, forKey: "reactable.camOn")
         cam?.setVisible(on)
         if on { cam?.setMirror(state.camMirror); cam?.setSize(CGFloat(state.camSize)) }
         syncBar()
+    }
+
+    // Mic/cam/system-audio survive relaunch. A silent reset to mic-off cost a
+    // spoken take: the user re-recorded on a fresh launch and got no voice track.
+    private func restoreCaptureToggles() {
+        let d = UserDefaults.standard
+        if d.object(forKey: "reactable.micOn") != nil, d.bool(forKey: "reactable.micOn") {
+            bridgeMicToggle(on: true)
+        }
+        if d.object(forKey: "reactable.camOn") != nil, d.bool(forKey: "reactable.camOn") {
+            bridgeCamToggle(on: true)
+        }
+        if d.object(forKey: "reactable.systemAudioOn") != nil {
+            state.systemAudioOn = d.bool(forKey: "reactable.systemAudioOn")
+        }
     }
 
     func bridgeCamMirror(_ on: Bool) {
@@ -602,6 +619,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
 
     func bridgeMicToggle(on: Bool) {
         state.micOn = on
+        UserDefaults.standard.set(on, forKey: "reactable.micOn")
         if on {
             micMeter.start()
             micTimer?.invalidate()
@@ -621,6 +639,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
 
     func bridgeSystemAudioToggle(on: Bool) {
         state.systemAudioOn = on
+        UserDefaults.standard.set(on, forKey: "reactable.systemAudioOn")
         syncBar()
     }
 

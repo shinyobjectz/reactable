@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { PROJECT, takePath } from "./paths.ts";
 import { runTools } from "./tools.ts";
@@ -7,11 +7,13 @@ export function transcribeTake(id: string, model = "UsefulSensors/moonshine-tiny
   const dir = takePath(id);
   const stage = join(dir, "stage.mov");
   const cam = join(dir, "cam.mov");
+  // Mic/system audio is muxed into stage.mov by the recorder; cam.mov is
+  // video-only, so it must be the last resort, not the preferred source.
   const input = existsSync(join(dir, "audio.wav"))
     ? join(dir, "audio.wav")
-    : existsSync(cam)
-      ? cam
-      : stage;
+    : existsSync(stage)
+      ? stage
+      : cam;
   if (!existsSync(input)) throw new Error(`no media in take ${id}`);
 
   const out = join(dir, "transcript.json");
@@ -58,6 +60,7 @@ export function writeWordCaptions(id: string) {
     const end = fmtVtt(w.end ?? (w.start ?? 0) + 0.5);
     lines.push(String(i + 1), `${start} --> ${end}`, w.word ?? "", "");
   }
+  mkdirSync(join(dir, "out"), { recursive: true });
   const vtt = join(dir, "out", "captions.vtt");
   writeFileSync(vtt, lines.join("\n"));
   return vtt;
