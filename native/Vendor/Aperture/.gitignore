@@ -1,0 +1,11 @@
+xcuserdata
+/.build
+/Packages
+/*.xcodeproj
+/screen-recording.mp4
+/screen-recording-ios.mp4
+
+
+# SwiftLint Remote Config Cache
+.swiftlint/RemoteConfigCache
+.swiftpm

@@ -188,14 +188,30 @@ def render_take(take_dir: Path, aspects: list[str] | None = None) -> dict:
             clicks, vw, vh, float(zoom_cfg.get("scale", 1.5)), float(zoom_cfg.get("duration", 1.0))
         )
 
+        # Track sync anchors: events.jsonl stamps each track's ACTUAL first
+        # media time on the take clock (capture.stage = Aperture first frame,
+        # capture.cam.start = AVCaptureFileOutput delegate, capture.mic.start
+        # = first tap buffer's AVAudioTime). Everything aligns to stage.
+        def track_t(*names, default=None):
+            for e in events:
+                if e.get("type") in names:
+                    return float(e["t"])
+            return default
+
+        t_stage = track_t("capture.stage", default=0.0)
+        t_cam = track_t("capture.cam.start", default=t_stage)
+        t_mic = track_t("capture.mic.start", "capture.mic", default=t_stage)
+        cam_delay = max(0.0, t_cam - t_stage)
+        mic_delay_ms = int(max(0.0, t_mic - t_stage) * 1000)
+
         inputs = ["-i", str(stage)]
         has_cam = cam.exists() and cam_cfg.get("pip", True)
         if has_cam:
-            inputs += ["-i", str(cam)]
+            # -itsoffset shifts cam frames so its first frame lands at the
+            # moment it actually started relative to the stage track.
+            inputs += ["-itsoffset", f"{cam_delay:.3f}", "-i", str(cam)]
 
-        # Voice sidecar: mic-clean.wav (denoised) or mic.wav, recorded apart
-        # from stage.mov. Align by the capture.mic/capture.stage event offset,
-        # then mix over (quieter) system audio — or use as the only audio.
+        # Voice sidecar: mic-clean.wav (denoised) or mic.wav.
         mic = take_dir / "mic-clean.wav"
         if not mic.exists():
             mic = take_dir / "mic.wav"
@@ -204,9 +220,6 @@ def render_take(take_dir: Path, aspects: list[str] | None = None) -> dict:
         if has_mic:
             inputs += ["-i", str(mic)]
             mic_idx = 2 if has_cam else 1
-        t_stage = next((float(e["t"]) for e in events if e.get("type") == "capture.stage"), 0.0)
-        t_mic = next((float(e["t"]) for e in events if e.get("type") == "capture.mic"), t_stage)
-        mic_delay_ms = int(max(0.0, t_mic - t_stage) * 1000)
 
         chain = "[0:v]"
         if trim_in > 0 or trim_out is not None:

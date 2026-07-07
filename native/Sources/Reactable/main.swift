@@ -815,10 +815,10 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                 // the only mic path that actually captures on this setup.
                 if state.micOn {
                     if !micMeter.isRunning { micMeter.start() }
-                    if micMeter.beginWriting(to: takeDir.appending(path: "mic.wav")) {
-                        // t of this stamp = mic.wav's offset from take start, for post alignment
-                        takeRecorder.stamp("capture.mic", payload: ["file": "mic.wav"])
-                    } else {
+                    micMeter.onFirstWrite = { [weak takeRecorder] absolute in
+                        takeRecorder?.stampAbsolute("capture.mic.start", at: absolute, payload: ["file": "mic.wav"])
+                    }
+                    if !micMeter.beginWriting(to: takeDir.appending(path: "mic.wav")) {
                         fputs("reactable: mic sidecar failed to arm — take has no voice track\n", stderr)
                     }
                 }

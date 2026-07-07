@@ -4,6 +4,18 @@ import AppKit
 private final class CamMovieDelegate: NSObject, AVCaptureFileOutputRecordingDelegate, @unchecked Sendable {
     nonisolated(unsafe) var onFinish: ((URL) -> Void)?
     nonisolated(unsafe) var onError: ((Error) -> Void)?
+    // Fires at the file's ACTUAL first frame with the absolute time — the
+    // sync anchor for aligning cam.mov to the stage track in post.
+    nonisolated(unsafe) var onStart: ((CFAbsoluteTime) -> Void)?
+
+    nonisolated func fileOutput(
+        _ output: AVCaptureFileOutput,
+        didStartRecordingTo fileURL: URL,
+        from connections: [AVCaptureConnection]
+    ) {
+        let now = CFAbsoluteTimeGetCurrent()
+        onStart?(now)
+    }
 
     nonisolated func fileOutput(
         _ output: AVCaptureFileOutput,
@@ -102,9 +114,10 @@ final class CamBubblePanel: NSWindow {
         updateMask()
     }
 
-    func startRecording(to url: URL) throws {
+    func startRecording(to url: URL, onStart: ((CFAbsoluteTime) -> Void)? = nil) throws {
         startCamera()
         guard let session else { throw CamRecordError.noSession }
+        movieDelegate.onStart = onStart
 
         if movieOutput == nil {
             let output = AVCaptureMovieFileOutput()

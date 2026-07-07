@@ -6,6 +6,10 @@ final class EventLog {
     private let handle: FileHandle
     private let start: CFAbsoluteTime
 
+    /// Log epoch (CFAbsoluteTime) — for converting externally captured
+    /// absolute times (first-frame callbacks) into log-relative `t`.
+    var startTime: CFAbsoluteTime { start }
+
     init(url: URL) throws {
         start = CFAbsoluteTimeGetCurrent()
         FileManager.default.createFile(atPath: url.path, contents: nil)

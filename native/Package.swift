@@ -9,7 +9,9 @@ let package = Package(
         .executable(name: "p0-spike", targets: ["P0Spike"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/wulkano/Aperture", from: "3.0.0"),
+        // Vendored (upstream wulkano/Aperture 3.x, MIT) — carries local fixes:
+        // retina window capture (upstream captures windows at 1x point size).
+        .package(path: "Vendor/Aperture"),
     ],
     targets: [
         .executableTarget(

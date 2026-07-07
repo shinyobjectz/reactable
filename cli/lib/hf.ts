@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 
 import { join } from "node:path";
 import { readEvents, readTakeManifest } from "./take.ts";
 import { takePath } from "./paths.ts";
+import { trackOffsets } from "./speech.ts";
 
 export function hfDir(id: string, root?: string) {
   return join(takePath(id, root), "hyperframes");
@@ -21,7 +22,7 @@ export function scaffoldHyperframes(id: string, root?: string) {
   const duration =
     events.reduce((m: number, e: { t?: number }) => Math.max(m, e.t || 0), 0) + 2;
 
-  const media = ["stage.mov", "cam.mov"];
+  const media = ["stage.mov", "cam.mov", "mic-clean.wav", "mic.wav"];
   for (const f of media) {
     const src = join(takeDir, f);
     const dst = join(out, "media", f);
@@ -34,6 +35,25 @@ export function scaffoldHyperframes(id: string, root?: string) {
       }
     }
   }
+  const captionsSrc = join(takeDir, "out", "captions.vtt");
+  if (existsSync(captionsSrc)) {
+    mkdirSync(join(out, "media"), { recursive: true });
+    try {
+      symlinkSync(captionsSrc, join(out, "media", "captions.vtt"));
+    } catch {}
+  }
+
+  // Sync anchors from events.jsonl — every track's true first-media time on
+  // the take clock. Offsets below shift cam/mic onto the stage clock.
+  const offsets = trackOffsets(id);
+  const tStage = offsets.stage ?? 0;
+  const camDelay = Math.max(0, (offsets.cam ?? tStage) - tStage);
+  const micDelay = Math.max(0, (offsets.mic ?? tStage) - tStage);
+  const micFile = existsSync(join(takeDir, "mic-clean.wav"))
+    ? "mic-clean.wav"
+    : existsSync(join(takeDir, "mic.wav"))
+      ? "mic.wav"
+      : null;
 
   const markers = slides
     .map((s: { t?: number; id?: string; idx?: number }) => ({
@@ -43,9 +63,23 @@ export function scaffoldHyperframes(id: string, root?: string) {
     }))
     .filter((s: { t?: number }) => s.t != null);
 
+  // Stage-aligned word timings (transcript.json words are already shifted
+  // onto the stage clock by transcribeTake).
+  let words: unknown[] = [];
+  const transcriptPath = join(takeDir, "transcript.json");
+  if (existsSync(transcriptPath)) {
+    try {
+      words = JSON.parse(readFileSync(transcriptPath, "utf8")).words ?? [];
+    } catch {}
+  }
+
   writeFileSync(
     join(out, "reactable-events.json"),
-    JSON.stringify({ take: id, deck: manifest.deck, markers, events }, null, 2),
+    JSON.stringify(
+      { take: id, deck: manifest.deck, sync: { stage: 0, cam: camDelay, mic: micDelay }, markers, words, events },
+      null,
+      2,
+    ),
   );
 
   writeFileSync(
@@ -78,6 +112,9 @@ export function scaffoldHyperframes(id: string, root?: string) {
     }
     .marker { position: absolute; left: 12px; bottom: 12px; padding: 6px 10px;
       background: rgba(0,0,0,.55); border-radius: 8px; }
+    .caption { position: absolute; left: 50%; bottom: 7%; transform: translateX(-50%);
+      font: 600 28px/1.2 ui-sans-serif, system-ui, sans-serif; color: #fff;
+      text-shadow: 0 2px 12px rgba(0,0,0,.8); }
   </style>
 </head>
 <body>
@@ -85,19 +122,32 @@ export function scaffoldHyperframes(id: string, root?: string) {
     <section class="scene" data-scene-id="main" data-start="0" data-duration="${duration.toFixed(2)}">
       <div class="scene-content">
         <video id="stage-vid" data-start="0" data-track="video" src="../media/stage.mov" muted playsinline></video>
-        <video id="cam-pip" data-start="0" data-track="video" src="../media/cam.mov" muted playsinline></video>
+        <video id="cam-pip" data-start="${camDelay.toFixed(3)}" data-track="video" src="../media/cam.mov" muted playsinline></video>${
+          micFile
+            ? `\n        <audio id="voice" data-start="${micDelay.toFixed(3)}" data-track="audio" src="../media/${micFile}"></audio>`
+            : ""
+        }
         <div class="marker" id="slide-marker" data-start="0">slide —</div>
+        <div class="caption" id="caption" data-start="0"></div>
       </div>
     </section>
   </div>
   <script>
+    // markers/words are STAGE-clock times; cam/mic elements carry their sync
+    // offsets in data-start (from events.jsonl first-media anchors).
     const markers = ${JSON.stringify(markers)};
+    const words = ${JSON.stringify(words)};
     const tl = gsap.timeline({ paused: true });
     const label = document.getElementById('slide-marker');
     markers.forEach((m) => {
       tl.call(() => { label.textContent = 'slide ' + (m.id || m.idx) + ' @ ' + m.t.toFixed(1) + 's'; }, null, m.t);
     });
-    window.__reactableHF = { markers, timeline: tl };
+    const cap = document.getElementById('caption');
+    words.forEach((w) => {
+      tl.call(() => { cap.textContent = w.word; }, null, w.start);
+      tl.call(() => { if (cap.textContent === w.word) cap.textContent = ''; }, null, w.end);
+    });
+    window.__reactableHF = { markers, words, timeline: tl };
   </script>
 </body>
 </html>`;

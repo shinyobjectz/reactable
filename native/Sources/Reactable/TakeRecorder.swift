@@ -93,7 +93,11 @@ final class TakeRecorder {
 
             if camOn, let cam {
                 let camURL = dir.appending(path: "cam.mov")
-                try cam.startRecording(to: camURL)
+                try cam.startRecording(to: camURL) { [weak self] absolute in
+                    Task { @MainActor in
+                        self?.stampAbsolute("capture.cam.start", at: absolute)
+                    }
+                }
                 log.stamp("capture.cam", payload: cam.frameJSON())
             }
 
@@ -161,6 +165,16 @@ final class TakeRecorder {
     func stamp(_ type: String, payload: [String: Any] = [:]) {
         guard isActive else { return }
         eventLog?.stamp(type, payload: payload)
+    }
+
+    /// Stamp an event at an externally captured absolute time (first-frame /
+    /// first-buffer callbacks) so track-sync offsets in events.jsonl are the
+    /// real media start times, not API-return times.
+    func stampAbsolute(_ type: String, at absolute: CFAbsoluteTime, payload: [String: Any] = [:]) {
+        guard isActive, let eventLog else { return }
+        var p = payload
+        p["t"] = max(0, absolute - eventLog.startTime)
+        eventLog.stamp(type, payload: p)
     }
 
     nonisolated private static func startStageCapture(

@@ -18,7 +18,13 @@ final class MicMeter: @unchecked Sendable {
     // so the take's voice track is recorded here through the same engine
     // that demonstrably works for the meter.
     private var file: AVAudioFile?
+    private var firstWriteStamped = false
     private var preferredUID: String?
+
+    /// Fires once per beginWriting with the absolute time of mic.wav's FIRST
+    /// buffer (from the tap's AVAudioTime host clock) — the sync anchor for
+    /// aligning the voice track. Called on the main queue.
+    var onFirstWrite: ((CFAbsoluteTime) -> Void)?
 
     /// Select the input device by AVCaptureDevice uniqueID / Core Audio UID
     /// (nil = system default). Restarts the engine if it is live.
@@ -71,7 +77,7 @@ final class MicMeter: @unchecked Sendable {
             return
         }
 
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, when in
             guard let self, let ch = buffer.floatChannelData?[0] else { return }
             let n = Int(buffer.frameLength)
             if n == 0 { return }
@@ -81,8 +87,20 @@ final class MicMeter: @unchecked Sendable {
             self.lock.lock()
             self.latest = level
             let file = self.file
+            let needsStamp = file != nil && !self.firstWriteStamped
+            if needsStamp { self.firstWriteStamped = true }
             self.lock.unlock()
-            if let file { try? file.write(from: buffer) }
+            if let file {
+                try? file.write(from: buffer)
+                if needsStamp {
+                    // Buffer host time → absolute time: subtract "how long ago
+                    // the buffer was captured" from now.
+                    let ago = AVAudioTime.seconds(forHostTime: mach_absolute_time())
+                        - AVAudioTime.seconds(forHostTime: when.hostTime)
+                    let absolute = CFAbsoluteTimeGetCurrent() - ago
+                    DispatchQueue.main.async { self.onFirstWrite?(absolute) }
+                }
+            }
         }
 
         do {
@@ -104,6 +122,7 @@ final class MicMeter: @unchecked Sendable {
         }
         lock.lock()
         file = f
+        firstWriteStamped = false
         lock.unlock()
         return true
     }

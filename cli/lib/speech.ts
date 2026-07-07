@@ -3,6 +3,24 @@ import { join } from "node:path";
 import { PROJECT, takePath } from "./paths.ts";
 import { runTools } from "./tools.ts";
 
+/** Track start offsets (seconds on the take clock) from events.jsonl. */
+export function trackOffsets(id: string) {
+  const eventsPath = join(takePath(id), "events.jsonl");
+  const t: Record<string, number> = {};
+  if (existsSync(eventsPath)) {
+    for (const line of readFileSync(eventsPath, "utf8").split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        const ev = JSON.parse(line);
+        if (ev.type === "capture.stage" && t.stage === undefined) t.stage = ev.t;
+        if ((ev.type === "capture.mic.start" || ev.type === "capture.mic") && t.mic === undefined) t.mic = ev.t;
+        if (ev.type === "capture.cam.start" && t.cam === undefined) t.cam = ev.t;
+      } catch {}
+    }
+  }
+  return t;
+}
+
 export function transcribeTake(id: string, model = "UsefulSensors/moonshine-tiny") {
   const dir = takePath(id);
   const stage = join(dir, "stage.mov");
@@ -19,6 +37,22 @@ export function transcribeTake(id: string, model = "UsefulSensors/moonshine-tiny
   if (r.status !== 0) throw new Error(r.stderr || r.stdout || "transcribe failed");
   const line = r.stdout.trim().split("\n").filter(Boolean).pop() || "{}";
   const summary = JSON.parse(line);
+
+  // Word times come back relative to the audio file; shift them onto the
+  // STAGE clock so captions and cuts line up with stage.mov frames.
+  const isMicSource = input.endsWith("mic-clean.wav") || input.endsWith("mic.wav");
+  const offsets = trackOffsets(id);
+  if (isMicSource && offsets.mic !== undefined && offsets.stage !== undefined) {
+    const shift = offsets.mic - offsets.stage;
+    const t = JSON.parse(readFileSync(out, "utf8"));
+    t.words = (t.words ?? []).map((w: { word: string; start: number; end: number }) => ({
+      ...w,
+      start: w.start + shift,
+      end: w.end + shift,
+    }));
+    t.timing = { base: "stage", mic_offset: shift };
+    writeFileSync(out, JSON.stringify(t, null, 2));
+  }
   return { ...summary, path: out };
 }
 
