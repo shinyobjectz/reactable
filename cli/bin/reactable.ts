@@ -59,6 +59,8 @@ import {
 import { cleanVoice, installDeepFilter } from "../lib/voice.ts";
 import { ttsSpeak, ttsDoctor } from "../lib/tts.ts";
 import { agentChat, agentStatus, agentLlmProbe, createProject } from "../lib/agent.ts";
+import { minimaxChat, minimaxKey } from "../lib/minimax.ts";
+import { CONNECTORS, connectorStatus, setConnector } from "../lib/connectors.ts";
 import { getProject, listSurfaces, listResearch, addResearch } from "../lib/surface.ts";
 import { authLogin, authStatus, clearCredentials } from "../lib/auth.ts";
 import {
@@ -125,7 +127,9 @@ Usage: reactable <command> [args]
   tts speak --text "<script>" -o <wav> [--voice af_heart]
   tts doctor [--json]             moonshine + kokoro via Rust MLX sidecar
 
-  agent chat "<message>" [--deck demo] [--json]
+  agent chat "<message>" [--provider minimax|gemma] [--model <id>] [--json]
+  connect [list]                    BYO connector slots (pexels, unsplash, …)
+  connect <id> --key <key>          save a connector key locally
   agent status [--json]           local Gemma MLX via reactable-tools
   projects new "<title>" [--slug]   scaffold under ~/Reactable/projects/
   projects board [--json]           pipeline kanban (shared with the app)
@@ -685,6 +689,36 @@ try {
     }
     console.error("tts: speak | doctor");
     process.exit(1);
+  }
+
+  if (cmd === "connect") {
+    if (!sub || sub === "list") {
+      for (const c of connectorStatus()) {
+        console.log(`${c.connected ? "✓" : "○"} ${c.id.padEnd(12)} ${c.name}${c.connected ? "" : `  → get a key: ${c.signup}`}`);
+      }
+      process.exit(0);
+    }
+    const key = String(flags.key || "");
+    if (!key) {
+      console.error(`connect ${sub} --key <api-key>   (signup: ${CONNECTORS[sub]?.signup ?? "?"})`);
+      process.exit(1);
+    }
+    try {
+      console.log(`→ ${setConnector(sub, key)}`);
+      process.exit(0);
+    } catch (e) {
+      console.error(String(e));
+      process.exit(1);
+    }
+  }
+
+  if (cmd === "agent" && sub === "chat" && (flags.provider === "minimax" || (!flags.provider && minimaxKey()))) {
+    const msg = rest.slice(2).join(" ");
+    const r = await minimaxChat(msg, { model: flags.model ? String(flags.model) : undefined });
+    if (flags.json) jsonOut(r);
+    else if (r.ok) console.log(`[${r.model} · ${r.ms}ms]\n${r.reply}`);
+    else console.error(`minimax: ${r.error}`);
+    process.exit(r.ok ? 0 : 1);
   }
 
   if (cmd === "agent") {
