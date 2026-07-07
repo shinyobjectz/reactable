@@ -8,6 +8,10 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     private var palette: PaletteWindowController?
     private var stageManager: StageManagerPanel?
     private var cachedSlides: [[String: Any]] = []
+    // The rundown: the deck of the video. Defaults to the current deck's
+    // slides; the manager edits it; the DOCK ARROWS are the only navigation.
+    private var lineup: [[String: Any]] = []
+    private var lineupIndex = 0
     private let captureOutline = CaptureOutline()
     private let micMeter = MicMeter()
     private var micTimer: Timer?
@@ -204,6 +208,10 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                 }
             }
             restoreCaptureToggles()
+            Task {
+                await self.refreshDeckSlides()
+                self.loadStageLineup()
+            }
             installHotkeys()
             // Stage resizes invalidate the (fixed-dimension) warm capture
             // stream; while recording the size is locked, so this only fires
@@ -400,15 +408,22 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         }
     }
 
-    func bridgeSlideNext() {
-        stage?.nextSlide()
+    func bridgeSlideNext() { advanceLineup(1) }
+
+    private func advanceLineup(_ delta: Int) {
+        guard !lineup.isEmpty else {
+            if delta > 0 { stage?.nextSlide() } else { stage?.prevSlide() }
+            bar?.pushState(state)
+            return
+        }
+        let next = max(0, min(lineup.count - 1, lineupIndex + delta))
+        guard next != lineupIndex || lineup.count == 1 else { bar?.pushState(state); return }
+        lineupIndex = next
+        activateScene(lineup[lineupIndex])
         bar?.pushState(state)
     }
 
-    func bridgeSlidePrev() {
-        stage?.prevSlide()
-        bar?.pushState(state)
-    }
+    func bridgeSlidePrev() { advanceLineup(-1) }
 
     // Stage visibility — independent of the capture target (you can show the
     // stage while recording a window, or record the stage while it's hidden).
@@ -726,12 +741,6 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             else { return nil }
             return ["id": num.intValue, "name": screen.localizedName]
         }
-        var lineup: [[String: Any]] = []
-        let lineupURL = activeProjectURL.appending(path: "stage-lineup.json")
-        if let data = try? Data(contentsOf: lineupURL),
-           let parsed = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
-            lineup = parsed
-        }
         let tabs: [[String: Any]] = (stage?.openSurfaces ?? []).map {
             ["kind": $0.kind, "ref": $0.ref, "title": $0.title]
         }
@@ -743,14 +752,36 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             "deckSlug": state.deckSlug,
             "tabs": tabs,
             "lineup": lineup,
-        ]
+        ] as [String: Any]
     }
 
-    private func saveStageLineup(_ lineup: [[String: Any]]) {
+    private func saveStageLineup(_ newLineup: [[String: Any]]) {
         let url = activeProjectURL.appending(path: "stage-lineup.json")
-        if let data = try? JSONSerialization.data(withJSONObject: lineup, options: [.prettyPrinted]) {
+        if let data = try? JSONSerialization.data(withJSONObject: newLineup, options: [.prettyPrinted]) {
             try? data.write(to: url)
         }
+        lineup = newLineup
+        // The first entry IS the opening shot — reflect it immediately.
+        lineupIndex = 0
+        if let first = lineup.first { activateScene(first) }
+    }
+
+    /// Load the saved rundown, or default it to the current deck's slides —
+    /// the deck IS the lineup until edited.
+    private func loadStageLineup() {
+        let url = activeProjectURL.appending(path: "stage-lineup.json")
+        if let data = try? Data(contentsOf: url),
+           let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+           !arr.isEmpty {
+            lineup = arr
+        } else {
+            lineup = cachedSlides.map { slide in
+                let idx = slide["idx"] as? Int ?? 0
+                let id = slide["id"] as? String ?? "slide-\(idx + 1)"
+                return ["kind": "slide", "ref": String(idx), "slideId": id, "title": "\(idx + 1) · \(id)"]
+            }
+        }
+        lineupIndex = 0
     }
 
     /// Activate a lineup scene: decks/web tabs land on the stage; windows and
@@ -863,10 +894,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     /// mid-take switch is instant — the lineup is the schedule.
     private func prewarmUpcomingScene(after entry: [String: Any]) {
         guard let takeRecorder else { return }
-        let lineupURL = activeProjectURL.appending(path: "stage-lineup.json")
-        guard let data = try? Data(contentsOf: lineupURL),
-              let lineup = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
-              let idx = lineup.firstIndex(where: {
+        guard let idx = lineup.firstIndex(where: {
                   ($0["kind"] as? String) == (entry["kind"] as? String)
                       && ($0["ref"] as? String) == (entry["ref"] as? String)
               }),

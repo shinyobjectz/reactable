@@ -52,14 +52,13 @@ client :manager do
         <div class="list" id="results"></div>
       </div>
       <div class="col lane">
-        <h3>Lineup — drag to reorder</h3>
+        <h3>Lineup — the deck of your video (dock arrows walk it)</h3>
         <div class="list" id="lineup"></div>
       </div>
     </div>
     <div class="foot">
       <button id="close">Close</button>
       <button id="write-order" title="Rewrite deck.work so its slides match the lineup order">Write order → deck</button>
-      <button class="next" id="next">▶ Next</button>
     </div>
   </div>
   <script>
@@ -76,7 +75,6 @@ client :manager do
       for (const w of data.windows) items.push({ kind: 'window', ref: String(w.id), title: w.title || w.app, sub: w.app });
       for (const d of data.displays) items.push({ kind: 'display', ref: String(d.id), title: d.name, sub: 'full screen' });
       for (const sl of data.slides || []) items.push({ kind: 'slide', ref: String(sl.idx), slideId: sl.id, title: `${sl.idx + 1} · ${sl.id}`, sub: (data.deckSlug || 'deck') + ' · ' + sl.type });
-      for (const k of data.decks) items.push({ kind: 'deck', ref: k.slug, title: k.title || k.slug, sub: 'deck' });
       for (const t of data.tabs) items.push({ kind: t.kind, ref: t.ref, title: t.title || t.ref, sub: 'stage tab' });
       return items;
     }
@@ -126,8 +124,7 @@ client :manager do
         el.innerHTML = `<span class="idx">${i + 1}</span>
           <span class="kind ${item.kind}">${item.kind}</span>
           <span class="title">${item.title}</span>
-          <span class="go" title="Activate">▶</span><span class="rm" title="Remove">✕</span>`;
-        el.querySelector('.go').onclick = () => activate(i);
+          <span class="rm" title="Remove">✕</span>`;
         el.querySelector('.rm').onclick = () => { lineup.splice(i, 1); if (current >= i) current--; save(); renderLineup(); };
         el.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', String(i)); el.classList.add('dragging'); });
         el.addEventListener('dragend', () => el.classList.remove('dragging'));
@@ -145,16 +142,9 @@ client :manager do
       if (!lineup.length) box.innerHTML = '<div class="empty">Add scenes from the left — they play in order with ▶ Next.</div>';
     }
 
-    function activate(i) {
-      current = i;
-      send('manager.activate', lineup[i]);
-      renderLineup();
-    }
-
     function save() { send('manager.save', { lineup }); }
 
     $('q').addEventListener('input', renderResults);
-    $('next').onclick = () => { if (lineup.length) activate((current + 1) % lineup.length); };
     $('write-order').onclick = () => {
       const ids = lineup.filter((i) => i.kind === 'slide' && i.slideId).map((i) => i.slideId);
       if (ids.length) send('manager.applyDeckOrder', { ids });
@@ -162,6 +152,7 @@ client :manager do
     $('close').onclick = () => send('manager.close');
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') send('manager.close'); });
 
+    send('manager.ready');
     window.ReactableManager = {
       setData(d) { data = d; lineup = d.lineup || lineup; renderResults(); renderLineup(); },
       reset() { $('q').value = ''; $('q').focus(); renderResults(); },

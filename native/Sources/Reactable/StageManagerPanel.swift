@@ -87,6 +87,8 @@ final class StageManagerPanel: NSObject, NSWindowDelegate, WKScriptMessageHandle
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let parsed = BridgeMessage.parse(message.body) else { return }
         switch parsed.action {
+        case "manager.ready":
+            pushData()
         case "manager.activate":
             onActivate?(parsed.payload)
         case "manager.save":
