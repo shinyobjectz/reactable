@@ -311,8 +311,23 @@ def render_take(take_dir: Path, aspects: list[str] | None = None) -> dict:
         (e.get("window") for e in events if e.get("type") == "capture.stage" and e.get("window")), None
     )
 
+    # Mid-take scene handoffs produce stage segments (stage.mov, stage-2.mov…),
+    # each with its own capture.stage anchor. Concatenate with clone-frame gap
+    # fill; stage-geometry overlays (zoom/cursor) only apply to single-segment.
+    segments = []
+    for e in events:
+        if e.get("type") == "capture.stage":
+            p = take_dir / e.get("file", "stage.mov")
+            if p.exists():
+                segments.append((p, float(e.get("t", 0.0))))
+    if not segments:
+        segments = [(stage, t_stage)]
+    multi = len(segments) > 1
+    if multi:
+        print(f"+ {len(segments)} stage segments — zoom/cursor overlays skipped", file=sys.stderr)
+
     clicks = []
-    if zoom_cfg.get("enabled", True):
+    if not multi and zoom_cfg.get("enabled", True):
         for ev in events:
             if ev.get("type") == "click":
                 cx, cy = norm_click(ev, vw, vh, capture_window)
@@ -340,8 +355,12 @@ def render_take(take_dir: Path, aspects: list[str] | None = None) -> dict:
         cam_delay = max(0.0, t_cam - t_stage)
         mic_delay_ms = int(max(0.0, t_mic - t_stage) * 1000)
 
-        inputs = ["-i", str(stage)]
+        inputs = []
+        for seg, _ in segments:
+            inputs += ["-i", str(seg)]
+        nseg = len(segments)
         has_cam = cam.exists() and cam_cfg.get("pip", True)
+        cam_idx = nseg
         if has_cam:
             inputs += ["-i", str(cam)]
 
@@ -354,16 +373,41 @@ def render_take(take_dir: Path, aspects: list[str] | None = None) -> dict:
         mic_idx = None
         if has_mic:
             inputs += ["-i", str(mic)]
-            mic_idx = 2 if has_cam else 1
+            mic_idx = nseg + (1 if has_cam else 0)
 
         chain = "[0:v]"
+        seg_concat = ""
+        stage_audio_ok = all(has_audio(p) for p, _ in segments)
+        if multi:
+            durs = [probe_video(p)["duration"] for p, _ in segments]
+            legs_v, legs_a = [], []
+            vparts, aparts = [], []
+            for i, ((_p, t0), d) in enumerate(zip(segments, durs)):
+                gap = 0.0
+                if i + 1 < len(segments):
+                    gap = max(0.0, segments[i + 1][1] - (t0 + d))
+                vparts.append(
+                    f"[{i}:v]scale={vw}:{vh}:force_original_aspect_ratio=decrease,"
+                    f"pad={vw}:{vh}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,"
+                    f"tpad=stop_mode=clone:stop_duration={gap:.3f}[sv{i}]"
+                )
+                legs_v.append(f"[sv{i}]")
+                if stage_audio_ok:
+                    aparts.append(f"[{i}:a]apad=pad_dur={gap:.3f}[sa{i}]")
+                    legs_a.append(f"[sa{i}]")
+            seg_concat = ";".join(vparts)
+            seg_concat += f";{''.join(legs_v)}concat=n={len(segments)}:v=1:a=0[stagev]"
+            if stage_audio_ok:
+                seg_concat += ";" + ";".join(aparts)
+                seg_concat += f";{''.join(legs_a)}concat=n={len(segments)}:v=0:a=1[stagea]"
+            chain = "[stagev]"
         cursor_node = ""
         cursor_inputs: list[str] = []
         cursor_h = max(34, vh // 32)
         cursor_cmd = write_cursor_cmd(
             events, out_dir / "cursor.cmd", vw, vh, capture_window, t_stage
         )
-        if cursor_cmd:
+        if cursor_cmd and not multi:
             cursor_png = write_cursor_png(out_dir / "cursor.png", cursor_h)
             cursor_inputs = ["-loop", "1", "-i", str(cursor_png)]
             cursor_node = (
@@ -394,7 +438,7 @@ def render_take(take_dir: Path, aspects: list[str] | None = None) -> dict:
             f"[bg][fitted]overlay={pad}:{pad}[padded]"
         )
 
-        parts = [p for p in [cursor_node, trim_node, spd, zoom] if p]
+        parts = [p for p in [seg_concat, cursor_node, trim_node, spd, zoom] if p]
         last = "[padded]"
 
         if has_cam:
@@ -410,7 +454,7 @@ def render_take(take_dir: Path, aspects: list[str] | None = None) -> dict:
                     f"a='if(lte(pow(abs(2*X/{size}-1),4)+pow(abs(2*Y/{size}-1),4),0.95),255,0)'"
                 )
             parts.append(
-                f"[1:v]{flip}scale={size}:{size}:force_original_aspect_ratio=increase,"
+                f"[{cam_idx}:v]{flip}scale={size}:{size}:force_original_aspect_ratio=increase,"
                 f"crop={size}:{size},format=rgba,"
                 f"geq=lum='p(X,Y)':cb='p(X,Y)':cr='p(X,Y)':{mask}[camm];"
                 f"[camm]tpad=start_duration={cam_delay:.3f}:color=black@0[cam];"
@@ -424,12 +468,14 @@ def render_take(take_dir: Path, aspects: list[str] | None = None) -> dict:
             cursor_node = cursor_node.replace("{CURSOR_IDX}", str(cursor_idx))
             parts[0] = cursor_node
 
-        audio_map = ["-map", "0:a?"]
+        sys_src = "[stagea]" if multi else "[0:a]"
+        has_sys = stage_audio_ok if multi else has_audio(stage)
+        audio_map = ["-map", "[stagea]"] if (multi and has_sys) else ["-map", "0:a?"]
         if has_mic:
             mic_leg = f"[{mic_idx}:a]adelay={mic_delay_ms}|{mic_delay_ms},loudnorm=I=-16:TP=-1.5[mica]"
-            if has_audio(stage):
+            if has_sys:
                 parts.append(
-                    mic_leg + f";[0:a]volume=0.35[sysa];[sysa][mica]amix=inputs=2:duration=first:normalize=0[outa]"
+                    mic_leg + f";{sys_src}volume=0.35[sysa];[sysa][mica]amix=inputs=2:duration=first:normalize=0[outa]"
                 )
             else:
                 parts.append(mic_leg + ";[mica]anull[outa]")

@@ -10,6 +10,9 @@ final class TakeRecorder {
     // can never be stopped or reused, so the old one is abandoned on timeout
     // and the next take starts clean.
     private nonisolated(unsafe) var stageRecorder = Aperture.Recorder()
+    // Prewarmed for the NEXT lineup scene so a mid-take switch is instant.
+    private nonisolated(unsafe) var nextRecorder: Aperture.Recorder?
+    private var segmentIndex = 0
     private var takeDir: URL?
     private var eventLog: EventLog?
     private var startEpoch: TimeInterval?
@@ -87,6 +90,7 @@ final class TakeRecorder {
             "targetLabel": target.label,
         ])
 
+        segmentIndex = 0
         let stageURL = dir.appending(path: "stage.mov")
         // Mic goes to mic.wav via MicMeter (AppController arms it after start) —
         // SCStream.captureMicrophone silently delivers nothing on this setup,
@@ -173,6 +177,11 @@ final class TakeRecorder {
             fputs("reactable: stage stop failed (\(error)) — take may be unfinalized: \(dir.path())\n", stderr)
         }
         try? await cam?.stopRecording()
+        if let pending = nextRecorder {
+            nonisolated(unsafe) let p = pending
+            nextRecorder = nil
+            await p.cancelPrewarm()
+        }
 
         resetState()
 
@@ -202,6 +211,138 @@ final class TakeRecorder {
         var p = payload
         p["t"] = max(0, absolute - eventLog.startTime)
         eventLog.stamp(type, payload: p)
+    }
+
+    private func segmentFile(_ index: Int) -> String {
+        index == 0 ? "stage.mov" : "stage-\(index + 1).mov"
+    }
+
+    /// Mid-take scene handoff: finalize the current stage segment and start
+    /// capturing the new target into stage-<n>.mov. The lineup prewarms the
+    /// next scene (prewarmNext), so the visual gap is one stream attach.
+    func switchScene(
+        sourceKind: String,
+        captureTargetId: String?,
+        areaRect: CGRect?,
+        stageWindow: NSWindow?,
+        stageContentRect: CGRect? = nil,
+        systemAudioOn: Bool
+    ) async {
+        guard let dir = takeDir else { return }
+        guard let target = try? await CaptureTarget.resolve(
+            sourceKind: sourceKind,
+            captureTargetId: captureTargetId,
+            areaRect: areaRect,
+            stageWindow: stageWindow
+        ) else {
+            fputs("reactable: scene switch — target resolve failed\n", stderr)
+            return
+        }
+
+        // Finalize the running segment (bounded — a wedged stop can't stall the take).
+        nonisolated(unsafe) let old = stageRecorder
+        do {
+            try await Self.race(seconds: 10, label: "segment stop") { try await old.stop() }
+        } catch {
+            fputs("reactable: segment stop failed (\(error))\n", stderr)
+        }
+
+        segmentIndex += 1
+        let file = segmentFile(segmentIndex)
+        // Use the recorder prewarmed for this scene when available.
+        if let warmed = nextRecorder, warmed.isPrewarmed {
+            stageRecorder = warmed
+            nextRecorder = nil
+        } else {
+            stageRecorder = Aperture.Recorder()
+        }
+        nonisolated(unsafe) let recorder = stageRecorder
+        let kind = target.kind
+        let targetID = target.targetID
+        let cropRect = target.kind == "stage" ? stageContentRect : target.cropRect
+        let dest = dir.appending(path: file)
+        do {
+            try await Self.race(seconds: 15, label: "segment start") {
+                try await Self.startStageCapture(
+                    recorder: recorder,
+                    kind: kind,
+                    destination: dest,
+                    targetID: targetID,
+                    cropRect: cropRect,
+                    systemAudioOn: systemAudioOn,
+                    micID: nil
+                )
+            }
+            var payload: [String: Any] = [
+                "sourceKind": target.kind,
+                "targetId": target.targetID,
+                "label": target.label,
+                "file": file,
+            ]
+            if let stageWindow, target.kind == "stage" {
+                let f = stageWindow.frame
+                let primaryH = NSScreen.screens.first?.frame.height ?? f.height
+                let crop = stageContentRect ?? CGRect(x: 0, y: 0, width: f.width, height: f.height)
+                payload["window"] = [
+                    "x": f.origin.x + crop.origin.x,
+                    "yTop": primaryH - (f.origin.y + f.height) + crop.origin.y,
+                    "w": crop.width, "h": crop.height,
+                    "scale": stageWindow.backingScaleFactor,
+                ]
+            }
+            eventLog?.stamp("capture.stage", payload: payload)
+            fputs("reactable: segment \(segmentIndex + 1) → \(file) (\(target.kind) \(target.label))\n", stderr)
+        } catch {
+            fputs("reactable: segment start failed (\(error))\n", stderr)
+        }
+    }
+
+    /// Prewarm the SCK stream for the UPCOMING lineup scene while the current
+    /// one records — the switch then only attaches a writer.
+    func prewarmNext(
+        sourceKind: String,
+        captureTargetId: String?,
+        areaRect: CGRect?,
+        stageWindow: NSWindow?,
+        stageContentRect: CGRect? = nil,
+        systemAudioOn: Bool
+    ) async {
+        guard let target = try? await CaptureTarget.resolve(
+            sourceKind: sourceKind,
+            captureTargetId: captureTargetId,
+            areaRect: areaRect,
+            stageWindow: stageWindow
+        ) else { return }
+        let apertureTarget: Aperture.Target = switch target.kind {
+        case "device": .externalDevice
+        case "display", "area": .screen
+        default: .window
+        }
+        let options = Aperture.RecordingOptions(
+            destination: FileManager.default.temporaryDirectory
+                .appending(path: "reactable-prewarm-next.mov"),
+            targetID: target.targetID,
+            framesPerSecond: 30,
+            cropRect: target.kind == "stage" ? stageContentRect : target.cropRect,
+            showCursor: false,
+            highlightClicks: false,
+            videoCodec: .h264,
+            recordSystemAudio: systemAudioOn,
+            microphoneDeviceID: nil
+        )
+        if let old = nextRecorder { nonisolated(unsafe) let o = old; await o.cancelPrewarm() }
+        let recorder = Aperture.Recorder()
+        nextRecorder = recorder
+        nonisolated(unsafe) let r = recorder
+        do {
+            try await Self.race(seconds: 15, label: "next-scene prewarm") {
+                try await r.prewarm(target: apertureTarget, options: options)
+            }
+            fputs("reactable: next scene prewarmed (\(target.kind) \(target.label))\n", stderr)
+        } catch {
+            fputs("reactable: next-scene prewarm failed (\(error))\n", stderr)
+            nextRecorder = nil
+        }
     }
 
     /// Spin up the SCK stream for the expected capture target ahead of the

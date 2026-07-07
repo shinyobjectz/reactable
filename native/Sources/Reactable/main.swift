@@ -234,8 +234,11 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             let mgr = StageManagerPanel(port: port)
             mgr.dataProvider = { [weak self] in self?.stageManagerCatalog() ?? [:] }
             mgr.onSaveLineup = { [weak self] lineup in self?.saveStageLineup(lineup) }
-            mgr.onActivate = { [weak self] kind, ref, title in
-                self?.activateScene(kind: kind, ref: ref, title: title)
+            mgr.onActivate = { [weak self] entry in
+                self?.activateScene(entry)
+            }
+            mgr.onApplyDeckOrder = { [weak self] ids in
+                self?.applyDeckOrder(ids)
             }
             stageManager = mgr
             syncBar()
@@ -752,7 +755,30 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
 
     /// Activate a lineup scene: decks/web tabs land on the stage; windows and
     /// displays switch the capture target (and re-prewarm for it).
-    private func activateScene(kind: String, ref: String, title: String) {
+    private func activateScene(_ entry: [String: Any]) {
+        let kind = entry["kind"] as? String ?? "web"
+        let ref = entry["ref"] as? String ?? ""
+        let title = entry["title"] as? String ?? ref
+        takeRecorder?.stamp("scene", payload: ["kind": kind, "ref": ref, "title": title])
+
+        // Mid-take: hand the recording off to the new target as a segment.
+        if state.recording, let takeRecorder, takeRecorder.isActive {
+            let stageBound = !["window", "display"].contains(kind)
+            let sourceKind = stageBound ? "stage" : kind
+            let targetId = stageBound ? nil : ref
+            Task {
+                await takeRecorder.switchScene(
+                    sourceKind: sourceKind,
+                    captureTargetId: targetId,
+                    areaRect: nil,
+                    stageWindow: self.stage?.captureWindow,
+                    stageContentRect: stageBound ? self.stage?.deckContentRect : nil,
+                    systemAudioOn: self.state.systemAudioOn
+                )
+            }
+        }
+        prewarmUpcomingScene(after: entry)
+
         switch kind {
         case "slide":
             // A deck slide IS a lineup scene: jump the stage to it.
@@ -786,6 +812,13 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             }
             bridgeCaptureSetTarget(kind: "display", id: ref)
             syncBar()
+        case "dev":
+            // Dev-server scene: launch the command once, wait for the URL to
+            // come up, then land it on the stage like any web scene.
+            captureOutline.hide()
+            let cmd = entry["cmd"] as? String ?? ""
+            let cwd = entry["cwd"] as? String
+            launchDevScene(cmd: cmd, cwd: cwd, url: ref, title: title)
         default:
             captureOutline.hide()
             if stage == nil || stage?.isVisible != true { openStage() }
@@ -793,6 +826,104 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             bridgeSelectStage()
         }
         fputs("reactable: scene → \(kind) \(title)\n", stderr)
+    }
+
+    private var launchedDevCommands: Set<String> = []
+
+    private func launchDevScene(cmd: String, cwd: String?, url: String, title: String) {
+        if !cmd.isEmpty, !launchedDevCommands.contains(cmd) {
+            launchedDevCommands.insert(cmd)
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            proc.arguments = ["-lc", cmd]
+            if let cwd { proc.currentDirectoryURL = URL(fileURLWithPath: (cwd as NSString).expandingTildeInPath) }
+            proc.standardOutput = FileHandle.nullDevice
+            proc.standardError = FileHandle.nullDevice
+            try? proc.run()
+            fputs("reactable: dev scene launched: \(cmd)\n", stderr)
+        }
+        guard let target = URL(string: url) else { return }
+        Task { [weak self] in
+            // Wait for the server to answer (20s budget).
+            for _ in 0..<40 {
+                if let (_, resp) = try? await URLSession.shared.data(from: target),
+                   (resp as? HTTPURLResponse)?.statusCode ?? 500 < 500 { break }
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+            await MainActor.run {
+                guard let self else { return }
+                if self.stage == nil || self.stage?.isVisible != true { self.openStage() }
+                self.stage?.openSurface(StageSurface(kind: "web", ref: url, title: title, project: ""))
+                self.bridgeSelectStage()
+            }
+        }
+    }
+
+    /// While a scene is live, prewarm the stream for the one after it so the
+    /// mid-take switch is instant — the lineup is the schedule.
+    private func prewarmUpcomingScene(after entry: [String: Any]) {
+        guard let takeRecorder else { return }
+        let lineupURL = activeProjectURL.appending(path: "stage-lineup.json")
+        guard let data = try? Data(contentsOf: lineupURL),
+              let lineup = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+              let idx = lineup.firstIndex(where: {
+                  ($0["kind"] as? String) == (entry["kind"] as? String)
+                      && ($0["ref"] as? String) == (entry["ref"] as? String)
+              }),
+              idx + 1 < lineup.count
+        else { return }
+        let next = lineup[idx + 1]
+        let kind = next["kind"] as? String ?? "web"
+        let stageBound = !["window", "display"].contains(kind)
+        let sourceKind = stageBound ? "stage" : kind
+        let targetId = stageBound ? nil : next["ref"] as? String
+        Task {
+            await takeRecorder.prewarmNext(
+                sourceKind: sourceKind,
+                captureTargetId: targetId,
+                areaRect: nil,
+                stageWindow: self.stage?.captureWindow,
+                stageContentRect: stageBound ? self.stage?.deckContentRect : nil,
+                systemAudioOn: self.state.systemAudioOn
+            )
+        }
+    }
+
+    /// Rewrite deck.work slide order to the given ids via the reactable CLI
+    /// (the CLI owns .work serialization), then reload the deck everywhere.
+    private func applyDeckOrder(_ ids: [String]) {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let candidates = [
+            "\(home)/.bun/bin/reactable",
+            "/opt/homebrew/bin/reactable",
+            "/usr/local/bin/reactable",
+        ]
+        guard let cli = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+            fputs("reactable: deck reorder needs the reactable CLI installed\n", stderr)
+            return
+        }
+        let slug = state.deckSlug
+        let project = activeProjectURL.path
+        Task.detached {
+            for (i, id) in ids.enumerated() {
+                let proc = Process()
+                proc.executableURL = URL(fileURLWithPath: cli)
+                proc.arguments = ["decks", "slide", "move", slug, id, "--to", String(i)]
+                proc.environment = ProcessInfo.processInfo.environment.merging(["WB_DATA": project]) { _, new in new }
+                proc.standardOutput = FileHandle.nullDevice
+                try? proc.run()
+                proc.waitUntilExit()
+            }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.stage?.loadDeck(slug)
+                Task {
+                    await self.refreshDeckSlides()
+                    self.stageManager?.pushData()
+                }
+                fputs("reactable: deck.work slide order rewritten (\(ids.count) slides)\n", stderr)
+            }
+        }
     }
 
     func bridgeMicSourceSet(uid: String?) {

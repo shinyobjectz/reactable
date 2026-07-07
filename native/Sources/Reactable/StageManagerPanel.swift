@@ -11,12 +11,14 @@ final class StageManagerPanel: NSObject, NSWindowDelegate, WKScriptMessageHandle
     private var window: NSWindow?
     private var webView: WKWebView?
 
-    /// Called with (kind, ref, title) when a lineup entry is activated.
-    var onActivate: ((String, String, String) -> Void)?
+    /// Called with the full entry payload when a lineup entry is activated.
+    var onActivate: (([String: Any]) -> Void)?
     /// Supplies the searchable catalog + saved lineup as a JSON object.
     var dataProvider: (() -> [String: Any])?
     /// Persists the lineup array.
     var onSaveLineup: (([[String: Any]]) -> Void)?
+    /// Rewrites deck.work slide order to match these slide ids.
+    var onApplyDeckOrder: (([String]) -> Void)?
 
     init(port: Int) {
         self.port = port
@@ -86,15 +88,14 @@ final class StageManagerPanel: NSObject, NSWindowDelegate, WKScriptMessageHandle
         guard let parsed = BridgeMessage.parse(message.body) else { return }
         switch parsed.action {
         case "manager.activate":
-            let p = parsed.payload
-            onActivate?(
-                p["kind"] as? String ?? "web",
-                p["ref"] as? String ?? "",
-                p["title"] as? String ?? ""
-            )
+            onActivate?(parsed.payload)
         case "manager.save":
             if let lineup = parsed.payload["lineup"] as? [[String: Any]] {
                 onSaveLineup?(lineup)
+            }
+        case "manager.applyDeckOrder":
+            if let ids = parsed.payload["ids"] as? [String] {
+                onApplyDeckOrder?(ids)
             }
         case "manager.close":
             hide()
