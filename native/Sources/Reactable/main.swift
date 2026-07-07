@@ -682,12 +682,11 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
 
                 // Preflight TCC permissions — prompt (or send to Settings) BEFORE
                 // starting capture, so a missing grant is actionable, not a dead button.
+                // Screen Recording is special: CGPreflightScreenCaptureAccess caches
+                // its result for the process lifetime, so a grant made while the app
+                // is running is invisible until relaunch — hence the restart flow.
                 if !ScreenCaptureAccess.requestIfNeeded() {
-                    presentPermissionError(
-                        "Screen Recording permission needed",
-                        "Enable Reactable under Screen & System Audio Recording, then press record again.",
-                        pane: "Privacy_ScreenCapture"
-                    )
+                    presentScreenPermissionNeeded()
                     return
                 }
                 if state.camOn, !(await requestCaptureAccess(.video)) {
@@ -791,6 +790,45 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)")!
             NSWorkspace.shared.open(url)
         }
+    }
+
+    /// Screen Recording needs a relaunch to take effect (the TCC decision is
+    /// cached per process). Guide the user to enable it, then restart the app.
+    private func presentScreenPermissionNeeded() {
+        state.recording = false
+        state.paused = false
+        syncBar()
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Screen Recording permission needed"
+        alert.informativeText = """
+        1. Open Settings and turn on Reactable under Screen & System Audio Recording.
+        2. Click Restart Reactable so the new permission takes effect.
+        """
+        alert.addButton(withTitle: "Open Settings")
+        alert.addButton(withTitle: "Restart Reactable")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!
+            NSWorkspace.shared.open(url)
+        case .alertSecondButtonReturn:
+            relaunchApp()
+        default:
+            break
+        }
+    }
+
+    /// Relaunch a fresh instance and quit this one — required for a just-granted
+    /// Screen Recording permission to be visible to the capture APIs.
+    private func relaunchApp() {
+        let path = Bundle.main.bundlePath
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
+        task.arguments = ["-c", "sleep 1; open \"\(path)\""]
+        try? task.run()
+        NSApp.terminate(nil)
     }
 
     private func wireStageEvents(_ controller: StageWindowController) {

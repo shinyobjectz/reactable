@@ -42,7 +42,10 @@ app: build
     set -euo pipefail
     ROOT="{{root}}"
     APP="$ROOT/dist/Reactable.app"
-    DEST="$HOME/Applications/Reactable.app"
+    # Install to /Applications (the single canonical location). Installing to
+    # ~/Applications created a second same-bundle-id copy that split TCC grants
+    # (permission looked "on" but the running copy was denied).
+    DEST="/Applications/Reactable.app"
     rm -rf "$APP"
     mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
     cp "{{native}}/.build/release/reactable" "$APP/Contents/MacOS/"
@@ -101,6 +104,10 @@ app: build
     fi
     rm -rf "$DEST"
     cp -R "$APP" "$DEST"
+    # Register the installed copy and unregister the dist staging copy, so
+    # LaunchServices/TCC only ever resolve one Reactable.app.
+    LSREG=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+    [ -x "$LSREG" ] && { "$LSREG" -u "$APP" 2>/dev/null || true; "$LSREG" -f "$DEST" 2>/dev/null || true; }
     echo "→ $DEST (replaced)"
     echo "→ $APP"
 
