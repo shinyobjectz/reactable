@@ -7,14 +7,11 @@ export function transcribeTake(id: string, model = "UsefulSensors/moonshine-tiny
   const dir = takePath(id);
   const stage = join(dir, "stage.mov");
   const cam = join(dir, "cam.mov");
-  // Mic/system audio is muxed into stage.mov by the recorder; cam.mov is
-  // video-only, so it must be the last resort, not the preferred source.
-  const input = existsSync(join(dir, "audio.wav"))
-    ? join(dir, "audio.wav")
-    : existsSync(stage)
-      ? stage
-      : cam;
-  if (!existsSync(input)) throw new Error(`no media in take ${id}`);
+  // Preference: mic-clean.wav (denoised) → mic.wav (voice sidecar) →
+  // audio.wav (preprocessed) → stage.mov (system audio) → cam.mov (last resort).
+  const candidates = [join(dir, "mic-clean.wav"), join(dir, "mic.wav"), join(dir, "audio.wav"), stage, cam];
+  const input = candidates.find((p) => existsSync(p));
+  if (!input) throw new Error(`no media in take ${id}`);
 
   const out = join(dir, "transcript.json");
   const args = ["transcribe", input, "--model", model, "--output", out];

@@ -25,6 +25,15 @@ def run(cmd: list[str]) -> None:
     subprocess.run(cmd, check=True)
 
 
+def has_audio(path: Path) -> bool:
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
+         "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True,
+    )
+    return bool(out.stdout.strip())
+
+
 def probe_video(path: Path) -> dict:
     out = subprocess.check_output(
         [
@@ -184,6 +193,21 @@ def render_take(take_dir: Path, aspects: list[str] | None = None) -> dict:
         if has_cam:
             inputs += ["-i", str(cam)]
 
+        # Voice sidecar: mic-clean.wav (denoised) or mic.wav, recorded apart
+        # from stage.mov. Align by the capture.mic/capture.stage event offset,
+        # then mix over (quieter) system audio — or use as the only audio.
+        mic = take_dir / "mic-clean.wav"
+        if not mic.exists():
+            mic = take_dir / "mic.wav"
+        has_mic = mic.exists() and has_audio(mic)
+        mic_idx = None
+        if has_mic:
+            inputs += ["-i", str(mic)]
+            mic_idx = 2 if has_cam else 1
+        t_stage = next((float(e["t"]) for e in events if e.get("type") == "capture.stage"), 0.0)
+        t_mic = next((float(e["t"]) for e in events if e.get("type") == "capture.mic"), t_stage)
+        mic_delay_ms = int(max(0.0, t_mic - t_stage) * 1000)
+
         chain = "[0:v]"
         if trim_in > 0 or trim_out is not None:
             t = f"{chain}trim=start={trim_in}"
@@ -225,11 +249,22 @@ def render_take(take_dir: Path, aspects: list[str] | None = None) -> dict:
             )
             last = "[outv]"
 
+        audio_map = ["-map", "0:a?"]
+        if has_mic:
+            mic_leg = f"[{mic_idx}:a]adelay={mic_delay_ms}|{mic_delay_ms},loudnorm=I=-16:TP=-1.5[mica]"
+            if has_audio(stage):
+                parts.append(
+                    mic_leg + f";[0:a]volume=0.35[sysa];[sysa][mica]amix=inputs=2:duration=first:normalize=0[outa]"
+                )
+            else:
+                parts.append(mic_leg + ";[mica]anull[outa]")
+            audio_map = ["-map", "[outa]"]
+
         fc = ";".join(parts)
         out_path = out_dir / f"final-{aspect.replace(':', 'x')}.mp4"
         cmd = [
             "ffmpeg", "-y", "-loglevel", "error", *inputs,
-            "-filter_complex", fc, "-map", last, "-map", "0:a?",
+            "-filter_complex", fc, "-map", last, *audio_map,
             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(out_path),
         ]
         run(cmd)

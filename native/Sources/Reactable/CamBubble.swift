@@ -30,6 +30,7 @@ final class CamBubblePanel: NSWindow {
     private var recordingURL: URL?
     private var stopContinuation: CheckedContinuation<Void, Error>?
     private var mirrored = true
+    private var preferredUID: String?
     // Full 16:9 webcam view with rounded corners (not a circular bubble).
     private var camWidth: CGFloat = 320
     private var camHeight: CGFloat { (camWidth * 9 / 16).rounded() }
@@ -156,12 +157,34 @@ final class CamBubblePanel: NSWindow {
         setSize(camWidth + delta)
     }
 
+    /// Switch camera device by uniqueID (nil = system default). Restarts the
+    /// live session so the preview follows immediately.
+    func setDevice(uid: String?) {
+        preferredUID = uid
+        if session != nil {
+            stopCamera()
+            startCamera()
+        }
+    }
+
+    private func cameraDevice() -> AVCaptureDevice? {
+        if let uid = preferredUID {
+            let found = AVCaptureDevice.DiscoverySession(
+                deviceTypes: [.builtInWideAngleCamera, .external, .continuityCamera],
+                mediaType: .video,
+                position: .unspecified
+            ).devices.first { $0.uniqueID == uid }
+            if let found { return found }
+        }
+        return AVCaptureDevice.default(for: .video)
+    }
+
     private func startCamera() {
         guard session == nil else { return }
         AVCaptureDevice.requestAccess(for: .video) { _ in }
         let s = AVCaptureSession()
         s.sessionPreset = .high
-        guard let device = AVCaptureDevice.default(for: .video),
+        guard let device = cameraDevice(),
               let input = try? AVCaptureDeviceInput(device: device),
               s.canAddInput(input) else { return }
         s.addInput(input)

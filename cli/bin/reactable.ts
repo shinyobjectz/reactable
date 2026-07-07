@@ -56,6 +56,7 @@ import {
   writeWordCaptions,
   applyFillerCutsToEdit,
 } from "../lib/speech.ts";
+import { cleanVoice, installDeepFilter } from "../lib/voice.ts";
 import { ttsSpeak, ttsDoctor } from "../lib/tts.ts";
 import { agentChat, agentStatus, agentLlmProbe, createProject } from "../lib/agent.ts";
 import { getProject, listSurfaces, listResearch, addResearch } from "../lib/surface.ts";
@@ -108,6 +109,7 @@ Usage: reactable <command> [args]
 
   tools doctor [--json]         ffmpeg, hyperframes, reactable-tools sidecar
   tools install hyperframes     run npx hyperframes init (skills + CLI)
+  tools install deep-filter     DeepFilterNet3 voice denoiser → ~/.reactable/tools
   tools build                   build dist/reactable-tools (Rust)
 
   har capture <url> [--project] cache page refs under .reactable/har/
@@ -118,6 +120,7 @@ Usage: reactable <command> [args]
   edit remove-filler <id> [--aggressive]
   edit trim-silence <id>
   edit captions <id>              word-level WEBVTT from transcript
+  edit clean-voice <id> [--aggressive]  ML denoise mic → mic-clean.wav (DeepFilterNet3)
 
   tts speak --text "<script>" -o <wav> [--voice af_heart]
   tts doctor [--json]             moonshine + kokoro via Rust MLX sidecar
@@ -560,7 +563,16 @@ try {
     if (sub === "install" && third === "hyperframes") {
       process.exit(installHyperframesSkills() ? 0 : 1);
     }
-    console.error("tools: doctor | build | install hyperframes");
+    if (sub === "install" && third === "deep-filter") {
+      try {
+        console.log(`→ ${installDeepFilter()}`);
+        process.exit(0);
+      } catch (e) {
+        console.error(String(e));
+        process.exit(1);
+      }
+    }
+    console.error("tools: doctor | build | install hyperframes | install deep-filter");
     process.exit(1);
   }
 
@@ -624,6 +636,15 @@ try {
       try {
         const vtt = writeWordCaptions(third);
         console.log(`→ ${vtt}`);
+        process.exit(0);
+      } catch (e) {
+        console.error(String(e));
+        process.exit(1);
+      }
+    }
+    if (sub === "clean-voice" && third) {
+      try {
+        jsonOut(cleanVoice(third, { aggressive: Boolean(flags.aggressive) }));
         process.exit(0);
       } catch (e) {
         console.error(String(e));

@@ -68,6 +68,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         micMeter.stop()
         globalHotkeys?.stop()
         if takeRecorder?.isActive == true {
+            micMeter.endWriting()
             inputMonitor?.stop()
             inputMonitor = nil
             Task { _ = try? await takeRecorder?.stop(cam: cam) }
@@ -347,6 +348,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
 
     func bridgeRecordStop() {
         Task {
+            micMeter.endWriting()
             inputMonitor?.stop()
             inputMonitor = nil
             var savedDir: URL?
@@ -590,6 +592,12 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     // spoken take: the user re-recorded on a fresh launch and got no voice track.
     private func restoreCaptureToggles() {
         let d = UserDefaults.standard
+        if let micUID = d.string(forKey: "reactable.micDeviceUID") {
+            micMeter.setInputDevice(uid: micUID)
+        }
+        if let camUID = d.string(forKey: "reactable.camDeviceUID") {
+            cam?.setDevice(uid: camUID)
+        }
         if d.object(forKey: "reactable.micOn") != nil, d.bool(forKey: "reactable.micOn") {
             bridgeMicToggle(on: true)
         }
@@ -641,6 +649,20 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         state.systemAudioOn = on
         UserDefaults.standard.set(on, forKey: "reactable.systemAudioOn")
         syncBar()
+    }
+
+    func bridgeMicSourceSet(uid: String?) {
+        if let uid { UserDefaults.standard.set(uid, forKey: "reactable.micDeviceUID") }
+        else { UserDefaults.standard.removeObject(forKey: "reactable.micDeviceUID") }
+        micMeter.setInputDevice(uid: uid)
+        fputs("reactable: mic source → \(uid ?? "system default")\n", stderr)
+    }
+
+    func bridgeCamSourceSet(uid: String?) {
+        if let uid { UserDefaults.standard.set(uid, forKey: "reactable.camDeviceUID") }
+        else { UserDefaults.standard.removeObject(forKey: "reactable.camDeviceUID") }
+        cam?.setDevice(uid: uid)
+        fputs("reactable: cam source → \(uid ?? "system default")\n", stderr)
     }
 
     func bridgeSettingSet(key: String, value: Bool) {
@@ -777,7 +799,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                 state.elapsed = 0
                 if state.hideDockWhileRecording { NSApp.setActivationPolicy(.accessory) }
 
-                _ = try await takeRecorder.start(
+                let takeDir = try await takeRecorder.start(
                     sourceKind: state.sourceKind,
                     captureTargetId: state.captureTargetId,
                     areaRect: state.areaRect,
@@ -788,6 +810,18 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                     micOn: state.micOn,
                     systemAudioOn: state.systemAudioOn
                 )
+
+                // Voice track: mic.wav sidecar through the meter's engine —
+                // the only mic path that actually captures on this setup.
+                if state.micOn {
+                    if !micMeter.isRunning { micMeter.start() }
+                    if micMeter.beginWriting(to: takeDir.appending(path: "mic.wav")) {
+                        // t of this stamp = mic.wav's offset from take start, for post alignment
+                        takeRecorder.stamp("capture.mic", payload: ["file": "mic.wav"])
+                    } else {
+                        fputs("reactable: mic sidecar failed to arm — take has no voice track\n", stderr)
+                    }
+                }
 
                 inputMonitor = InputMonitor()
                 inputMonitor?.start { [weak self] type, payload in

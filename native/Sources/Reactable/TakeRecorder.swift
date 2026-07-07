@@ -65,7 +65,10 @@ final class TakeRecorder {
         ])
 
         let stageURL = dir.appending(path: "stage.mov")
-        let micID = micOn ? AVCaptureDevice.default(for: .audio)?.uniqueID : nil
+        // Mic goes to mic.wav via MicMeter (AppController arms it after start) —
+        // SCStream.captureMicrophone silently delivers nothing on this setup,
+        // so passing a device here produced takes with no voice track.
+        let micID: String? = nil
         do {
             nonisolated(unsafe) let recorder = stageRecorder
             let kind = target.kind
@@ -94,7 +97,7 @@ final class TakeRecorder {
                 log.stamp("capture.cam", payload: cam.frameJSON())
             }
 
-            try writeManifest(deck: deck, dir: dir, hasCam: camOn, sourceKind: sourceKind, target: target)
+            try writeManifest(deck: deck, dir: dir, hasCam: camOn, hasMic: micOn, sourceKind: sourceKind, target: target)
             try writeTakeWork(id: id, deck: deck, dir: dir, sourceKind: sourceKind, target: target)
             try writeDefaultEdit(dir: dir)
         } catch {
@@ -214,6 +217,7 @@ final class TakeRecorder {
         deck: String,
         dir: URL,
         hasCam: Bool,
+        hasMic: Bool,
         sourceKind: String,
         target: CaptureTarget
     ) throws {
@@ -222,6 +226,7 @@ final class TakeRecorder {
             "events": "events.jsonl",
         ]
         if hasCam { tracks["cam"] = "cam.mov" }
+        if hasMic { tracks["mic"] = "mic.wav" }
 
         var manifest: [String: Any] = [
             "id": takeId as Any,

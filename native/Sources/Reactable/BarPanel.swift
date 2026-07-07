@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import WebKit
 
 // 48px control row + 8px bottom zone for the mic meter strip (bar/index.work)
@@ -38,6 +39,14 @@ private final class BarMenuTarget: NSObject {
     }
     @objc func captureDeviceMenu(_ sender: NSMenuItem) {
         panel?.requestDevicesThen(includeIOS: true) { $0.showDeviceMenu(anchor: ["x": 120, "y": 0, "h": 32]) }
+    }
+
+    @objc func micSourcePicked(_ sender: NSMenuItem) {
+        panel?.pickMicSource(sender.representedObject as? String)
+    }
+
+    @objc func camSourcePicked(_ sender: NSMenuItem) {
+        panel?.pickCamSource(sender.representedObject as? String)
     }
 
     @objc func projectPicked(_ sender: NSMenuItem) {
@@ -241,6 +250,10 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
             bridge.bridgeCamMove(x: payload["x"] as? Double ?? 0, y: payload["y"] as? Double ?? 0)
         case "cam.resize":
             bridge.bridgeCamResize(size: payload["size"] as? Double ?? 160)
+        case "mic.sourceMenu":
+            showMicSourceMenu(anchor: payload)
+        case "cam.sourceMenu":
+            showCamSourceMenu(anchor: payload)
         case "mic.toggle":
             bridge.bridgeMicToggle(on: payload["on"] as? Bool ?? false)
         case "systemAudio.toggle":
@@ -518,6 +531,68 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
             menu.addItem(item)
         }
         menu.popUp(positioning: nil, at: point, in: webView)
+    }
+
+    fileprivate func pickMicSource(_ uid: String?) {
+        bridge?.bridgeMicSourceSet(uid: uid)
+    }
+
+    fileprivate func pickCamSource(_ uid: String?) {
+        bridge?.bridgeCamSourceSet(uid: uid)
+    }
+
+    /// Shared source-picker menu: "System default" + every device of the
+    /// given media type, checkmarking the persisted selection.
+    private func showSourceMenu(
+        anchor: [String: Any],
+        mediaType: AVMediaType,
+        deviceTypes: [AVCaptureDevice.DeviceType],
+        defaultsKey: String,
+        action: Selector
+    ) {
+        guard let webView, let point = menuPoint(from: anchor, in: webView) else { return }
+        let current = UserDefaults.standard.string(forKey: defaultsKey)
+        let menu = NSMenu()
+        let def = NSMenuItem(title: "System default", action: action, keyEquivalent: "")
+        def.target = menuTarget
+        def.representedObject = nil
+        def.state = current == nil ? .on : .off
+        menu.addItem(def)
+        menu.addItem(.separator())
+        let devices = AVCaptureDevice.DiscoverySession(
+            deviceTypes: deviceTypes, mediaType: mediaType, position: .unspecified
+        ).devices
+        if devices.isEmpty {
+            menu.addItem(withTitle: "No devices found", action: nil, keyEquivalent: "").isEnabled = false
+        }
+        for device in devices {
+            let item = NSMenuItem(title: device.localizedName, action: action, keyEquivalent: "")
+            item.target = menuTarget
+            item.representedObject = device.uniqueID
+            item.state = current == device.uniqueID ? .on : .off
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: point, in: webView)
+    }
+
+    fileprivate func showMicSourceMenu(anchor: [String: Any]) {
+        showSourceMenu(
+            anchor: anchor,
+            mediaType: .audio,
+            deviceTypes: [.microphone, .external],
+            defaultsKey: "reactable.micDeviceUID",
+            action: #selector(BarMenuTarget.micSourcePicked(_:))
+        )
+    }
+
+    fileprivate func showCamSourceMenu(anchor: [String: Any]) {
+        showSourceMenu(
+            anchor: anchor,
+            mediaType: .video,
+            deviceTypes: [.builtInWideAngleCamera, .external, .continuityCamera],
+            defaultsKey: "reactable.camDeviceUID",
+            action: #selector(BarMenuTarget.camSourcePicked(_:))
+        )
     }
 
     fileprivate func showDeviceMenu(anchor: [String: Any]) {
