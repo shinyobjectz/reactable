@@ -117,6 +117,7 @@ client :bar do
       $('cam').classList.toggle('on', !!state.camOn);
       $('mic').classList.toggle('on', !!state.micOn);
       $('sys').classList.toggle('on', state.systemAudioOn !== false);
+      $('agent').classList.toggle('on', !!state.agentVisible);
       $('timer').textContent = fmt(state.elapsed || 0);
       const rec = $('record');
       rec.classList.toggle('on', !!state.recording);

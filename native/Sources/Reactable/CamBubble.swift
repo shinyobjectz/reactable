@@ -30,11 +30,14 @@ final class CamBubblePanel: NSWindow {
     private var recordingURL: URL?
     private var stopContinuation: CheckedContinuation<Void, Error>?
     private var mirrored = true
-    private var bubbleSize: CGFloat = 160
+    // Full 16:9 webcam view with rounded corners (not a circular bubble).
+    private var camWidth: CGFloat = 320
+    private var camHeight: CGFloat { (camWidth * 9 / 16).rounded() }
+    private let cornerRadius: CGFloat = 16
 
     init() {
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 160, height: 160),
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 180),
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
@@ -68,7 +71,7 @@ final class CamBubblePanel: NSWindow {
     func positionDefault() {
         if let screen = NSScreen.main {
             let f = screen.visibleFrame
-            setFrameOrigin(NSPoint(x: f.maxX - bubbleSize - 24, y: f.minY + 24))
+            setFrameOrigin(NSPoint(x: f.maxX - camWidth - 24, y: f.minY + 24))
         }
     }
 
@@ -91,9 +94,10 @@ final class CamBubblePanel: NSWindow {
     }
 
     func setSize(_ size: CGFloat) {
-        bubbleSize = max(96, min(320, size))
+        // `size` is the width; height follows the 16:9 aspect.
+        camWidth = max(200, min(640, size))
         let origin = frame.origin
-        setFrame(NSRect(x: origin.x, y: origin.y, width: bubbleSize, height: bubbleSize), display: true)
+        setFrame(NSRect(x: origin.x, y: origin.y, width: camWidth, height: camHeight), display: true)
         updateMask()
     }
 
@@ -137,7 +141,7 @@ final class CamBubblePanel: NSWindow {
     }
 
     private func updateMask() {
-        previewView.layer?.cornerRadius = bubbleSize / 2
+        previewView.layer?.cornerRadius = cornerRadius
         previewView.layer?.masksToBounds = true
     }
 
@@ -149,7 +153,7 @@ final class CamBubblePanel: NSWindow {
     }
 
     private func resizeBy(delta: CGFloat) {
-        setSize(bubbleSize + delta)
+        setSize(camWidth + delta)
     }
 
     private func startCamera() {
@@ -175,7 +179,7 @@ final class CamBubblePanel: NSWindow {
 
     func frameJSON() -> [String: Any] {
         let f = frame
-        return ["x": f.origin.x, "y": f.origin.y, "size": bubbleSize]
+        return ["x": f.origin.x, "y": f.origin.y, "size": camWidth, "width": camWidth, "height": camHeight]
     }
 }
 
@@ -239,7 +243,9 @@ final class CamPreviewView: NSView {
         if resizeGrip.frame.contains(start) {
             onResize?(event.deltaY - event.deltaX)
         } else {
-            onDrag?(event.deltaX, event.deltaY)
+            // deltaY is positive when the mouse moves DOWN, but screen-y increases
+            // UPWARD — negate so the window follows the cursor instead of inverting.
+            onDrag?(event.deltaX, -event.deltaY)
         }
     }
 

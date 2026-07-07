@@ -9,7 +9,7 @@ export async function agentChat(message: string, opts: { deck?: string; history?
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       message,
-      deck: opts.deck ?? "demo",
+      deck: opts.deck ?? "showcase",
       history: opts.history ?? [],
       max_turns: opts.maxTurns ?? 6,
     }),

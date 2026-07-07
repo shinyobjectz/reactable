@@ -163,14 +163,14 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             try ProjectRegistry.ensureUserLayout(bundledProject: bundledProjectRoot)
             let last = ProjectRegistry.lastSelection(
                 defaultProject: ProjectRegistry.projectId(for: bundledProjectRoot),
-                defaultDeck: "demo"
+                defaultDeck: "showcase"
             )
             let discovered = ProjectRegistry.discover(extraBundled: bundledProjectRoot)
             if let pick = discovered.first(where: { $0.id == last.projectId }) ?? discovered.first {
                 activeProjectURL = pick.url
             }
             let decks = ProjectRegistry.decks(in: activeProjectURL)
-            state.deckSlug = decks.first(where: { $0.slug == last.deckSlug })?.slug ?? decks.first?.slug ?? "demo"
+            state.deckSlug = decks.first(where: { $0.slug == last.deckSlug })?.slug ?? decks.first?.slug ?? "showcase"
 
             let sc = NexusSidecar(nexusRoot: nexusRoot, projectRoot: activeProjectURL, port: port)
             try sc.start()
@@ -244,6 +244,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
 
     private func syncBar() {
         state.stageVisible = stage?.isVisible ?? false
+        state.agentVisible = agent?.isVisible ?? false
         bar?.pushState(state)
     }
 
@@ -388,7 +389,9 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
 
     func bridgeOpenAgent() {
         agent?.setDeck(state.deckSlug)
-        agent?.open()
+        agent?.toggle()
+        state.agentVisible = agent?.isVisible ?? false
+        syncBar()
     }
 
     func bridgeCreateProject(title: String) {
@@ -461,7 +464,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         let decks = ProjectRegistry.decks(in: activeProjectURL)
         state.decks = decks.map { ["slug": $0.slug, "title": $0.title] }
         if !decks.contains(where: { $0.slug == state.deckSlug }) {
-            state.deckSlug = decks.first?.slug ?? "demo"
+            state.deckSlug = decks.first?.slug ?? "showcase"
         }
         if let deck = decks.first(where: { $0.slug == state.deckSlug }) {
             state.deckTitle = deck.title

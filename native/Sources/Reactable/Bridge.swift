@@ -39,10 +39,11 @@ final class AppState {
     var captureTargetId: String?
     var areaRect: CGRect?
     var stageVisible = false
+    var agentVisible = false
     var projectId = "reactable"
     var projectName = "reactable"
-    var deckSlug = "demo"
-    var deckTitle = "demo"
+    var deckSlug = "showcase"
+    var deckTitle = "showcase"
     var projects: [[String: Any]] = []
     var decks: [[String: Any]] = []
     var camOn = false
@@ -66,6 +67,7 @@ final class AppState {
             "sourceKind": sourceKind,
             "captureTargetId": captureTargetId as Any,
             "stageVisible": stageVisible,
+            "agentVisible": agentVisible,
             "projectId": projectId,
             "projectName": projectName,
             "deckSlug": deckSlug,

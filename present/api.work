@@ -159,7 +159,7 @@ server :reactable_api do
   end
 
   def deck(req) do
-    slug = safe(req.query["slug"] || "demo")
+    slug = safe(req.query["slug"] || "showcase")
     path = Path.join([wb_data(), "decks", slug, "deck.work"])
     cond do
       slug == "" -> {400, %{ok: false, error: "slug required"}}
@@ -170,7 +170,7 @@ server :reactable_api do
 
   def exec_scripts(req) do
     body = body_map(req)
-    slug = safe(body["deck"] || req.query["deck"] || "demo")
+    slug = safe(body["deck"] || req.query["deck"] || "showcase")
     trigger = to_string(body["on"] || body["trigger"] || "")
     slide = body["slide"]
     script_id = body["id"] || body["script_id"]
@@ -203,7 +203,7 @@ server :reactable_api do
 
   def lab_file(req) do
     file = safe_file(req.params["file"])
-    slug = safe(req.query["deck"] || "demo")
+    slug = safe(req.query["deck"] || "showcase")
     path = Path.join([wb_data(), "decks", slug, "labs", file])
 
     cond do
@@ -1014,7 +1014,7 @@ server :reactable_api do
     body = body_map(req)
     message = to_string(body["message"] || "")
     history = body["history"] || []
-    deck = safe(body["deck"] || "demo")
+    deck = safe(body["deck"] || "showcase")
     max_turns = min(max_turns(body["max_turns"]), 8)
 
     cond do

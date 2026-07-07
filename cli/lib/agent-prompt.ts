@@ -16,7 +16,7 @@ function loadManifest() {
 }
 
 export function buildAgentPrompt(opts: PromptOpts = {}) {
-  const deck = opts.deck || "demo";
+  const deck = opts.deck || "showcase";
   const manifest = loadManifest();
   const pkg = manifest?.package ?? {};
   const related = (manifest?.relatedSkills as { name: string; install: string }[]) ?? [];

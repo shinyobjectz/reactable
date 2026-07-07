@@ -442,7 +442,7 @@ function cmdOpen(target: string, deck?: string) {
 }
 
 async function cmdStageOpen(deck?: string) {
-  const slug = deck || "demo";
+  const slug = deck || "showcase";
   const result = await stageOpen(slug);
   if (result.ok) {
     console.log(`stage open · deck=${slug} · visible=${result.live?.visible ?? true}`);
@@ -679,7 +679,7 @@ try {
         process.exit(1);
       }
       try {
-        const r = await agentChat(message, { deck: String(flags.deck || "demo") });
+        const r = await agentChat(message, { deck: String(flags.deck || "showcase") });
         if (flags.json) jsonOut(r);
         else console.log(r.reply ?? "");
         process.exit(0);
@@ -740,7 +740,7 @@ try {
   }
 
   if (cmd === "skills" && sub === "prompt") {
-    const deck = (flags.deck as string) || "demo";
+    const deck = (flags.deck as string) || "showcase";
     console.log(readAgentPrompt({ deck, projectRoot: PROJECT }));
     process.exit(0);
   }
@@ -814,7 +814,7 @@ try {
     if (sub === "status") process.exit(await cmdStageStatus(Boolean(flags.json)));
   }
 
-  if (cmd === "plan") process.exit(cmdPlan(sub || "demo"));
+  if (cmd === "plan") process.exit(cmdPlan(sub || "showcase"));
   if (cmd === "record") process.exit(cmdRecord());
 
   if (cmd === "auth") {

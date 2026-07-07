@@ -39,7 +39,7 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
 
     var captureWindow: NSWindow? { window?.isVisible == true ? window : nil }
 
-    init(port: Int, deck: String = "demo", bridge: ReactableBridgeDelegate? = nil) {
+    init(port: Int, deck: String = "showcase", bridge: ReactableBridgeDelegate? = nil) {
         self.port = port
         self.deckSlug = deck
         self.bridge = bridge
