@@ -63,9 +63,22 @@ final class MicMeter: @unchecked Sendable {
         )
     }
 
+    private var configObserver: NSObjectProtocol?
+
     func start() {
         guard !running else { return }
         AVCaptureDevice.requestAccess(for: .audio) { _ in }
+
+        // AVAudioEngine silently stops on audio-route/config changes (device
+        // switches, SCK audio streams starting/stopping churn CoreAudio) —
+        // without recovery the meter freezes and mic.wav ends after one buffer.
+        if configObserver == nil {
+            configObserver = NotificationCenter.default.addObserver(
+                forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+            ) { [weak self] _ in
+                self?.recoverFromConfigChange()
+            }
+        }
 
         applyPreferredDevice()
         let input = engine.inputNode
@@ -112,9 +125,42 @@ final class MicMeter: @unchecked Sendable {
         }
     }
 
+    private func recoverFromConfigChange() {
+        guard running else { return }
+        fputs("reactable: audio engine config change — restarting mic engine\n", stderr)
+        lock.lock()
+        let activeFile = file
+        file = nil
+        lock.unlock()
+
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+        running = false
+        start()
+
+        if let activeFile {
+            let fmt = engine.inputNode.inputFormat(forBus: 0)
+            if fmt.sampleRate == activeFile.fileFormat.sampleRate,
+               fmt.channelCount == activeFile.fileFormat.channelCount {
+                lock.lock()
+                file = activeFile
+                lock.unlock()
+            } else {
+                fputs("reactable: mic input format changed mid-take — voice sidecar stopped\n", stderr)
+            }
+        }
+    }
+
     /// Start appending tap buffers to a WAV sidecar. Requires the meter to be
     /// running (mic toggle on). Returns false if the file can't be created.
     func beginWriting(to url: URL) -> Bool {
+        // Self-heal: the engine can be silently stopped by a config change.
+        if running, !engine.isRunning {
+            fputs("reactable: mic engine was stopped — restarting before take\n", stderr)
+            engine.inputNode.removeTap(onBus: 0)
+            running = false
+            start()
+        }
         guard running else { return false }
         let format = engine.inputNode.inputFormat(forBus: 0)
         guard let f = try? AVAudioFile(forWriting: url, settings: format.settings) else {
