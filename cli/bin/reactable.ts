@@ -29,6 +29,7 @@ import {
   stageCommand,
   stageOpen,
   stageStatus,
+  stageSurface,
 } from "../lib/stage.ts";
 import {
   eventSummary,
@@ -148,6 +149,8 @@ Usage: reactable <command> [args]
   stage open [--deck <slug>]        open native stage (preview = record surface)
   stage hide                        hide native stage window
   stage load --deck <slug>          switch deck in stage
+  stage surface --kind <k> --ref <r> [--project <id>] [--title <t>]
+                                    open any Surface as a Stage tab (deck|web|doc|youtube)
   stage status [--json]             native stage heartbeat + pending commands
   auth login                        cloud account (reactable.app) — optional
   auth status [--json]
@@ -842,6 +845,17 @@ try {
     if (sub === "hide") process.exit(await cmdStageHide());
     if (sub === "load") process.exit(await cmdStageLoad(String(flags.deck || third || "")));
     if (sub === "status") process.exit(await cmdStageStatus(Boolean(flags.json)));
+    if (sub === "surface") {
+      const kind = String(flags.kind || "web");
+      const ref = String(flags.ref || third || "");
+      if (!ref) { console.error("stage surface --kind web --ref <url|slug|path> [--project <id>] [--title <t>]"); process.exit(1); }
+      const r = await stageSurface(kind, ref, {
+        project: flags.project ? String(flags.project) : undefined,
+        title: flags.title ? String(flags.title) : undefined,
+      });
+      jsonOut(r);
+      process.exit(r.ok ? 0 : 1);
+    }
   }
 
   if (cmd === "plan") process.exit(cmdPlan(sub || "showcase"));

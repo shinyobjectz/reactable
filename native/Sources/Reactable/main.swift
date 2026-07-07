@@ -877,6 +877,11 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         bridgeSelectDeck(slug: deck)
     }
 
+    func stageCommandSurface(kind: String, ref: String, project: String, title: String) {
+        if stage == nil || stage?.isVisible != true { openStage() }
+        stage?.openSurface(StageSurface(kind: kind, ref: ref, title: title, project: project))
+    }
+
     func stageLiveState() -> (deck: String, visible: Bool, projectId: String) {
         (deck: state.deckSlug, visible: stage?.isVisible ?? false, projectId: state.projectId)
     }

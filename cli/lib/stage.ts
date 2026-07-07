@@ -41,6 +41,15 @@ export async function stageCommand(action: "open" | "hide" | "load", deck?: stri
   });
 }
 
+/** Open any Surface as a Stage tab. kind ∈ deck|web|doc|youtube. */
+export async function stageSurface(kind: string, ref: string, opts: { project?: string; title?: string } = {}) {
+  return stageFetch("/reactable/stage", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action: "surface", kind, ref, project: opts.project ?? "", title: opts.title ?? ref }),
+  });
+}
+
 export function nativeBinaryPath() {
   return join(PROJECT, "native/.build/release/reactable");
 }

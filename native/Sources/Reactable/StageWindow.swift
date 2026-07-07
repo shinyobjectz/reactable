@@ -5,6 +5,16 @@ import WebKit
 // rounded frame). Visibility toggled from the bar Stage button; closing the bar
 // hides the stage.
 
+// A thing the Stage can show. kind ∈ deck | web | doc | youtube (mirrors the
+// nexus Surface model; extend as more viewers land).
+struct StageSurface: Equatable {
+    var kind: String
+    var ref: String
+    var title: String
+    var project: String
+    var key: String { "\(kind):\(ref)" }
+}
+
 @MainActor
 final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHandler {
     private let port: Int
@@ -13,9 +23,14 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
     private var window: NSWindow?
     private var webView: WKWebView?
     private var previewFrame: NSView?
+    private var tabBar: TabBarView?
     private var savedFrame: NSRect?
     private let defaultContent = NSSize(width: 1280, height: 720)
     var onEvent: ((String, [String: Any]) -> Void)?
+
+    // Open surfaces (tabs) + the active one.
+    private var surfaces: [StageSurface] = []
+    private var activeIndex = 0
 
     var captureWindow: NSWindow? { window?.isVisible == true ? window : nil }
 
@@ -25,11 +40,62 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         self.bridge = bridge
     }
 
+    /// Open (or focus) a surface as a tab and make it active.
+    func openSurface(_ s: StageSurface) {
+        if s.kind == "deck" { deckSlug = s.ref }
+        if let idx = surfaces.firstIndex(where: { $0.key == s.key }) {
+            activeIndex = idx
+        } else {
+            surfaces.append(s)
+            activeIndex = surfaces.count - 1
+        }
+        rebuildTabs()
+        loadActive()
+    }
+
+    func activateSurface(key: String) {
+        guard let idx = surfaces.firstIndex(where: { $0.key == key }) else { return }
+        activeIndex = idx
+        if surfaces[idx].kind == "deck" { deckSlug = surfaces[idx].ref }
+        rebuildTabs()
+        loadActive()
+    }
+
+    func closeSurface(key: String) {
+        guard let idx = surfaces.firstIndex(where: { $0.key == key }) else { return }
+        surfaces.remove(at: idx)
+        if surfaces.isEmpty { hide(); return }
+        activeIndex = min(activeIndex, surfaces.count - 1)
+        if let deck = surfaces[safe: activeIndex], deck.kind == "deck" { deckSlug = deck.ref }
+        rebuildTabs()
+        loadActive()
+    }
+
     func loadDeck(_ slug: String) {
-        deckSlug = slug
-        guard let webView else { return }
-        let url = URL(string: "http://127.0.0.1:\(port)/present?deck=\(slug.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? slug)")!
-        webView.load(URLRequest(url: url))
+        openSurface(StageSurface(kind: "deck", ref: slug, title: slug, project: ""))
+    }
+
+    private func loadActive() {
+        guard let webView, let s = surfaces[safe: activeIndex] else { return }
+        webView.load(URLRequest(url: url(for: s)))
+    }
+
+    private func url(for s: StageSurface) -> URL {
+        func enc(_ v: String) -> String { v.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? v }
+        let base = "http://127.0.0.1:\(port)"
+        switch s.kind {
+        case "deck":
+            return URL(string: "\(base)/present?deck=\(enc(s.ref))")!
+        default:
+            return URL(string: "\(base)/reactable/surface?kind=\(enc(s.kind))&ref=\(enc(s.ref))&project=\(enc(s.project))")!
+        }
+    }
+
+    private func rebuildTabs() {
+        // A single deck tab is the plain stage — no tab chrome needed.
+        let showTabs = surfaces.count > 1
+        let tabs = surfaces.map { TabBarView.Tab(key: $0.key, title: $0.title) }
+        tabBar?.setTabs(showTabs ? tabs : [], active: surfaces[safe: activeIndex]?.key)
     }
 
     func open() {
@@ -109,6 +175,13 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         dragStrip.translatesAutoresizingMaskIntoConstraints = false
         dragStrip.toolTip = "Drag to move stage"
 
+        let tabs = TabBarView()
+        tabs.translatesAutoresizingMaskIntoConstraints = false
+        tabs.onSelect = { [weak self] key in self?.activateSurface(key: key) }
+        tabs.onClose = { [weak self] key in self?.closeSurface(key: key) }
+        tabBar = tabs
+        dragStrip.addSubview(tabs)
+
         let preview = ContentFrameView()
         preview.translatesAutoresizingMaskIntoConstraints = false
         previewFrame = preview
@@ -134,6 +207,11 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
             dragStrip.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             dragStrip.heightAnchor.constraint(equalToConstant: Chrome.dragStripHeight),
 
+            tabs.leadingAnchor.constraint(equalTo: dragStrip.leadingAnchor),
+            tabs.topAnchor.constraint(equalTo: dragStrip.topAnchor),
+            tabs.bottomAnchor.constraint(equalTo: dragStrip.bottomAnchor),
+            tabs.trailingAnchor.constraint(lessThanOrEqualTo: dragStrip.trailingAnchor, constant: -80),
+
             preview.topAnchor.constraint(equalTo: dragStrip.bottomAnchor, constant: Chrome.gapBelowDrag),
             preview.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: Chrome.frameMargin),
             preview.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -Chrome.frameMargin),
@@ -149,8 +227,13 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         centerOnScreen(win, size: shell)
         savedFrame = win.frame
 
-        let url = URL(string: "http://127.0.0.1:\(port)/present?deck=\(deckSlug.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? deckSlug)")!
-        web.load(URLRequest(url: url))
+        // Seed with the active deck surface if none open yet.
+        if surfaces.isEmpty {
+            surfaces = [StageSurface(kind: "deck", ref: deckSlug, title: deckSlug, project: "")]
+            activeIndex = 0
+        }
+        rebuildTabs()
+        loadActive()
         showWindow(win)
     }
 

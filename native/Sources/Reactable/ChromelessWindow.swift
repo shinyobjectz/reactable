@@ -4,6 +4,13 @@ import AppKit
 // windows): a borderless window with a draggable header strip + a rounded
 // content frame — no titlebar / traffic lights. One look, one drag behavior.
 
+extension Array {
+    /// Bounds-checked access — nil instead of a crash for out-of-range indices.
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
+    }
+}
+
 enum Chrome {
     static let dragStripHeight: CGFloat = 28
     static let gapBelowDrag: CGFloat = 8
@@ -41,6 +48,86 @@ final class DragStripView: NSView {
         )
         NSColor(white: 1, alpha: 0.22).setFill()
         grip.fill()
+    }
+}
+
+/// Tab bar that lives on the leading edge of a DragStripView. Pills intercept
+/// clicks (select / close); the bare strip to their right stays draggable.
+@MainActor
+final class TabBarView: NSView {
+    struct Tab { let key: String; let title: String }
+    var onSelect: ((String) -> Void)?
+    var onClose: ((String) -> Void)?
+
+    private let stack = NSStackView()
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        stack.orientation = .horizontal
+        stack.spacing = 6
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func setTabs(_ tabs: [Tab], active: String?) {
+        stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        for t in tabs { stack.addArrangedSubview(pill(t, active: t.key == active)) }
+    }
+
+    private func pill(_ tab: Tab, active: Bool) -> NSView {
+        let pill = NSView()
+        pill.wantsLayer = true
+        pill.layer?.cornerRadius = 7
+        pill.layer?.backgroundColor = (active
+            ? NSColor(white: 1, alpha: 0.16)
+            : NSColor(white: 1, alpha: 0.06)).cgColor
+
+        let title = NSButton(title: shorten(tab.title), target: self, action: #selector(selectTab(_:)))
+        title.isBordered = false
+        title.bezelStyle = .inline
+        title.contentTintColor = active ? .white : NSColor(white: 0.75, alpha: 1)
+        title.font = .systemFont(ofSize: 11, weight: active ? .semibold : .regular)
+        title.identifier = NSUserInterfaceItemIdentifier(tab.key)
+        title.translatesAutoresizingMaskIntoConstraints = false
+
+        let close = NSButton(title: "✕", target: self, action: #selector(closeTab(_:)))
+        close.isBordered = false
+        close.bezelStyle = .inline
+        close.contentTintColor = NSColor(white: 0.6, alpha: 1)
+        close.font = .systemFont(ofSize: 9)
+        close.identifier = NSUserInterfaceItemIdentifier(tab.key)
+        close.translatesAutoresizingMaskIntoConstraints = false
+
+        pill.addSubview(title)
+        pill.addSubview(close)
+        NSLayoutConstraint.activate([
+            pill.heightAnchor.constraint(equalToConstant: 20),
+            title.leadingAnchor.constraint(equalTo: pill.leadingAnchor, constant: 9),
+            title.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
+            close.leadingAnchor.constraint(equalTo: title.trailingAnchor, constant: 3),
+            close.trailingAnchor.constraint(equalTo: pill.trailingAnchor, constant: -7),
+            close.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
+        ])
+        return pill
+    }
+
+    private func shorten(_ s: String) -> String {
+        s.count > 22 ? String(s.prefix(21)) + "…" : s
+    }
+
+    @objc private func selectTab(_ sender: NSButton) {
+        if let key = sender.identifier?.rawValue { onSelect?(key) }
+    }
+
+    @objc private func closeTab(_ sender: NSButton) {
+        if let key = sender.identifier?.rawValue { onClose?(key) }
     }
 }
 

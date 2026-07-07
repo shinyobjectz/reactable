@@ -5,6 +5,7 @@ protocol StageCommandDelegate: AnyObject {
     func stageCommandOpen(deck: String?)
     func stageCommandHide()
     func stageCommandLoad(deck: String)
+    func stageCommandSurface(kind: String, ref: String, project: String, title: String)
     func stageLiveState() -> (deck: String, visible: Bool, projectId: String)
 }
 
@@ -50,12 +51,13 @@ final class StageCommandPoller {
                   let id = cmd["id"] as? String,
                   let action = cmd["action"] as? String else { return }
             Task { @MainActor in
-                self?.handle(action: action, deck: cmd["deck"] as? String, id: id)
+                self?.handle(action: action, cmd: cmd, id: id)
             }
         }.resume()
     }
 
-    private func handle(action: String, deck: String?, id: String) {
+    private func handle(action: String, cmd: [String: Any], id: String) {
+        let deck = cmd["deck"] as? String
         switch action {
         case "open":
             delegate?.stageCommandOpen(deck: deck)
@@ -63,6 +65,17 @@ final class StageCommandPoller {
             delegate?.stageCommandHide()
         case "load":
             if let deck { delegate?.stageCommandLoad(deck: deck) }
+        case "surface":
+            let kind = cmd["kind"] as? String ?? "web"
+            let ref = cmd["ref"] as? String ?? ""
+            if !ref.isEmpty {
+                delegate?.stageCommandSurface(
+                    kind: kind,
+                    ref: ref,
+                    project: cmd["project"] as? String ?? "",
+                    title: cmd["title"] as? String ?? ref
+                )
+            }
         default:
             break
         }

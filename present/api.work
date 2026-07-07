@@ -13,6 +13,7 @@ server :reactable_api do
   route "POST /reactable/takes/:id/pipeline", :take_pipeline, auth: :public
   route "POST /reactable/exec", :exec_scripts, auth: :public
   route "GET /reactable/decks", :decks_list, auth: :public
+  route "GET /reactable/surface", :surface_view, auth: :public
   route "GET /reactable/labs/:file", :lab_file, auth: :public
   route "GET /reactable/stage", :stage_status, auth: :public
   route "GET /reactable/stage/poll", :stage_poll, auth: :public
@@ -215,6 +216,78 @@ server :reactable_api do
     end
   end
 
+  # Universal surface viewer — renders any non-deck Surface (doc/web/youtube)
+  # into a chromeless page the Stage's WKWebView loads. Decks keep their own
+  # /present route.
+  def surface_view(req) do
+    kind = safe(req.query["kind"] || "")
+    ref = to_string(req.query["ref"] || "")
+
+    case kind do
+      "doc" ->
+        root = project_root_for(safe(req.query["project"] || ""))
+        path = project_file(root, ref)
+
+        cond do
+          path == nil -> {404, "text/html", surface_page("<p class='err'>document outside project</p>")}
+          not File.regular?(path) -> {404, "text/html", surface_page("<p class='err'>not found: #{esc(ref)}</p>")}
+          true -> {200, "text/html", surface_page(prose_to_html(File.read!(path)))}
+        end
+
+      "web" ->
+        if String.starts_with?(ref, "http"),
+          do: {200, "text/html", surface_frame(ref)},
+          else: {400, "text/html", surface_page("<p class='err'>bad url</p>")}
+
+      "youtube" ->
+        id = String.replace(ref, ~r/[^A-Za-z0-9_-]/, "")
+        {200, "text/html", surface_frame("https://www.youtube.com/embed/#{id}")}
+
+      _ ->
+        {400, "text/html", surface_page("<p class='err'>unsupported surface: #{esc(kind)}</p>")}
+    end
+  end
+
+  defp project_root_for(""), do: wb_data()
+
+  defp project_root_for(id) do
+    Enum.find(discover_project_roots(), wb_data(), fn p -> Path.basename(p) == id end)
+  end
+
+  # Sandboxed project-relative file (no escape outside the project root).
+  defp project_file(root, rel) do
+    base = realpath(Path.expand(root))
+    path = realpath(Path.expand(Path.join(base, rel)))
+    if String.starts_with?(path, base <> "/") or path == base, do: path, else: nil
+  end
+
+  defp esc(s), do: s |> to_string() |> String.replace("<", "&lt;") |> String.replace(">", "&gt;")
+
+  defp surface_page(inner) do
+    """
+    <!doctype html><html><head><meta charset="utf-8">
+    <style>
+      html,body{margin:0;height:100%;background:#09090b;color:#e7e7ea;
+        font:16px/1.6 ui-sans-serif,system-ui,-apple-system,sans-serif}
+      .wrap{max-width:820px;margin:0 auto;padding:48px 40px}
+      .err{color:#fca5a5}
+      h1,h2,h3{color:#fafafa;letter-spacing:-.02em}
+      a{color:#a5b4fc} code{background:#18181b;padding:2px 6px;border-radius:6px}
+      pre{background:#141417;padding:14px 16px;border-radius:12px;overflow:auto}
+    </style></head><body><div class="wrap">#{inner}</div></body></html>
+    """
+  end
+
+  defp surface_frame(url) do
+    """
+    <!doctype html><html><head><meta charset="utf-8">
+    <style>html,body{margin:0;height:100%;background:#000;overflow:hidden}
+      iframe{border:0;width:100vw;height:100vh;display:block}</style>
+    </head><body><iframe src="#{url}" allow="autoplay; fullscreen; encrypted-media"
+      allowfullscreen></iframe></body></html>
+    """
+  end
+
   def stage_status(_req) do
     %{
       ok: true,
@@ -235,14 +308,19 @@ server :reactable_api do
     action = safe(to_string(body["action"] || ""))
 
     cond do
-      action not in ["open", "hide", "load"] ->
-        {400, %{ok: false, error: "action must be open, hide, or load"}}
+      action not in ["open", "hide", "load", "surface"] ->
+        {400, %{ok: false, error: "action must be open, hide, load, or surface"}}
 
       true ->
         cmd = %{
           "id" => Base.encode16(:crypto.strong_rand_bytes(8), case: :lower),
           "action" => action,
           "deck" => blank_to_nil(body["deck"]),
+          # Surface descriptor for the `surface` action (any Stage tab).
+          "kind" => blank_to_nil(body["kind"]),
+          "ref" => blank_to_nil(body["ref"]),
+          "project" => blank_to_nil(body["project"]),
+          "title" => blank_to_nil(body["title"]),
           "ts" => System.system_time(:second)
         }
 
