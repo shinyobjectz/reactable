@@ -252,6 +252,8 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
             bridge.bridgeCamResize(size: payload["size"] as? Double ?? 160)
         case "stage.manager":
             bridge.bridgeOpenStageManager()
+        case "projects.board":
+            bridge.bridgeOpenProjectsBoard()
         case "mic.sourceMenu":
             showMicSourceMenu(anchor: payload)
         case "cam.sourceMenu":

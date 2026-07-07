@@ -180,10 +180,7 @@ client :bar do
       if (!btn) return;
       if (btn.id === 'mode-stage') return send('stage.toggle');
       if (btn.id === 'stage-mgr') return send('stage.manager');
-      if (btn.id === 'picker') {
-        if (ev?.metaKey) return send('bar.menu.projects', anchor(btn));
-        return send('bar.menu.decks', anchor(btn));
-      }
+      if (btn.id === 'picker') return send('projects.board');
       if (btn.id === 'gear') return send('bar.menu.settings', anchor(btn));
       if (btn.id === 'agent') return send('agent.open');
       // Optimistic toggle — flip the icon immediately so it never lags behind

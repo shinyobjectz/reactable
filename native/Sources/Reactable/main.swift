@@ -7,6 +7,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     private var agent: AgentWindowController?
     private var palette: PaletteWindowController?
     private var stageManager: StageManagerPanel?
+    private var projectsBoard: ProjectsBoardPanel?
     private var cachedSlides: [[String: Any]] = []
     // The rundown: the deck of the video. Defaults to the current deck's
     // slides; the manager edits it; the DOCK ARROWS are the only navigation.
@@ -250,6 +251,11 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                 self?.applyDeckOrder(ids)
             }
             stageManager = mgr
+            let board = ProjectsBoardPanel(port: port)
+            board.dataProvider = { [weak self] in self?.projectsBoardData() ?? [:] }
+            board.onSelect = { [weak self] id in self?.bridgeSelectProject(id: id) }
+            board.onStage = { [weak self] id, stage in self?.setProjectStage(id: id, stage: stage) }
+            projectsBoard = board
             syncBar()
         } catch {
             fputs("reactable boot failed: \(error)\n", stderr)
@@ -694,6 +700,49 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         UserDefaults.standard.set(on, forKey: "reactable.systemAudioOn")
         syncBar()
         prewarmCapture()  // stream audio flag changed — warm stream is stale
+    }
+
+    func bridgeOpenProjectsBoard() {
+        projectsBoard?.toggle()
+    }
+
+    private var pipelineURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: "Reactable/pipeline.json")
+    }
+
+    /// Kanban state shared with the CLI: columns + per-project stage.
+    private func projectsBoardData() -> [String: Any] {
+        let projects = ProjectRegistry.discover(extraBundled: bundledProjectRoot)
+            .map { ["id": $0.id, "name": $0.name] }
+        var columns = ["idea", "recording", "editing", "done"]
+        var stages: [String: String] = [:]
+        if let data = try? Data(contentsOf: pipelineURL),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            columns = obj["columns"] as? [String] ?? columns
+            stages = obj["stages"] as? [String: String] ?? [:]
+        }
+        return [
+            "columns": columns,
+            "projects": projects,
+            "stages": stages,
+            "active": state.projectId,
+        ]
+    }
+
+    private func setProjectStage(id: String, stage: String) {
+        var obj: [String: Any] = ["columns": ["idea", "recording", "editing", "done"], "stages": [:]]
+        if let data = try? Data(contentsOf: pipelineURL),
+           let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            obj = parsed
+        }
+        var stages = obj["stages"] as? [String: String] ?? [:]
+        stages[id] = stage
+        obj["stages"] = stages
+        if let data = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted]) {
+            try? data.write(to: pipelineURL)
+        }
+        fputs("reactable: project \(id) → \(stage)\n", stderr)
     }
 
     func bridgeOpenStageManager() {

@@ -128,6 +128,8 @@ Usage: reactable <command> [args]
   agent chat "<message>" [--deck demo] [--json]
   agent status [--json]           local Gemma MLX via reactable-tools
   projects new "<title>" [--slug]   scaffold under ~/Reactable/projects/
+  projects board [--json]           pipeline kanban (shared with the app)
+  projects stage <id> <column>      move a project through the pipeline
   project [<id>] [--json]           project aggregate: research · decks · takes · surfaces
   surfaces [--project <id>] [--json]  flat Surface list (all projects if unscoped)
   research list [--project <id>] [--json]
@@ -780,6 +782,38 @@ try {
       console.error(String(e));
       process.exit(1);
     }
+  }
+
+  if (cmd === "projects" && (sub === "board" || sub === "stage")) {
+    const { homedir } = await import("node:os");
+    const file = join(homedir(), "Reactable", "pipeline.json");
+    const board = existsSync(file)
+      ? JSON.parse(readFileSync(file, "utf8"))
+      : { columns: ["idea", "recording", "editing", "done"], stages: {} };
+    if (sub === "board") {
+      if (flags.json) jsonOut(board);
+      else {
+        for (const col of board.columns) {
+          const ids = Object.entries(board.stages)
+            .filter(([, st]) => st === col)
+            .map(([id]) => id);
+          console.log(`${col.toUpperCase().padEnd(12)} ${ids.join(", ")}`);
+        }
+      }
+      process.exit(0);
+    }
+    // projects stage <id> <column>
+    const id = third;
+    const stage = fourth;
+    if (!id || !stage) {
+      console.error("projects stage <project-id> <column>");
+      process.exit(1);
+    }
+    if (!board.columns.includes(stage)) board.columns.push(stage);
+    board.stages[id] = stage;
+    writeFileSync(file, JSON.stringify(board, null, 2) + "\n");
+    console.log(`${id} → ${stage}`);
+    process.exit(0);
   }
 
   if (cmd === "projects" && sub === "new") {

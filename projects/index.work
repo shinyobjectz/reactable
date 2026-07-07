@@ -1,0 +1,77 @@
+# Projects board — pipeline kanban
+
+Every registered Reactable project as a card, staged through the production
+pipeline. Click a card to switch projects; drag between columns to restage.
+Same state as `reactable projects board` (CLI) via ~/Reactable/pipeline.json.
+
+client :projects do
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    html, body { height: 100%; background: transparent; font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; color: #ececf0; -webkit-font-smoothing: antialiased; user-select: none; }
+    .shell { display: flex; flex-direction: column; height: 100%; background: rgba(20,20,24,.96); border: 1px solid rgba(255,255,255,.1); border-radius: 14px; overflow: hidden; backdrop-filter: blur(24px); }
+    .top { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,.08); }
+    .top h2 { font: 600 13px ui-sans-serif, system-ui; letter-spacing: .02em; flex: 1; }
+    .top #close { width: 32px; height: 32px; border: 0; border-radius: 8px; background: rgba(255,255,255,.06); color: #9a9aa2; cursor: pointer; font: inherit; }
+    .top #close:hover { background: rgba(255,255,255,.13); color: #fff; }
+    .board { display: flex; flex: 1; gap: 10px; padding: 12px; min-height: 0; overflow-x: auto; }
+    .colm { flex: 1; min-width: 180px; display: flex; flex-direction: column; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06); border-radius: 10px; }
+    .colm h3 { font: 600 10px/1 ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; color: #8a8a94; padding: 10px 12px 8px; }
+    .cards { flex: 1; overflow-y: auto; padding: 0 8px 8px; display: flex; flex-direction: column; gap: 6px; }
+    .card { padding: 10px 11px; border-radius: 9px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.07); cursor: grab; }
+    .card:hover { background: rgba(255,255,255,.1); }
+    .card.dragging { opacity: .35; }
+    .card.active { outline: 1px solid rgba(129,140,248,.6); background: rgba(99,102,241,.14); }
+    .card .name { font-weight: 600; margin-bottom: 2px; }
+    .card .sub { color: #77777f; font-size: 11px; }
+  </style>
+  <div class="shell">
+    <div class="top"><h2>Projects</h2><button id="close" title="Close">✕</button></div>
+    <div class="board" id="board"></div>
+  </div>
+  <script>
+    const send = (action, payload = {}) =>
+      window.webkit?.messageHandlers?.reactable?.postMessage({ action, payload });
+    let data = { columns: ['idea', 'recording', 'editing', 'done'], projects: [], stages: {}, active: '' };
+
+    function render() {
+      const board = document.getElementById('board');
+      board.innerHTML = '';
+      for (const col of data.columns) {
+        const colm = document.createElement('div');
+        colm.className = 'colm';
+        colm.dataset.col = col;
+        colm.innerHTML = `<h3>${col}</h3><div class="cards"></div>`;
+        const cards = colm.querySelector('.cards');
+        cards.ondragover = (e) => {
+          e.preventDefault();
+          const dragging = document.querySelector('.card.dragging');
+          if (dragging && dragging.parentElement !== cards) cards.appendChild(dragging);
+        };
+        for (const p of data.projects) {
+          const stage = data.stages[p.id] || data.columns[0];
+          if (stage !== col) continue;
+          const card = document.createElement('div');
+          card.className = 'card' + (p.id === data.active ? ' active' : '');
+          card.draggable = true;
+          card.dataset.id = p.id;
+          card.innerHTML = `<div class="name">${p.name}</div><div class="sub">${p.id}</div>`;
+          card.onclick = () => send('projects.select', { id: p.id });
+          card.addEventListener('dragstart', () => card.classList.add('dragging'));
+          card.addEventListener('dragend', () => {
+            card.classList.remove('dragging');
+            const col = card.closest('.colm')?.dataset.col;
+            if (col) { data.stages[p.id] = col; send('projects.stage', { id: p.id, stage: col }); }
+            render();
+          });
+          cards.appendChild(card);
+        }
+        board.appendChild(colm);
+      }
+    }
+    document.getElementById('close').onclick = () => send('projects.close');
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') send('projects.close'); });
+    send('projects.ready');
+    window.ReactableProjects = { setData(d) { data = { ...data, ...d }; render(); } };
+    render();
+  </script>
+end
