@@ -119,6 +119,28 @@ pub fn chat(input: &str, output: Option<&str>, model: Option<&str>) -> i32 {
 /// Offline status — never loads the model, never touches the network
 /// (server probe is localhost only).
 pub fn status() -> i32 {
+    // Cloud provider (MiniMax) counts as a ready agent — the panel must not
+    // gate on a local model that this machine will never use.
+    if !provider_forced_local() {
+        if minimax_key().is_some() {
+            let cfg: serde_json::Value = fs::read_to_string(reactable_dir().join("minimax.json"))
+                .ok()
+                .and_then(|t| serde_json::from_str(&t).ok())
+                .unwrap_or(serde_json::json!({}));
+            let model = cfg["model"].as_str().unwrap_or("MiniMax-M3").to_string();
+            let report = serde_json::json!({
+                "ok": true,
+                "state": "server-ready",
+                "engine": format!("minimax/{model}"),
+                "model": model,
+                "any_model": true,
+                "backend": "minimax",
+                "provider": "minimax",
+            });
+            println!("{}", serde_json::to_string(&report).unwrap_or_default());
+            return 0;
+        }
+    }
     let model = agent_llm::default_model();
     let port = agent_llm::server_port();
     let uv = agent_llm::find_uv().is_some();
