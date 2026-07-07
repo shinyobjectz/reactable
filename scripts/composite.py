@@ -34,6 +34,18 @@ def has_audio(path: Path) -> bool:
     return bool(out.stdout.strip())
 
 
+def audio_duration(path: Path) -> float:
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True,
+    )
+    try:
+        return float(out.stdout.strip())
+    except ValueError:
+        return 0.0
+
+
 def probe_video(path: Path) -> dict:
     out = subprocess.check_output(
         [
@@ -227,7 +239,8 @@ def render_take(take_dir: Path, aspects: list[str] | None = None) -> dict:
         mic = take_dir / "mic-clean.wav"
         if not mic.exists():
             mic = take_dir / "mic.wav"
-        has_mic = mic.exists() and has_audio(mic)
+        # A truncated sidecar (engine died) must not replace real audio.
+        has_mic = mic.exists() and has_audio(mic) and audio_duration(mic) > 1.0
         mic_idx = None
         if has_mic:
             inputs += ["-i", str(mic)]
