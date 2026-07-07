@@ -6,6 +6,36 @@ import AppKit
 final class ResizeCornersView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        alphaValue = 0
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        ))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.15
+            animator().alphaValue = 1
+        }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.25
+            animator().alphaValue = 0
+        }
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         let inset: CGFloat = 5
         let leg: CGFloat = 13

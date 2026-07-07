@@ -42,12 +42,17 @@ final class DragStripView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         NSColor(white: 0.12, alpha: 0.92).setFill()
         dirtyRect.fill()
-        let grip = NSBezierPath(
-            roundedRect: NSRect(x: bounds.midX - 18, y: bounds.midY - 2, width: 36, height: 4),
-            xRadius: 2, yRadius: 2
-        )
-        NSColor(white: 1, alpha: 0.22).setFill()
-        grip.fill()
+        // Horizontal six-dot grip — same handle language as the bar's drag grip.
+        NSColor(white: 1, alpha: 0.26).setFill()
+        let r: CGFloat = 1.4
+        let dx: CGFloat = 6, dy: CGFloat = 5
+        for col in -1...1 {
+            for row in 0...1 {
+                let x = bounds.midX + CGFloat(col) * dx - r
+                let y = bounds.midY + (CGFloat(row) - 0.5) * dy - r
+                NSBezierPath(ovalIn: NSRect(x: x, y: y, width: r * 2, height: r * 2)).fill()
+            }
+        }
     }
 }
 

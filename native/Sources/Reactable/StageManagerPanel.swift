@@ -72,8 +72,7 @@ final class StageManagerPanel: NSObject, NSWindowDelegate, WKScriptMessageHandle
         web.autoresizingMask = [.width, .height]
         web.setValue(false, forKey: "drawsBackground")
         webView = web
-        win.contentView = web
-        ResizeCornersView.attach(to: web)
+        PanelChrome.install(in: win, content: web)
         web.load(URLRequest(url: URL(string: "http://127.0.0.1:\(port)/manager")!))
         window = win
     }
