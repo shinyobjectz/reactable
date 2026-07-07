@@ -746,6 +746,11 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                     return
                 }
 
+                // Re-check under the actual recorder: a double-press spawns two of
+                // these tasks and both pass the sync guard before either sets
+                // state.recording. The loser must bail here, not start-and-throw.
+                guard !state.recording, takeRecorder.isActive == false else { return }
+
                 if state.hideDesktopIcons { setDesktopIconsVisible(false) }
                 DeckScripts.fire(port: port, deck: state.deckSlug, trigger: "record.start")
                 state.recording = true
@@ -780,6 +785,13 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                 }
                 syncBar()
             } catch {
+                // If a take is live (this task lost a start race), leave the
+                // recording state alone — resetting it here made the bar show
+                // idle while a take rolled, so the button could never stop it.
+                if takeRecorder.isActive {
+                    fputs("reactable: record start skipped — take already live (\(error))\n", stderr)
+                    return
+                }
                 inputMonitor?.stop()
                 inputMonitor = nil
                 state.recording = false

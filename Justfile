@@ -31,7 +31,7 @@ p0:
 dev: app
     #!/usr/bin/env bash
     set -euo pipefail
-    open "$HOME/Applications/Reactable.app"
+    open "/Applications/Reactable.app"
 
 build:
     cd "{{native}}" && swift build -c release
@@ -102,12 +102,16 @@ app: build
         sleep 0.3
       fi
     fi
-    rm -rf "$DEST"
-    cp -R "$APP" "$DEST"
-    # Register the installed copy and unregister the dist staging copy, so
-    # LaunchServices/TCC only ever resolve one Reactable.app.
+    # /Applications/Reactable.app is a SYMLINK to the dist staging bundle —
+    # one physical app, so the installed copy can never drift from the last
+    # build. Dev ID signing keeps TCC grants stable across rebuilds.
+    if [ ! -L "$DEST" ] || [ "$(readlink "$DEST")" != "$APP" ]; then
+      rm -rf "$DEST"
+      ln -s "$APP" "$DEST"
+      echo "→ $DEST → $APP (symlinked)"
+    fi
     LSREG=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
-    [ -x "$LSREG" ] && { "$LSREG" -u "$APP" 2>/dev/null || true; "$LSREG" -f "$DEST" 2>/dev/null || true; }
+    [ -x "$LSREG" ] && "$LSREG" -f "$DEST" 2>/dev/null || true
     echo "→ $DEST (replaced)"
     echo "→ $APP"
 
