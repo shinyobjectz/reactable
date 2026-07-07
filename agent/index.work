@@ -271,6 +271,7 @@ client :agent do
     .tier-meta { font: 11px ui-monospace, monospace; color: #71717a; }
     .tier-actions { display: flex; gap: 8px; margin-top: 4px; }
     .tier-actions .btn { height: 30px; padding: 0 14px; }
+  </style>
   <div class="app">
     <header>
       <div class="header-row">
