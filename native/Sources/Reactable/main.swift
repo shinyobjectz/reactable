@@ -202,6 +202,21 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             }
             restoreCaptureToggles()
             installHotkeys()
+            // Stage resizes invalidate the (fixed-dimension) warm capture
+            // stream; while recording the size is locked, so this only fires
+            // when idle — re-prewarm with the new geometry.
+            NotificationCenter.default.addObserver(
+                forName: NSWindow.didEndLiveResizeNotification, object: nil, queue: .main
+            ) { [weak self] note in
+                let resized = (note.object as? NSWindow).map(ObjectIdentifier.init)
+                Task { @MainActor in
+                    guard let self, let resized,
+                          let stageWindow = self.stage?.captureWindow,
+                          resized == ObjectIdentifier(stageWindow),
+                          !self.state.recording else { return }
+                    self.prewarmCapture()
+                }
+            }
             showBar()
             stagePoller = StageCommandPoller(port: port, delegate: self)
             stagePoller?.start()
@@ -278,8 +293,9 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     // MARK: - ReactableBridgeDelegate
 
     func bridgeRecordStart(countdown: Int) {
-        guard !state.recording else { return }
-        if countdown > 0 { syncBar() }
+        guard !state.recording, !state.arming else { return }
+        state.arming = true
+        syncBar()
         // Prep (stage open, permission preflights) runs DURING the countdown,
         // not after it — capture starts at the countdown's end, not 1-2s later.
         beginRecording(countdown: countdown)
@@ -356,9 +372,11 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             }
             state.recording = false
             state.paused = false
+            state.arming = false
             state.elapsed = 0
             recordTimer?.invalidate()
             recordTimer = nil
+            stage?.captureWindow?.styleMask.insert(.resizable)
             if state.hideDesktopIcons { setDesktopIconsVisible(true) }
             if state.hideDockWhileRecording { NSApp.setActivationPolicy(.regular) }
             syncBar()
@@ -799,13 +817,21 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                 // Re-check under the actual recorder: a double-press spawns two of
                 // these tasks and both pass the sync guard before either sets
                 // state.recording. The loser must bail here, not start-and-throw.
-                guard !state.recording, takeRecorder.isActive == false else { return }
+                guard !state.recording, takeRecorder.isActive == false else {
+                    state.arming = false
+                    syncBar()
+                    return
+                }
 
                 if state.hideDesktopIcons { setDesktopIconsVisible(false) }
                 DeckScripts.fire(port: port, deck: state.deckSlug, trigger: "record.start")
                 state.recording = true
+                state.arming = false
                 state.paused = false
                 state.elapsed = 0
+                // Lock the stage size while recording — a mid-take resize
+                // stretches the fixed-dimension SCK stream (broken aspect).
+                stage?.captureWindow?.styleMask.remove(.resizable)
                 if state.hideDockWhileRecording { NSApp.setActivationPolicy(.accessory) }
 
                 let takeDir = try await takeRecorder.start(
@@ -813,6 +839,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                     captureTargetId: state.captureTargetId,
                     areaRect: state.areaRect,
                     stageWindow: stage?.captureWindow,
+                    stageContentRect: state.sourceKind == "stage" ? stage?.deckContentRect : nil,
                     deck: state.deckSlug,
                     cam: cam,
                     camOn: state.camOn,
@@ -879,6 +906,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     private func presentRecordError(_ title: String, _ info: String) {
         state.recording = false
         state.paused = false
+        state.arming = false
         syncBar()
         let alert = NSAlert()
         alert.alertStyle = .warning
@@ -892,6 +920,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     private func presentPermissionError(_ title: String, _ info: String, pane: String) {
         state.recording = false
         state.paused = false
+        state.arming = false
         syncBar()
         let alert = NSAlert()
         alert.alertStyle = .warning
@@ -911,6 +940,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     private func presentScreenPermissionNeeded() {
         state.recording = false
         state.paused = false
+        state.arming = false
         syncBar()
         let alert = NSAlert()
         alert.alertStyle = .warning
@@ -1037,6 +1067,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                 captureTargetId: targetId,
                 areaRect: areaRect,
                 stageWindow: stageWindow,
+                stageContentRect: sourceKind == "stage" ? self.stage?.deckContentRect : nil,
                 systemAudioOn: systemAudioOn
             )
         }

@@ -55,9 +55,11 @@ export function scaffoldHyperframes(id: string, root?: string) {
       ? "mic.wav"
       : null;
 
+  // Marker times shift onto the stage-file clock (slide events are take-clock;
+  // stage.mov's first frame is tStage on that clock).
   const markers = slides
     .map((s: { t?: number; id?: string; idx?: number }) => ({
-      t: s.t,
+      t: s.t != null ? Math.max(0, s.t - tStage) : s.t,
       id: s.id,
       idx: s.idx,
     }))
@@ -72,6 +74,26 @@ export function scaffoldHyperframes(id: string, root?: string) {
       words = JSON.parse(readFileSync(transcriptPath, "utf8")).words ?? [];
     } catch {}
   }
+
+  // Cursor track + clicks, normalized 0..1 within the captured region via
+  // capture_window (global points → capture-relative), on the stage clock.
+  const win = (manifest as Record<string, any>).capture_window;
+  const normPoint = (x: number, y: number) =>
+    win
+      ? { x: (x - win.x) / win.w, y: (y - win.yTop) / win.h }
+      : { x: 0.5, y: 0.5 };
+  const cursorTrack: { t: number; x: number; y: number }[] = [];
+  const clickTrack: { t: number; x: number; y: number }[] = [];
+  for (const e of events as { type?: string; t?: number; x?: number; y?: number }[]) {
+    if (e.t == null || e.x == null || e.y == null) continue;
+    const t = Math.max(0, e.t - tStage);
+    if (e.type === "cursor") cursorTrack.push({ t, ...normPoint(e.x, e.y) });
+    if (e.type === "click") clickTrack.push({ t, ...normPoint(e.x, e.y) });
+  }
+  // Keep the composition light — ~10 cursor samples/sec is smooth with tweens.
+  const cursor = cursorTrack.filter(
+    (s, i, arr) => i === 0 || s.t - arr[i - 1].t >= 0.1,
+  );
 
   writeFileSync(
     join(out, "reactable-events.json"),
@@ -115,6 +137,13 @@ export function scaffoldHyperframes(id: string, root?: string) {
     .caption { position: absolute; left: 50%; bottom: 7%; transform: translateX(-50%);
       font: 600 28px/1.2 ui-sans-serif, system-ui, sans-serif; color: #fff;
       text-shadow: 0 2px 12px rgba(0,0,0,.8); }
+    /* Screen-Studio-style cursor: soft halo that follows the recorded cursor. */
+    #cursor { position: absolute; width: 28px; height: 28px; margin: -14px 0 0 -14px;
+      border-radius: 50%; background: rgba(255,255,255,.25);
+      border: 2px solid rgba(255,255,255,.85); box-shadow: 0 2px 14px rgba(0,0,0,.5);
+      pointer-events: none; opacity: 0; }
+    .ripple { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px;
+      border-radius: 50%; border: 2px solid #fff; pointer-events: none; }
   </style>
 </head>
 <body>
@@ -129,14 +158,17 @@ export function scaffoldHyperframes(id: string, root?: string) {
         }
         <div class="marker" id="slide-marker" data-start="0">slide —</div>
         <div class="caption" id="caption" data-start="0"></div>
+        <div id="cursor"></div>
       </div>
     </section>
   </div>
   <script>
-    // markers/words are STAGE-clock times; cam/mic elements carry their sync
-    // offsets in data-start (from events.jsonl first-media anchors).
+    // markers/words/cursor are STAGE-clock times; cam/mic elements carry their
+    // sync offsets in data-start (from events.jsonl first-media anchors).
     const markers = ${JSON.stringify(markers)};
     const words = ${JSON.stringify(words)};
+    const cursor = ${JSON.stringify(cursor)};
+    const clicks = ${JSON.stringify(clickTrack)};
     const tl = gsap.timeline({ paused: true });
     const label = document.getElementById('slide-marker');
     markers.forEach((m) => {
@@ -147,7 +179,36 @@ export function scaffoldHyperframes(id: string, root?: string) {
       tl.call(() => { cap.textContent = w.word; }, null, w.start);
       tl.call(() => { if (cap.textContent === w.word) cap.textContent = ''; }, null, w.end);
     });
-    window.__reactableHF = { markers, words, timeline: tl };
+    // Superimposed cursor: tween through the recorded track (normalized 0..1
+    // within the captured deck region).
+    const cur = document.getElementById('cursor');
+    const scene = document.querySelector('.scene-content');
+    if (cursor.length) {
+      tl.set(cur, { opacity: 1 }, cursor[0].t);
+      cursor.forEach((s, i) => {
+        const prev = cursor[i - 1];
+        tl.to(cur, {
+          left: (s.x * 100) + '%',
+          top: (s.y * 100) + '%',
+          duration: prev ? Math.max(0.01, s.t - prev.t) : 0.01,
+          ease: 'power1.out',
+        }, prev ? prev.t : s.t);
+      });
+    }
+    clicks.forEach((c) => {
+      tl.call(() => {
+        const r = document.createElement('span');
+        r.className = 'ripple';
+        r.style.left = (c.x * 100) + '%';
+        r.style.top = (c.y * 100) + '%';
+        scene.appendChild(r);
+        gsap.fromTo(r, { scale: 0.6, opacity: 0.9 }, {
+          scale: 3.2, opacity: 0, duration: 0.55, ease: 'power2.out',
+          onComplete: () => r.remove(),
+        });
+      }, null, c.t);
+    });
+    window.__reactableHF = { markers, words, cursor, clicks, timeline: tl };
   </script>
 </body>
 </html>`;

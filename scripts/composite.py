@@ -64,9 +64,15 @@ def load_events(path: Path) -> list[dict]:
     return out
 
 
-def norm_click(ev: dict, vw: int, vh: int) -> tuple[float, float]:
+def norm_click(ev: dict, vw: int, vh: int, win: dict | None = None) -> tuple[float, float]:
     x, y = float(ev.get("x", vw / 2)), float(ev.get("y", vh / 2))
-    if x > vw or y > vh:
+    if win:
+        # Input events are GLOBAL screen points (CGEvent, top-left origin);
+        # capture_window maps them onto stage.mov pixels.
+        s = float(win.get("scale", 2))
+        x = (x - float(win.get("x", 0))) * s
+        y = (y - float(win.get("yTop", 0))) * s
+    elif x > vw or y > vh:
         x = x * vw / 1920.0
         y = vh - (y * vh / 1080.0)
     return max(0, min(vw, x)), max(0, min(vh, y))
@@ -100,7 +106,7 @@ def zoom_exprs(clicks: list[tuple[float, float, float]], vw: int, vh: int, scale
     )
 
 
-def write_captions(events: list[dict], out: Path) -> None:
+def write_captions(events: list[dict], out: Path, t_stage: float = 0.0) -> None:
     transcript = out.parent.parent / "transcript.json"
     if transcript.exists():
         write_word_captions(transcript, out)
@@ -108,8 +114,9 @@ def write_captions(events: list[dict], out: Path) -> None:
     slides = [e for e in events if e.get("type") == "slide"]
     lines = []
     for i, ev in enumerate(slides):
-        start = float(ev.get("t", 0))
-        end = float(slides[i + 1]["t"]) if i + 1 < len(slides) else start + 3
+        # slide events are take-clock; captions run on the stage-file clock
+        start = max(0.0, float(ev.get("t", 0)) - t_stage)
+        end = max(0.0, float(slides[i + 1]["t"]) - t_stage) if i + 1 < len(slides) else start + 3
         idx = int(ev.get("idx", i))
         sid = ev.get("id", f"slide-{idx}")
         lines += [str(i + 1), f"{fmt_srt(start)} --> {fmt_srt(end)}", f"Slide {idx + 1}: {sid}", ""]
@@ -163,17 +170,35 @@ def render_take(take_dir: Path, aspects: list[str] | None = None) -> dict:
     cam_cfg = edit.get("cam", {})
     style = edit.get("style", {})
 
+    # Track sync anchors (take clock): each track's actual first media time.
+    def track_t(*names, default=None):
+        for e in events:
+            if e.get("type") in names:
+                return float(e["t"])
+        return default
+
+    t_stage = track_t("capture.stage", default=0.0)
+    t_cam = track_t("capture.cam.start", default=t_stage)
+    t_mic = track_t("capture.mic.start", "capture.mic", default=t_stage)
+
+    # Window geometry for global-point → stage-pixel input mapping.
+    manifest = load_json(take_dir / "manifest.json", {})
+    capture_window = manifest.get("capture_window") or next(
+        (e.get("window") for e in events if e.get("type") == "capture.stage" and e.get("window")), None
+    )
+
     clicks = []
     if zoom_cfg.get("enabled", True):
         for ev in events:
             if ev.get("type") == "click":
-                cx, cy = norm_click(ev, vw, vh)
-                clicks.append((float(ev["t"]), cx, cy))
+                cx, cy = norm_click(ev, vw, vh, capture_window)
+                # click t is take-clock; zoompan indexes stage-file frames
+                clicks.append((max(0.0, float(ev["t"]) - t_stage), cx, cy))
 
     out_dir = take_dir / "out"
     out_dir.mkdir(exist_ok=True)
     captions = out_dir / "captions.srt"
-    write_captions(events, captions)
+    write_captions(events, captions, t_stage)
 
     aspects = aspects or ["16:9", "9:16", "1:1"]
     outputs: dict[str, str] = {}
@@ -188,19 +213,6 @@ def render_take(take_dir: Path, aspects: list[str] | None = None) -> dict:
             clicks, vw, vh, float(zoom_cfg.get("scale", 1.5)), float(zoom_cfg.get("duration", 1.0))
         )
 
-        # Track sync anchors: events.jsonl stamps each track's ACTUAL first
-        # media time on the take clock (capture.stage = Aperture first frame,
-        # capture.cam.start = AVCaptureFileOutput delegate, capture.mic.start
-        # = first tap buffer's AVAudioTime). Everything aligns to stage.
-        def track_t(*names, default=None):
-            for e in events:
-                if e.get("type") in names:
-                    return float(e["t"])
-            return default
-
-        t_stage = track_t("capture.stage", default=0.0)
-        t_cam = track_t("capture.cam.start", default=t_stage)
-        t_mic = track_t("capture.mic.start", "capture.mic", default=t_stage)
         cam_delay = max(0.0, t_cam - t_stage)
         mic_delay_ms = int(max(0.0, t_mic - t_stage) * 1000)
 
@@ -249,15 +261,21 @@ def render_take(take_dir: Path, aspects: list[str] | None = None) -> dict:
         last = "[padded]"
 
         if has_cam:
-            size = max(80, int(min(tw, th) * float(cam_cfg.get("size", 0.14))))
-            ox = int(pad + (inner_w - size) * float(cam_cfg.get("x", 0.88)))
-            oy = int(pad + (inner_h - size) * float(cam_cfg.get("y", 0.08)))
+            size = max(80, int(min(tw, th) * float(cam_cfg.get("size", 0.22))))
+            ox = int(pad + (inner_w - size) * float(cam_cfg.get("x", 0.90)))
+            oy = int(pad + (inner_h - size) * float(cam_cfg.get("y", 0.86)))
             flip = "hflip," if cam_cfg.get("mirror", True) else ""
+            if cam_cfg.get("shape", "squircle") == "circle":
+                mask = f"a='if(lte(hypot(X-{size//2},Y-{size//2}),{size//2 - 2}),255,0)'"
+            else:
+                # Squircle (superellipse, n=4) — Screen-Studio-style webcam tile.
+                mask = (
+                    f"a='if(lte(pow(abs(2*X/{size}-1),4)+pow(abs(2*Y/{size}-1),4),0.95),255,0)'"
+                )
             parts.append(
                 f"[1:v]{flip}scale={size}:{size}:force_original_aspect_ratio=increase,"
                 f"crop={size}:{size},format=rgba,"
-                f"geq=lum='p(X,Y)':cb='p(X,Y)':cr='p(X,Y)':"
-                f"a='if(lte(hypot(X-{size//2},Y-{size//2}),{size//2 - 2}),255,0)'[cam];"
+                f"geq=lum='p(X,Y)':cb='p(X,Y)':cr='p(X,Y)':{mask}[cam];"
                 f"{last}[cam]overlay={ox}:{oy}:format=auto[outv]"
             )
             last = "[outv]"

@@ -34,6 +34,20 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
 
     var captureWindow: NSWindow? { window?.isVisible == true ? window : nil }
 
+    /// The deck content region (webview) in window points, TOP-LEFT origin —
+    /// the capture crop so recordings exclude the drag strip and frame chrome.
+    var deckContentRect: CGRect? {
+        guard let webView, let window else { return nil }
+        let f = webView.convert(webView.bounds, to: nil)
+        let winH = window.frame.height
+        return CGRect(
+            x: f.origin.x,
+            y: winH - (f.origin.y + f.height),
+            width: f.width,
+            height: f.height
+        )
+    }
+
     init(port: Int, deck: String = "showcase", bridge: ReactableBridgeDelegate? = nil) {
         self.port = port
         self.deckSlug = deck

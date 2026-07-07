@@ -29,6 +29,7 @@ final class TakeRecorder {
         captureTargetId: String?,
         areaRect: CGRect?,
         stageWindow: NSWindow?,
+        stageContentRect: CGRect? = nil,
         deck: String,
         cam: CamBubblePanel?,
         camOn: Bool,
@@ -61,6 +62,24 @@ final class TakeRecorder {
         startEpoch = Date().timeIntervalSince1970
         captureTarget = target
 
+        // Window geometry for mapping global input coords (CGEvent points,
+        // top-left origin) onto stage.mov pixels in post: window-relative
+        // point × backing scale. yTop converts from AppKit's bottom-left.
+        // With a content crop, the capture origin shifts to the crop's corner.
+        var windowInfo: [String: Any]?
+        if let stageWindow {
+            let f = stageWindow.frame
+            let primaryH = NSScreen.screens.first?.frame.height ?? f.height
+            let crop = stageContentRect ?? CGRect(x: 0, y: 0, width: f.width, height: f.height)
+            windowInfo = [
+                "x": f.origin.x + crop.origin.x,
+                "yTop": primaryH - (f.origin.y + f.height) + crop.origin.y,
+                "w": crop.width,
+                "h": crop.height,
+                "scale": stageWindow.backingScaleFactor,
+            ]
+        }
+
         log.stamp("record.start", payload: [
             "deck": deck,
             "sourceKind": sourceKind,
@@ -77,7 +96,9 @@ final class TakeRecorder {
             nonisolated(unsafe) let recorder = stageRecorder
             let kind = target.kind
             let targetID = target.targetID
-            let cropRect = target.cropRect
+            // For window captures the crop is the deck content region — the
+            // drag strip and frame chrome stay out of stage.mov.
+            let cropRect = target.kind == "window" ? stageContentRect : target.cropRect
             try await Self.race(seconds: 15, label: "capture start") {
                 try await Self.startStageCapture(
                     recorder: recorder,
@@ -89,11 +110,13 @@ final class TakeRecorder {
                     micID: micID
                 )
             }
-            log.stamp("capture.stage", payload: [
+            var stagePayload: [String: Any] = [
                 "sourceKind": target.kind,
                 "targetId": target.targetID,
                 "label": target.label,
-            ])
+            ]
+            if let windowInfo { stagePayload["window"] = windowInfo }
+            log.stamp("capture.stage", payload: stagePayload)
 
             if camOn, let cam {
                 let camURL = dir.appending(path: "cam.mov")
@@ -105,7 +128,7 @@ final class TakeRecorder {
                 log.stamp("capture.cam", payload: cam.frameJSON())
             }
 
-            try writeManifest(deck: deck, dir: dir, hasCam: camOn, hasMic: micOn, sourceKind: sourceKind, target: target)
+            try writeManifest(deck: deck, dir: dir, hasCam: camOn, hasMic: micOn, sourceKind: sourceKind, target: target, windowInfo: windowInfo)
             try writeTakeWork(id: id, deck: deck, dir: dir, sourceKind: sourceKind, target: target)
             try writeDefaultEdit(dir: dir)
         } catch {
@@ -189,6 +212,7 @@ final class TakeRecorder {
         captureTargetId: String?,
         areaRect: CGRect?,
         stageWindow: NSWindow?,
+        stageContentRect: CGRect? = nil,
         systemAudioOn: Bool
     ) async {
         guard takeDir == nil else { return }
@@ -208,9 +232,9 @@ final class TakeRecorder {
                 .appending(path: "reactable-prewarm.mov"),
             targetID: target.targetID,
             framesPerSecond: 30,
-            cropRect: target.cropRect,
-            showCursor: true,
-            highlightClicks: true,
+            cropRect: target.kind == "window" ? stageContentRect : target.cropRect,
+            showCursor: false,
+            highlightClicks: false,
             videoCodec: .h264,
             recordSystemAudio: systemAudioOn,
             microphoneDeviceID: nil
@@ -245,8 +269,13 @@ final class TakeRecorder {
             targetID: targetID,
             framesPerSecond: 30,
             cropRect: cropRect,
-            showCursor: true,
-            highlightClicks: true,
+            // Synthetic cursor is drawn in post from the events track
+            // (Screen-Studio style) — the OS cursor stays out of the pixels.
+            showCursor: false,
+            // SCK's showMouseClicks draws its ring at misplaced coordinates on
+            // window captures (global-vs-window space); click feedback comes
+            // from events.jsonl in post instead.
+            highlightClicks: false,
             videoCodec: .h264,
             recordSystemAudio: systemAudioOn,
             microphoneDeviceID: micID
@@ -282,7 +311,8 @@ final class TakeRecorder {
         hasCam: Bool,
         hasMic: Bool,
         sourceKind: String,
-        target: CaptureTarget
+        target: CaptureTarget,
+        windowInfo: [String: Any]? = nil
     ) throws {
         var tracks: [String: String] = [
             "stage": "stage.mov",
@@ -305,6 +335,7 @@ final class TakeRecorder {
         if let crop = target.cropRect {
             manifest["area_rect"] = [crop.origin.x, crop.origin.y, crop.width, crop.height]
         }
+        if let windowInfo { manifest["capture_window"] = windowInfo }
 
         let data = try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])
         try data.write(to: dir.appending(path: "manifest.json"))
@@ -344,7 +375,7 @@ final class TakeRecorder {
             "trim": ["in": 0, "out": NSNull()],
             "speed": 1,
             "zoom": ["enabled": true, "scale": 1.5, "duration": 1.0],
-            "cam": ["pip": true, "x": 0.88, "y": 0.08, "size": 0.14, "mirror": true],
+            "cam": ["pip": true, "x": 0.90, "y": 0.86, "size": 0.22, "shape": "squircle", "mirror": true],
             "style": ["padding": 28, "radius": 16, "background": "#111111", "shadow": true],
             "aspect": "16:9",
             "captions": ["enabled": false],

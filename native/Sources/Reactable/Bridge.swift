@@ -35,6 +35,9 @@ protocol ReactableBridgeDelegate: AnyObject {
 final class AppState {
     var recording = false
     var paused = false
+    // True from record press until capture actually starts (or fails) —
+    // the bar shows an arming state and blocks re-presses.
+    var arming = false
     var elapsed: Int = 0
 
     var sourceKind = "stage"
@@ -66,6 +69,7 @@ final class AppState {
         [
             "recording": recording,
             "paused": paused,
+            "arming": arming,
             "elapsed": elapsed,
             "sourceKind": sourceKind,
             "captureTargetId": captureTargetId as Any,

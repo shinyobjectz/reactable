@@ -45,6 +45,8 @@ client :bar do
     .btn.rec { background: #e11; color: #fff; min-width: 36px; }
     .btn.rec.on { background: #b00; }
     .btn.rec.paused { background: #c60; }
+    .btn.rec.arming { background: #a50; pointer-events: none; animation: armPulse 0.9s ease-in-out infinite; }
+    @keyframes armPulse { 50% { opacity: .45; } }
     .btn.icon { width: 32px; padding: 0; }
     /* Source-picker chevron paired with the cam/mic toggles */
     .btn.chev { width: 15px; min-width: 15px; padding: 0; margin-left: -3px; border-top-left-radius: 0; border-bottom-left-radius: 0; color: #8a8a92; }
@@ -160,6 +162,8 @@ client :bar do
       const rec = $('record');
       rec.classList.toggle('on', !!state.recording);
       rec.classList.toggle('paused', !!state.paused);
+      rec.classList.toggle('arming', !!state.arming && !state.recording);
+      rec.title = state.arming && !state.recording ? 'Arming capture…' : 'Record (⌘R)';
       $('stop').style.display = state.recording ? '' : 'none';
       const proj = state.projectName || 'project';
       const deck = state.deckTitle || state.deckSlug || 'deck';
@@ -198,6 +202,7 @@ client :bar do
       if (btn.id === 'prev') return send('slide.prev');
       if (btn.id === 'next') return send('slide.next');
       if (btn.id === 'record') {
+        if (state.arming && !state.recording) return; // capture is arming — ignore presses
         if (state.recording) return send('record.pause');
         const countdown = (state.settings?.countdownSeconds ?? 3) > 0 ? 3 : 0;
         return send('record.start', { countdown });

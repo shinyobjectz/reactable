@@ -304,6 +304,11 @@ extension Aperture {
 	final class RecordingSession: NSObject {
 		/// The stream object for capturing anything on displays
 		private var stream: SCStream?
+		// Reactable patch: window filters only capture the owning app's audio,
+		// so WebKit/embedded players (separate helper processes) were silent.
+		// System audio for window captures comes from this display-level
+		// audio-only stream feeding the same writer input.
+		private var audioStream: SCStream?
 		private var isStreamRecording = false
 		/// The writer that will combine all the video/audio inputs into the destination file
 		private var assetWriter: AVAssetWriter?
@@ -374,6 +379,7 @@ extension Aperture {
 		) async throws {
 			try await setupStream(target: target, options: options)
 			try await stream?.startCapture()
+			try? await audioStream?.startCapture()
 			isStreamRecording = true
 			isPrewarmed = true
 		}
@@ -521,18 +527,34 @@ extension Aperture {
 
 				let windowFilter = SCContentFilter(desktopIndependentWindow: window)
 
-				// Reactable patch: capture at native pixel resolution. Upstream
-				// used point dimensions here, so Retina windows recorded at 1x.
+				// Reactable patch: capture at native pixel resolution (upstream
+				// used point dimensions — Retina windows recorded at 1x), and
+				// honor cropRect on window captures (content-only recording).
 				if #available(macOS 14.0, *) {
 					let scale = CGFloat(windowFilter.pointPixelScale)
-					streamConfig.width = Int(windowFilter.contentRect.width * scale)
-					streamConfig.height = Int(windowFilter.contentRect.height * scale)
+					if let cropRect = options.cropRect {
+						streamConfig.sourceRect = cropRect
+						streamConfig.width = Int(cropRect.width * scale)
+						streamConfig.height = Int(cropRect.height * scale)
+					} else {
+						streamConfig.width = Int(windowFilter.contentRect.width * scale)
+						streamConfig.height = Int(windowFilter.contentRect.height * scale)
+					}
 				} else {
 					streamConfig.width = Int(window.frame.width) * 2
 					streamConfig.height = Int(window.frame.height) * 2
 				}
 
 				filter = windowFilter
+
+				// Reactable patch: pair window video with true system audio.
+				if options.recordSystemAudio, let display = content.displays.first {
+					let audioConfig = SCStreamConfiguration()
+					audioConfig.capturesAudio = true
+					audioConfig.excludesCurrentProcessAudio = false
+					let audioFilter = SCContentFilter(display: display, excludingWindows: [])
+					audioStream = SCStream(filter: audioFilter, configuration: audioConfig, delegate: self)
+				}
 			case .externalDevice:
 				filter = nil
 			case .audioOnly:
@@ -553,7 +575,11 @@ extension Aperture {
 					try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: .global())
 
 					if options.recordSystemAudio {
-						try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: .global())
+						if let audioStream {
+							try audioStream.addStreamOutput(self, type: .audio, sampleHandlerQueue: .global())
+						} else {
+							try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: .global())
+						}
 					}
 
 					if #available(macOS 15, *), options.microphoneDeviceID != nil  {
@@ -590,6 +616,7 @@ extension Aperture {
 		private func cleanUp() async throws {
 			if isStreamRecording {
 				try? await stream?.stopCapture()
+				try? await audioStream?.stopCapture()
 			}
 
 			if microphoneCaptureSession?.isRunning == true {
@@ -815,6 +842,7 @@ extension Aperture.RecordingSession {
 
 		if startStream {
 			try await stream?.startCapture()
+			try? await audioStream?.startCapture()
 			isStreamRecording = true
 		}
 		try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Swift.Error>) in
