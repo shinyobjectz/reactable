@@ -279,15 +279,10 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
 
     func bridgeRecordStart(countdown: Int) {
         guard !state.recording else { return }
-        if countdown > 0 {
-            syncBar()
-            Task {
-                try? await Task.sleep(for: .seconds(UInt64(countdown)))
-                await MainActor.run { self.beginRecording() }
-            }
-        } else {
-            beginRecording()
-        }
+        if countdown > 0 { syncBar() }
+        // Prep (stage open, permission preflights) runs DURING the countdown,
+        // not after it — capture starts at the countdown's end, not 1-2s later.
+        beginRecording(countdown: countdown)
     }
 
     func bridgeRecordPause() {
@@ -739,17 +734,21 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         bar?.pushDevices(payload)
     }
 
-    private func beginRecording() {
+    private func beginRecording(countdown: Int = 0) {
         guard let takeRecorder else {
             presentRecordError("Recorder not ready", "No active project. Open or create a project, then try again.")
             return
         }
         Task {
             do {
+                let countdownDeadline = Date().addingTimeInterval(Double(countdown))
                 // Preflight source selection — tell the user instead of failing silently.
                 if state.sourceKind == "stage" {
-                    if stage == nil || stage?.isVisible != true { openStage() }
-                    try await Task.sleep(for: .milliseconds(400))
+                    if stage == nil || stage?.isVisible != true {
+                        openStage()
+                        // settle only when the window was JUST opened
+                        try await Task.sleep(for: .milliseconds(400))
+                    }
                 } else if state.sourceKind == "window", state.captureTargetId == nil {
                     presentRecordError("Pick a window first", "Choose the window to record from the bar, then press record.")
                     return
@@ -785,6 +784,13 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                         pane: "Privacy_Microphone"
                     )
                     return
+                }
+
+                // Prep is done — wait out whatever remains of the countdown so
+                // capture begins right at its end.
+                let remaining = countdownDeadline.timeIntervalSinceNow
+                if remaining > 0 {
+                    try await Task.sleep(for: .milliseconds(Int(remaining * 1000)))
                 }
 
                 // Re-check under the actual recorder: a double-press spawns two of
