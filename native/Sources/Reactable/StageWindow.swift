@@ -21,6 +21,11 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
     private var deckSlug: String
     private weak var bridge: ReactableBridgeDelegate?
     private var window: NSWindow?
+
+    /// Default-layout placement — set the window frame if it exists.
+    func place(frame: NSRect) {
+        window?.setFrame(frame, display: true)
+    }
     private var webView: WKWebView?
     private var previewFrame: NSView?
     private var tabBar: TabBarView?

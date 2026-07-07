@@ -214,6 +214,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                 await self.refreshDeckSlides()
                 self.loadStageLineup()
             }
+            arrangeDefaultLayout()
             installHotkeys()
             // Stage resizes invalidate the (fixed-dimension) warm capture
             // stream; while recording the size is locked, so this only fires
@@ -253,8 +254,9 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             stageManager = mgr
             let board = ProjectsBoardPanel(port: port)
             board.dataProvider = { [weak self] in self?.projectsBoardData() ?? [:] }
-            board.onSelect = { [weak self] id in self?.bridgeSelectProject(id: id) }
+            board.onSelect = { [weak self] root, slug in self?.selectProjectDeck(root: root, slug: slug) }
             board.onStage = { [weak self] id, stage in self?.setProjectStage(id: id, stage: stage) }
+            board.onNew = { [weak self] in self?.createProject() }
             projectsBoard = board
             syncBar()
         } catch {
@@ -717,11 +719,16 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             .appending(path: "Reactable/pipeline.json")
     }
 
-    /// Kanban state shared with the CLI: columns + per-project stage.
+    /// A project is what the stage shows — every deck across registered
+    /// roots. Pipeline stages keyed root/slug, shared with the CLI.
     private func projectsBoardData() -> [String: Any] {
-        let projects = ProjectRegistry.discover(extraBundled: bundledProjectRoot)
-            .filter { FileManager.default.fileExists(atPath: $0.url.appending(path: "index.work").path) }
-            .map { ["id": $0.id, "name": $0.name] }
+        var projects: [[String: Any]] = []
+        for root in ProjectRegistry.discover(extraBundled: bundledProjectRoot)
+        where FileManager.default.fileExists(atPath: root.url.appending(path: "index.work").path) {
+            for deck in ProjectRegistry.decks(in: root.url) {
+                projects.append(["root": root.id, "slug": deck.slug, "title": deck.title])
+            }
+        }
         var columns = ["idea", "recording", "editing", "done"]
         var stages: [String: String] = [:]
         if let data = try? Data(contentsOf: pipelineURL),
@@ -733,8 +740,39 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             "columns": columns,
             "projects": projects,
             "stages": stages,
-            "active": state.projectId,
+            "active": "\(state.projectId)/\(state.deckSlug)",
         ]
+    }
+
+    /// Switch the whole app to a project (root + deck the stage shows).
+    private func selectProjectDeck(root: String, slug: String) {
+        Task {
+            if root != state.projectId {
+                await switchProject(id: root)
+            }
+            bridgeSelectDeck(slug: slug)
+            Task {
+                await self.refreshDeckSlides()
+                self.loadStageLineup()
+                self.projectsBoard?.pushData()
+            }
+        }
+    }
+
+    /// Default layout: bar top-center, stage below, projects left, chat right.
+    private func arrangeDefaultLayout() {
+        guard let screen = NSScreen.main else { return }
+        let f = screen.visibleFrame
+        openStage()
+        projectsBoard?.open()
+        openAgent()
+        let stageW: CGFloat = 1000, stageH: CGFloat = 640
+        let gap: CGFloat = 14
+        let stageX = f.midX - stageW / 2
+        let stageY = f.maxY - 56 - gap - stageH - 40
+        stage?.place(frame: NSRect(x: stageX, y: stageY, width: stageW, height: stageH))
+        projectsBoard?.place(frame: NSRect(x: stageX - gap - 300, y: stageY, width: 300, height: stageH))
+        agent?.place(frame: NSRect(x: stageX + stageW + gap, y: stageY, width: 460, height: stageH))
     }
 
     private func setProjectStage(id: String, stage: String) {

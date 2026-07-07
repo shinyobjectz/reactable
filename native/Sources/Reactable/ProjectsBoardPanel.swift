@@ -9,11 +9,17 @@ import WebKit
 final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
     private let port: Int
     private var window: NSWindow?
+
+    /// Default-layout placement — set the window frame if it exists.
+    func place(frame: NSRect) {
+        window?.setFrame(frame, display: true)
+    }
     private var webView: WKWebView?
 
     var dataProvider: (() -> [String: Any])?
-    var onSelect: ((String) -> Void)?
+    var onSelect: ((String, String) -> Void)?
     var onStage: ((String, String) -> Void)?
+    var onNew: (() -> Void)?
 
     init(port: Int) {
         self.port = port
@@ -45,7 +51,7 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
     }
 
     private func createWindow() {
-        let size = NSSize(width: 960, height: 620)
+        let size = NSSize(width: 300, height: 640)
         let win = KeyableWindow(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .fullSizeContentView],
@@ -84,10 +90,12 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
         case "projects.ready":
             pushData()
         case "projects.select":
-            if let id = parsed.payload["id"] as? String {
-                hide()
-                onSelect?(id)
+            if let root = parsed.payload["root"] as? String,
+               let slug = parsed.payload["slug"] as? String {
+                onSelect?(root, slug)
             }
+        case "projects.new":
+            onNew?()
         case "projects.stage":
             if let id = parsed.payload["id"] as? String,
                let stage = parsed.payload["stage"] as? String {
