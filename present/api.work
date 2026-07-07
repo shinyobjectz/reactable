@@ -1367,6 +1367,9 @@ server :reactable_api do
       end
 
     paths
+    # Normalize (expand + strip trailing slash) before dedup so "…/reactable/"
+    # and "…/reactable" collapse to one entry.
+    |> Enum.map(fn p -> Path.expand(p) end)
     |> Enum.uniq()
     |> Enum.filter(fn p -> File.exists?(Path.join(p, "index.work")) end)
   end
