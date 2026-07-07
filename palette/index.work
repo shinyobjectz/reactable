@@ -1,0 +1,156 @@
+# Command palette — cross-project Surface finder (⌘I)
+
+Lists every Surface across all projects; filter + Enter opens it on the Stage.
+Loaded by the native PaletteWindow (chromeless, centered).
+
+client :palette do
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; height: 100%; overflow: hidden;
+      font: 13px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif;
+      background: transparent; color: #ececee;
+      -webkit-font-smoothing: antialiased;
+    }
+    .palette {
+      display: flex; flex-direction: column;
+      height: 100vh;
+      background: rgba(16,16,20,.98);
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 24px 80px rgba(0,0,0,.55);
+    }
+    .search {
+      display: flex; align-items: center; gap: 10px;
+      padding: 14px 16px;
+      border-bottom: 1px solid rgba(255,255,255,.07);
+    }
+    .search svg { width: 16px; height: 16px; stroke: #71717a; fill: none; stroke-width: 2; flex-shrink: 0; }
+    #q {
+      flex: 1; border: 0; background: transparent; color: #fafafa;
+      font: 15px/1.4 inherit; outline: none;
+    }
+    #q::placeholder { color: #52525b; }
+    #list { overflow: auto; padding: 6px; flex: 1; }
+    .row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 11px; border-radius: 9px; cursor: pointer;
+    }
+    .row.sel { background: rgba(99,102,241,.22); }
+    .row .kind {
+      flex-shrink: 0; width: 74px;
+      font: 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      text-transform: uppercase; letter-spacing: .04em;
+      color: #a5b4fc;
+      background: rgba(99,102,241,.12);
+      border: 1px solid rgba(129,140,248,.24);
+      padding: 4px 6px; border-radius: 6px; text-align: center;
+    }
+    .row .title { flex: 1; color: #f4f4f5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .row .proj { flex-shrink: 0; color: #71717a; font-size: 11px; }
+    .empty { color: #52525b; text-align: center; padding: 40px 0; font-size: 12px; }
+    .foot {
+      display: flex; gap: 14px; padding: 8px 14px;
+      border-top: 1px solid rgba(255,255,255,.06);
+      color: #52525b; font-size: 10px;
+    }
+    kbd {
+      font: 10px ui-monospace, monospace; color: #a1a1aa;
+      background: rgba(255,255,255,.07); padding: 1px 5px; border-radius: 4px;
+    }
+  </style>
+  <div class="palette">
+    <div class="search">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="q" type="text" placeholder="Search decks, docs, research, takes, web…" autocomplete="off" spellcheck="false" />
+    </div>
+    <div id="list"></div>
+    <div class="foot">
+      <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+      <span><kbd>↵</kbd> open on stage</span>
+      <span><kbd>esc</kbd> close</span>
+    </div>
+  </div>
+  <script>
+  (function () {
+    const q = document.getElementById('q');
+    const list = document.getElementById('list');
+    let all = [];
+    let shown = [];
+    let sel = 0;
+
+    function send(action, payload = {}) {
+      window.webkit?.messageHandlers?.reactable?.postMessage({ action, payload });
+    }
+
+    async function load() {
+      try {
+        const res = await fetch('/reactable/surfaces');
+        const data = await res.json();
+        all = data.surfaces || [];
+      } catch { all = []; }
+      filter();
+    }
+
+    function score(s, needle) {
+      if (!needle) return 0;
+      const hay = (s.title + ' ' + s.kind + ' ' + s.project).toLowerCase();
+      return hay.includes(needle) ? hay.indexOf(needle) : -1;
+    }
+
+    function filter() {
+      const needle = q.value.trim().toLowerCase();
+      shown = needle
+        ? all.map(s => [s, score(s, needle)]).filter(([, sc]) => sc >= 0)
+             .sort((a, b) => a[1] - b[1]).map(([s]) => s)
+        : all.slice();
+      sel = 0;
+      render();
+    }
+
+    function render() {
+      if (!shown.length) {
+        list.innerHTML = '<div class="empty">' + (all.length ? 'No matches' : 'No surfaces found') + '</div>';
+        return;
+      }
+      list.innerHTML = '';
+      shown.forEach((s, i) => {
+        const row = document.createElement('div');
+        row.className = 'row' + (i === sel ? ' sel' : '');
+        row.innerHTML =
+          '<span class="kind">' + s.kind + '</span>' +
+          '<span class="title"></span>' +
+          '<span class="proj"></span>';
+        row.querySelector('.title').textContent = s.title;
+        row.querySelector('.proj').textContent = s.project;
+        row.addEventListener('click', () => { sel = i; open(); });
+        list.appendChild(row);
+      });
+      const selEl = list.querySelector('.row.sel');
+      if (selEl) selEl.scrollIntoView({ block: 'nearest' });
+    }
+
+    function open() {
+      const s = shown[sel];
+      if (!s) return;
+      send('palette.open', { kind: s.kind, ref: s.ref, project: s.project, title: s.title });
+    }
+
+    q.addEventListener('input', filter);
+    q.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, shown.length - 1); render(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); render(); }
+      else if (e.key === 'Enter') { e.preventDefault(); open(); }
+      else if (e.key === 'Escape') { e.preventDefault(); send('palette.close'); }
+    });
+
+    window.ReactablePalette = {
+      reset() { q.value = ''; load(); q.focus(); },
+    };
+
+    load();
+    q.focus();
+  })();
+  </script>
+end

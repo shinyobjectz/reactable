@@ -5,6 +5,7 @@ import AVFoundation
 @MainActor
 final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDelegate, StageCommandDelegate {
     private var agent: AgentWindowController?
+    private var palette: PaletteWindowController?
     private var sidecar: NexusSidecar?
     private var stage: StageWindowController?
     private var bar: BarPanel?
@@ -120,6 +121,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         addMenuItem(menu, title: "Toggle Stage", action: #selector(toggleStage), key: "o")
         addMenuItem(menu, title: "Show Bar", action: #selector(showBar), key: "b")
         addMenuItem(menu, title: "Local Agent…", action: #selector(openAgent), key: "l")
+        addMenuItem(menu, title: "Find Surface…", action: #selector(togglePalette), key: "i")
         menu.addItem(.separator())
         projectsMenuItem = menu.addItem(withTitle: "Project", action: nil, keyEquivalent: "")
         projectsMenuItem?.submenu = NSMenu()
@@ -198,6 +200,13 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             stagePoller = StageCommandPoller(port: port, delegate: self)
             stagePoller?.start()
             agent = AgentWindowController(port: port, deck: state.deckSlug, bridge: self)
+            let pal = PaletteWindowController(port: port)
+            pal.onOpenSurface = { [weak self] surface in
+                guard let self else { return }
+                if self.stage == nil || self.stage?.isVisible != true { self.openStage() }
+                self.stage?.openSurface(surface)
+            }
+            palette = pal
             syncBar()
         } catch {
             fputs("reactable boot failed: \(error)\n", stderr)
@@ -227,6 +236,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             case "r": toggleRecord(); return true
             case "b": showBar(); return true
             case "o": toggleStage(); return true
+            case "i": togglePalette(); return true
             default: break
             }
             return false
@@ -296,6 +306,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         switch action {
         case "record.toggle": toggleRecord()
         case "stage.open": toggleStage()
+        case "palette.toggle": togglePalette()
         case "bar.show": showBar()
         case "slide.next": bridgeSlideNext()
         case "slide.prev": bridgeSlidePrev()
@@ -404,6 +415,10 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
 
     @objc private func openAgent() {
         bridgeOpenAgent()
+    }
+
+    @objc private func togglePalette() {
+        palette?.toggle()
     }
 
     @objc private func createProjectPrompt() {

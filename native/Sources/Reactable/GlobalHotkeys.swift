@@ -13,6 +13,7 @@ final class GlobalHotkeys {
                 case "r": handler("record.toggle"); return
                 case "o": handler("stage.open"); return
                 case "b": handler("bar.show"); return
+                case "i": handler("palette.toggle"); return
                 default: break
                 }
             }
