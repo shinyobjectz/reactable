@@ -4,7 +4,10 @@
 # parts; the client (reactable-tools pull) reassembles them. Writes a
 # manifest.json describing each file's parts.
 #   scripts/upload-model-r2.sh mlx-community/gemma-4-e4b-it-4bit
-set -euo pipefail
+# NOTE: deliberately no `-e` — a single transient wrangler failure must not
+# abort the whole tier (that skips the manifest and leaves it half-uploaded).
+# put() retries instead.
+set -uo pipefail
 REPO="${1:?usage: upload-model-r2.sh <hf-repo>}"
 BUCKET="reactable-downloads"
 export CLOUDFLARE_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-6d4b74aeb10f455fbf88141901e7595d}"
@@ -22,7 +25,16 @@ put() {
     echo "    (already in R2, skip)"
     return 0
   fi
-  wrangler r2 object put "$key" --file "$file" --remote >/dev/null 2>&1
+  local try
+  for try in 1 2 3 4 5; do
+    if wrangler r2 object put "$key" --file "$file" --remote >/dev/null 2>&1; then
+      return 0
+    fi
+    echo "    (put failed, retry $try/5)…"
+    sleep $((try * 3))
+  done
+  echo "    ✗ FAILED after retries: $key"
+  return 1
 }
 
 echo "→ mirroring $REPO from $SNAP"
