@@ -123,6 +123,9 @@ final class AgentWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
             web.bottomAnchor.constraint(equalTo: frame.bottomAnchor),
         ])
 
+        if let strip = root.subviews.compactMap({ $0 as? DragStripView }).first {
+            PanelChrome.decorate(strip: strip, title: "Reactable Agent") { [weak self] in self?.hide() }
+        }
         ResizeCornersView.attach(to: root)
         window = win
         centerOnScreen(win, size: shell)

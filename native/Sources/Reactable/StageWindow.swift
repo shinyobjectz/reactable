@@ -29,6 +29,7 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
     private var webView: WKWebView?
     private var previewFrame: NSView?
     private var tabBar: TabBarView?
+    private var stripTitle: NSTextField?
     private var savedFrame: NSRect?
     private let defaultContent = NSSize(width: 1280, height: 720)
     var onEvent: ((String, [String: Any]) -> Void)?
@@ -244,6 +245,7 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
             web.bottomAnchor.constraint(equalTo: preview.bottomAnchor),
         ])
 
+        stripTitle = PanelChrome.decorate(strip: dragStrip, title: deckSlug) { [weak self] in self?.hide() }
         ResizeCornersView.attach(to: root)
         window = win
         centerOnScreen(win, size: shell)
@@ -286,6 +288,12 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         guard let parsed = BridgeMessage.parse(message.body) else { return }
         if parsed.action.hasPrefix("event.") {
             let type = String(parsed.action.dropFirst("event.".count))
+            if type == "slide" {
+                let idx = (parsed.payload["idx"] as? Int).map { $0 + 1 } ?? 0
+                let id = parsed.payload["id"] as? String ?? ""
+                let kind = parsed.payload["type"] as? String ?? ""
+                stripTitle?.stringValue = [String(idx), kind, id].filter { !$0.isEmpty && $0 != "0" }.joined(separator: " · ")
+            }
             onEvent?(type, parsed.payload)
             fputs("reactable event: \(parsed.action) \(parsed.payload)\n", stderr)
         }

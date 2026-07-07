@@ -31,7 +31,6 @@ client :projects do
     .hint { color: #565656; font-size: 10.5px; padding: 8px 12px 2px; }
   </style>
   <div class="shell">
-    <div class="top"><h2>Projects</h2><button id="close" title="Close">✕</button></div>
     <div class="hint">Click to switch · chip cycles the pipeline stage</div>
     <div class="list" id="list"></div>
     <div class="foot"><button class="new" id="new">＋ New project</button></div>
@@ -66,7 +65,6 @@ client :projects do
         list.appendChild(row);
       }
     }
-    document.getElementById('close').onclick = () => send('projects.close');
     document.getElementById('new').onclick = () => send('projects.new');
     send('projects.ready');
     window.ReactableProjects = { setData(d) { data = { ...data, ...d }; render(); } };

@@ -72,7 +72,7 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
         web.autoresizingMask = [.width, .height]
         web.setValue(false, forKey: "drawsBackground")
         webView = web
-        PanelChrome.install(in: win, content: web)
+        PanelChrome.install(in: win, content: web, title: "Projects") { [weak self] in self?.hide() }
         web.load(URLRequest(url: URL(string: "http://127.0.0.1:\(port)/projects")!))
         window = win
     }

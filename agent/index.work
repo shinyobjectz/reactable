@@ -314,7 +314,6 @@ client :agent do
   <div class="app">
     <header>
       <div class="header-row">
-        <h1>Reactable Agent</h1>
         <span class="badge" id="engine">MiniMax-M3</span>
         <span class="header-meta" id="status" hidden></span>
         <button type="button" class="menu-btn" id="menu-btn" title="Menu">
