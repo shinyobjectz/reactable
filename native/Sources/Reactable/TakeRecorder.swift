@@ -6,7 +6,10 @@ import Foundation
 @MainActor
 final class TakeRecorder {
     private let projectRoot: URL
-    private nonisolated(unsafe) let stageRecorder = Aperture.Recorder()
+    // Fresh instance per take: a Recorder whose SCStream wedged (replayd hang)
+    // can never be stopped or reused, so the old one is abandoned on timeout
+    // and the next take starts clean.
+    private nonisolated(unsafe) var stageRecorder = Aperture.Recorder()
     private var takeDir: URL?
     private var eventLog: EventLog?
     private var startEpoch: TimeInterval?
@@ -41,6 +44,7 @@ final class TakeRecorder {
             stageWindow: stageWindow
         )
 
+        stageRecorder = Aperture.Recorder()
         let id = Self.makeTakeId()
         let dir = projectRoot.appending(path: "takes/\(id)", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -62,29 +66,44 @@ final class TakeRecorder {
 
         let stageURL = dir.appending(path: "stage.mov")
         let micID = micOn ? AVCaptureDevice.default(for: .audio)?.uniqueID : nil
-        try await startStageCapture(
-            kind: target.kind,
-            destination: stageURL,
-            targetID: target.targetID,
-            cropRect: target.cropRect,
-            systemAudioOn: systemAudioOn,
-            micID: micID
-        )
-        log.stamp("capture.stage", payload: [
-            "sourceKind": target.kind,
-            "targetId": target.targetID,
-            "label": target.label,
-        ])
+        do {
+            nonisolated(unsafe) let recorder = stageRecorder
+            let kind = target.kind
+            let targetID = target.targetID
+            let cropRect = target.cropRect
+            try await Self.race(seconds: 15, label: "capture start") {
+                try await Self.startStageCapture(
+                    recorder: recorder,
+                    kind: kind,
+                    destination: stageURL,
+                    targetID: targetID,
+                    cropRect: cropRect,
+                    systemAudioOn: systemAudioOn,
+                    micID: micID
+                )
+            }
+            log.stamp("capture.stage", payload: [
+                "sourceKind": target.kind,
+                "targetId": target.targetID,
+                "label": target.label,
+            ])
 
-        if camOn, let cam {
-            let camURL = dir.appending(path: "cam.mov")
-            try cam.startRecording(to: camURL)
-            log.stamp("capture.cam", payload: cam.frameJSON())
+            if camOn, let cam {
+                let camURL = dir.appending(path: "cam.mov")
+                try cam.startRecording(to: camURL)
+                log.stamp("capture.cam", payload: cam.frameJSON())
+            }
+
+            try writeManifest(deck: deck, dir: dir, hasCam: camOn, sourceKind: sourceKind, target: target)
+            try writeTakeWork(id: id, deck: deck, dir: dir, sourceKind: sourceKind, target: target)
+            try writeDefaultEdit(dir: dir)
+        } catch {
+            // A failed or hung start must never leave the recorder "active" —
+            // that made every later record press throw alreadyRecording.
+            fputs("reactable: capture start failed (\(error)) — resetting take state\n", stderr)
+            resetState()
+            throw error
         }
-
-        try writeManifest(deck: deck, dir: dir, hasCam: camOn, sourceKind: sourceKind, target: target)
-        try writeTakeWork(id: id, deck: deck, dir: dir, sourceKind: sourceKind, target: target)
-        try writeDefaultEdit(dir: dir)
 
         fputs("reactable: recording → \(dir.path())\n", stderr)
         return dir
@@ -107,21 +126,33 @@ final class TakeRecorder {
 
         eventLog?.stamp("record.stop")
 
-        if stageRecorder.isPaused {
-            try? await stageRecorder.resume()
+        // SCStream.stopCapture can hang forever when replayd wedges; an
+        // unbounded await here froze the recorder mid-stop, left stage.mov
+        // without its moov atom, and stuck isActive on (alreadyRecording).
+        nonisolated(unsafe) let recorder = stageRecorder
+        do {
+            try await Self.race(seconds: 10, label: "stage stop") {
+                if recorder.isPaused { try? await recorder.resume() }
+                try await recorder.stop()
+            }
+        } catch {
+            fputs("reactable: stage stop failed (\(error)) — take may be unfinalized: \(dir.path())\n", stderr)
         }
-        try? await stageRecorder.stop()
         try? await cam?.stopRecording()
 
+        resetState()
+
+        fputs("reactable: take saved → \(dir.path())\n", stderr)
+        return dir
+    }
+
+    private func resetState() {
         eventLog?.close()
         eventLog = nil
         takeDir = nil
         takeId = nil
         startEpoch = nil
         captureTarget = nil
-
-        fputs("reactable: take saved → \(dir.path())\n", stderr)
-        return dir
     }
 
     func stamp(_ type: String, payload: [String: Any] = [:]) {
@@ -129,7 +160,8 @@ final class TakeRecorder {
         eventLog?.stamp(type, payload: payload)
     }
 
-    nonisolated private func startStageCapture(
+    nonisolated private static func startStageCapture(
+        recorder: Aperture.Recorder,
         kind: String,
         destination: URL,
         targetID: String,
@@ -153,7 +185,29 @@ final class TakeRecorder {
             recordSystemAudio: systemAudioOn,
             microphoneDeviceID: micID
         )
-        try await stageRecorder.start(target: apertureTarget, options: options)
+        try await recorder.start(target: apertureTarget, options: options)
+    }
+
+    /// Run `op` but give up after `seconds`. Unlike a task group this never
+    /// awaits the loser: an op stuck in an uncancellable syscall (SCStream
+    /// against a wedged replayd) is abandoned so the app stays responsive.
+    nonisolated private static func race<T: Sendable>(
+        seconds: Double,
+        label: String,
+        _ op: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, Error>) in
+            let state = RaceState(continuation)
+            let work = Task {
+                do { state.finish(.success(try await op())) }
+                catch { state.finish(.failure(error)) }
+            }
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                work.cancel()
+                state.finish(.failure(TakeError.timedOut(label, seconds)))
+            }
+        }
     }
 
     private func writeManifest(
@@ -238,11 +292,32 @@ final class TakeRecorder {
     }
 }
 
+/// First-result-wins gate for TakeRecorder.race — resumes the continuation
+/// exactly once no matter which side (work or timeout) finishes first.
+private final class RaceState<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done = false
+    private let continuation: CheckedContinuation<T, Error>
+
+    init(_ continuation: CheckedContinuation<T, Error>) {
+        self.continuation = continuation
+    }
+
+    func finish(_ result: Result<T, Error>) {
+        lock.lock()
+        let first = !done
+        done = true
+        lock.unlock()
+        if first { continuation.resume(with: result) }
+    }
+}
+
 enum TakeError: Error, CustomStringConvertible {
     case alreadyRecording
     case noCaptureTarget(String)
     case targetNotFound(String)
     case unsupportedSource(String)
+    case timedOut(String, Double)
 
     var description: String {
         switch self {
@@ -250,6 +325,7 @@ enum TakeError: Error, CustomStringConvertible {
         case .noCaptureTarget(let msg): msg
         case .targetNotFound(let id): "Capture target not found: \(id)"
         case .unsupportedSource(let kind): "Unsupported capture source: \(kind)"
+        case .timedOut(let label, let seconds): "\(label) timed out after \(Int(seconds))s — screen capture may need an app restart"
         }
     }
 }
