@@ -6,12 +6,13 @@ client :bar do
   <style>
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; overflow: visible; background: transparent; font: 12px/1 ui-sans-serif, system-ui, sans-serif; color: #f2f2f2; -webkit-font-smoothing: antialiased; user-select: none; -webkit-user-select: none; }
-    .shell { display: flex; align-items: flex-start; justify-content: center; min-height: 48px; overflow: visible; user-select: none; -webkit-user-select: none; }
+    .shell { display: flex; align-items: flex-start; justify-content: center; min-height: 56px; overflow: visible; user-select: none; -webkit-user-select: none; }
     .bar {
       display: flex; align-items: center; gap: 4px; flex-shrink: 0;
       user-select: none; -webkit-user-select: none;
       cursor: grab;
-      height: 48px; padding: 0 8px 0 4px;
+      /* 48px control row + 8px reserved at the bottom for the mic meter strip */
+      height: 56px; padding: 0 8px 8px 4px;
       background: rgba(22,22,24,.88);
       border: 1px solid rgba(255,255,255,.08);
       border-radius: 14px;
@@ -61,17 +62,20 @@ client :bar do
       pointer-events: none;
     }
 
-    /* Mic waveform — a reactive gradient stroke on the bottom edge of the bar. */
+    /* Mic meter — fixed-height gradient strip in the bar's bottom padding.
+       Level maps to COLOR, not height: blank (silence) → purple → blue →
+       green, peaking → orange → red. */
     .bar { position: relative; }
     #mic-wave {
-      position: absolute; left: 12px; right: 12px; bottom: 3px; height: 3px;
-      border-radius: 3px; opacity: 0; transform-origin: center bottom;
-      background: linear-gradient(90deg, #6366f1, #22d3ee, #34d399, #22d3ee, #6366f1);
+      position: absolute; left: 12px; right: 12px; bottom: 4px; height: 4px;
+      border-radius: 4px; opacity: 0;
+      background: linear-gradient(90deg, #8b5cf6, #3b82f6, #8b5cf6);
       background-size: 200% 100%;
-      transition: opacity .25s ease;
+      transition: opacity .18s ease, box-shadow .12s linear;
       pointer-events: none;
     }
-    .bar.mic-on #mic-wave { opacity: .95; animation: micFlow 2.4s linear infinite; }
+    .bar.mic-on #mic-wave { animation: micFlow 2.4s linear infinite; }
+    .bar:not(.mic-on) #mic-wave { opacity: 0 !important; }
     @keyframes micFlow { to { background-position: 200% 0; } }
   </style>
   <div class="shell">
@@ -225,15 +229,37 @@ client :bar do
     })();
 
     const micWave = $('mic-wave');
+    // Level → color ramp: purple (quiet) → blue → green (talking) → orange → red (peaking).
+    const MIC_RAMP = [
+      [0.00, [139, 92, 246]],
+      [0.30, [59, 130, 246]],
+      [0.55, [52, 211, 153]],
+      [0.80, [251, 146, 60]],
+      [1.00, [239, 68, 68]],
+    ];
+    function micColor(l) {
+      let lo = MIC_RAMP[0], hi = MIC_RAMP[MIC_RAMP.length - 1];
+      for (let i = 0; i < MIC_RAMP.length - 1; i++) {
+        if (l >= MIC_RAMP[i][0] && l <= MIC_RAMP[i + 1][0]) { lo = MIC_RAMP[i]; hi = MIC_RAMP[i + 1]; break; }
+      }
+      const t = hi[0] === lo[0] ? 0 : (l - lo[0]) / (hi[0] - lo[0]);
+      const c = lo[1].map((v, i) => Math.round(v + (hi[1][i] - v) * t));
+      return 'rgb(' + c.join(',') + ')';
+    }
     window.ReactableBar = {
       setState(s) { state = s; render(); },
       setDevices() { /* window list refreshed natively when picker opens */ },
-      // level 0..1 from the native mic meter → reactive height + glow.
+      // level 0..1 from the native mic meter → color, not height. Silence = blank.
       setMicLevel(level) {
         const l = Math.max(0, Math.min(1, level));
-        micWave.style.transform = 'scaleY(' + (1 + l * 3.5) + ')';
-        micWave.style.filter = 'brightness(' + (1 + l * 0.8) + ')';
-        micWave.style.boxShadow = '0 0 ' + (4 + l * 10) + 'px rgba(52,211,153,' + (0.3 + l * 0.5) + ')';
+        if (l < 0.02) { micWave.style.opacity = '0'; return; }
+        const c = micColor(l);
+        micWave.style.opacity = String(Math.min(0.95, 0.35 + l * 0.9));
+        micWave.style.background =
+          'linear-gradient(90deg, ' + micColor(Math.max(0, l - 0.12)) + ', ' + c + ', ' +
+          micColor(Math.min(1, l + 0.12)) + ', ' + c + ', ' + micColor(Math.max(0, l - 0.12)) + ')';
+        micWave.style.backgroundSize = '200% 100%';
+        micWave.style.boxShadow = '0 0 ' + (6 + l * 12) + 'px ' + c;
       },
     };
 

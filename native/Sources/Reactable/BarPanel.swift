@@ -1,7 +1,8 @@
 import AppKit
 import WebKit
 
-private let barHeight: CGFloat = 48
+// 48px control row + 8px bottom zone for the mic meter strip (bar/index.work)
+private let barHeight: CGFloat = 56
 
 @MainActor
 private final class BarMenuTarget: NSObject {
