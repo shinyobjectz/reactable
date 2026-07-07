@@ -1,7 +1,80 @@
-use crate::agent_llm::{self, ChatRequest};
+use crate::agent_llm::{self, ChatRequest, ChatResponse};
 use std::fs;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
+
+// MiniMax provider — the paid agent brain. Key at ~/.reactable/minimax.key
+// (CLI-managed); model/endpoint negotiated by the CLI into minimax.json.
+// A file ~/.reactable/agent-provider containing "gemma" forces local.
+fn reactable_dir() -> PathBuf {
+    PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".reactable")
+}
+
+fn minimax_key() -> Option<String> {
+    if let Ok(k) = std::env::var("MINIMAX_API_KEY") {
+        let k = k.trim().to_string();
+        if !k.is_empty() {
+            return Some(k);
+        }
+    }
+    fs::read_to_string(reactable_dir().join("minimax.key"))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+fn provider_forced_local() -> bool {
+    fs::read_to_string(reactable_dir().join("agent-provider"))
+        .map(|s| s.trim() == "gemma")
+        .unwrap_or(false)
+}
+
+fn minimax_complete(req: &ChatRequest, key: &str) -> Result<ChatResponse, String> {
+    let cfg: serde_json::Value = fs::read_to_string(reactable_dir().join("minimax.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or(serde_json::json!({}));
+    let model = cfg["model"].as_str().unwrap_or("MiniMax-M3").to_string();
+    let endpoint = cfg["endpoint"]
+        .as_str()
+        .unwrap_or("https://api.minimax.io/v1/text/chatcompletion_v2")
+        .to_string();
+
+    let mut messages = vec![serde_json::json!({"role": "system", "content": req.system})];
+    for m in &req.messages {
+        messages.push(serde_json::json!({"role": m.role, "content": m.content}));
+    }
+    let body = serde_json::json!({
+        "model": model,
+        "messages": messages,
+        "max_tokens": req.max_tokens.unwrap_or(2048),
+    });
+
+    let resp = ureq::post(&endpoint)
+        .set("authorization", &format!("Bearer {key}"))
+        .set("content-type", "application/json")
+        .timeout(std::time::Duration::from_secs(90))
+        .send_json(body)
+        .map_err(|e| e.to_string())?;
+    let data: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+    let text = data["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    if text.is_empty() {
+        return Err(data["base_resp"]["status_msg"]
+            .as_str()
+            .unwrap_or("empty completion")
+            .to_string());
+    }
+    Ok(ChatResponse {
+        ok: true,
+        text,
+        engine: format!("minimax/{model}"),
+        error: None,
+    })
+}
 
 pub fn chat(input: &str, output: Option<&str>, model: Option<&str>) -> i32 {
     let body = match fs::read_to_string(input) {
@@ -19,7 +92,16 @@ pub fn chat(input: &str, output: Option<&str>, model: Option<&str>) -> i32 {
         }
     };
     let model_id = model.map(|s| s.to_string()).unwrap_or_else(agent_llm::default_model);
-    let resp = agent_llm::complete(&req, &model_id);
+    let resp = match minimax_key() {
+        Some(key) if !provider_forced_local() => match minimax_complete(&req, &key) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("minimax failed ({e}) — falling back to local model");
+                agent_llm::complete(&req, &model_id)
+            }
+        },
+        _ => agent_llm::complete(&req, &model_id),
+    };
     let json = serde_json::to_string_pretty(&resp).unwrap_or_default();
     if let Some(out) = output {
         if let Some(parent) = Path::new(out).parent() {
