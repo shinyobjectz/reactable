@@ -31,6 +31,8 @@ server :reactable_api do
   route "GET /reactable/projects/list", :projects_list, auth: :public
   route "GET /reactable/project", :project_get, auth: :public
   route "GET /reactable/surfaces", :surfaces_list, auth: :public
+  route "GET /reactable/research", :research_list, auth: :public
+  route "POST /reactable/research/add", :research_add, auth: :public
 
   def health(_req), do: %{ok: true, service: "reactable"}
 
@@ -242,6 +244,18 @@ server :reactable_api do
       "youtube" ->
         id = String.replace(ref, ~r/[^A-Za-z0-9_-]/, "")
         {200, "text/html", surface_frame("https://www.youtube.com/embed/#{id}")}
+
+      "research" ->
+        root = project_root_for(safe(req.query["project"] || ""))
+        path = project_file(root, Path.join("research", safe_file(ref)))
+
+        cond do
+          path == nil or not File.regular?(path) ->
+            {404, "text/html", surface_page("<p class='err'>research not found: #{esc(ref)}</p>")}
+
+          true ->
+            {200, "text/html", surface_page(prose_to_html(File.read!(path)))}
+        end
 
       _ ->
         {400, "text/html", surface_page("<p class='err'>unsupported surface: #{esc(kind)}</p>")}
@@ -1159,6 +1173,38 @@ server :reactable_api do
     %{id: Path.basename(path), name: project_title_at(path) || Path.basename(path), path: path}
   end
 
+  def research_list(req) do
+    root = project_root_for(safe(req.query["project"] || ""))
+    %{ok: true, research: Enum.map(research_items(root), &Map.take(&1, [:id, :title]))}
+  end
+
+  # Add a research item: a captured source (url + note) or a plain note. Stored
+  # as a markdown file under research/ so it's a first-class Surface.
+  def research_add(req) do
+    body = body_map(req)
+    root = project_root_for(safe(req.query["project"] || body["project"] || ""))
+    title = String.trim(to_string(body["title"] || "Untitled research"))
+    url = to_string(body["url"] || "")
+    note = to_string(body["note"] || "")
+
+    cond do
+      title == "" -> {400, %{ok: false, error: "title required"}}
+      true ->
+        slug = slugify_title(title)
+        dir = Path.join(root, "research")
+        File.mkdir_p!(dir)
+        file = "#{slug}.md"
+        path = Path.join(dir, file)
+
+        source = if url != "", do: "\nSource: <#{url}>\n", else: ""
+        body_md = "# #{title}\n#{source}\n#{note}\n"
+        File.write!(path, body_md)
+
+        %{ok: true, id: file, title: title, path: path,
+          surface: %{kind: "research", id: "research:#{file}", title: title, ref: file, project: Path.basename(root)}}
+    end
+  end
+
   # A Surface is the atom the Stage shows: {kind, id, title, ref, project, kinds}.
   # kind ∈ deck | take | doc | web | hyperframes | youtube | artifact.
   defp surfaces_for(root, project_id) do
@@ -1221,15 +1267,19 @@ server :reactable_api do
     end
   end
 
+  # Research items are markdown files under research/ (each a captured source or
+  # note). Title = first "# " heading, else the filename.
   defp research_items(root) do
     dir = Path.join(root, "research")
 
     if File.dir?(dir) do
       dir
       |> File.ls!()
+      |> Enum.filter(&String.ends_with?(&1, ".md"))
       |> Enum.sort()
-      |> Enum.map(fn item ->
-        %{id: item, path: Path.join(dir, item)}
+      |> Enum.map(fn file ->
+        path = Path.join(dir, file)
+        %{id: file, title: research_title(path) || file, path: path}
       end)
     else
       []
@@ -1238,8 +1288,19 @@ server :reactable_api do
 
   defp research_surfaces(root, project_id) do
     Enum.map(research_items(root), fn item ->
-      %{kind: "research", id: "research:#{item.id}", title: item.id, ref: item.id, project: project_id}
+      %{kind: "research", id: "research:#{item.id}", title: item.title, ref: item.id, project: project_id}
     end)
+  end
+
+  defp research_title(path) do
+    path
+    |> File.read!()
+    |> String.split("\n", parts: 40)
+    |> Enum.find_value(fn line ->
+      if String.starts_with?(line, "# "), do: String.trim(String.slice(line, 2..-1//1))
+    end)
+  rescue
+    _ -> nil
   end
 
   def project_create(req) do

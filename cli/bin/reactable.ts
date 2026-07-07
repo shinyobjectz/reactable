@@ -58,7 +58,7 @@ import {
 } from "../lib/speech.ts";
 import { ttsSpeak, ttsDoctor } from "../lib/tts.ts";
 import { agentChat, agentStatus, agentLlmProbe, createProject } from "../lib/agent.ts";
-import { getProject, listSurfaces } from "../lib/surface.ts";
+import { getProject, listSurfaces, listResearch, addResearch } from "../lib/surface.ts";
 import { authLogin, authStatus, clearCredentials } from "../lib/auth.ts";
 import {
   youtubeConnect,
@@ -127,6 +127,8 @@ Usage: reactable <command> [args]
   projects new "<title>" [--slug]   scaffold under ~/Reactable/projects/
   project [<id>] [--json]           project aggregate: research · decks · takes · surfaces
   surfaces [--project <id>] [--json]  flat Surface list (all projects if unscoped)
+  research list [--project <id>] [--json]
+  research add "<title>" [--url <u>] [--note <n>] [--project <id>]
 
   decks list
   decks get <slug> [--json]
@@ -726,6 +728,33 @@ try {
       if (flags.json) jsonOut({ ok: true, surfaces });
       else for (const s of surfaces) console.log(`${s.kind.padEnd(10)} ${s.project}/${s.ref}  ${s.title}`);
       process.exit(0);
+    } catch (e) {
+      console.error(String(e));
+      process.exit(1);
+    }
+  }
+
+  if (cmd === "research") {
+    try {
+      if (sub === "list") {
+        const items = await listResearch(flags.project ? String(flags.project) : undefined);
+        if (flags.json) jsonOut({ ok: true, research: items });
+        else for (const r of items) console.log(`${r.id.padEnd(28)} ${r.title}`);
+        process.exit(0);
+      }
+      if (sub === "add") {
+        const title = rest.slice(2).join(" ") || String(flags.title || "");
+        if (!title) { console.error('research add "<title>" [--url <u>] [--note <n>] [--project <id>]'); process.exit(1); }
+        const r = await addResearch(title, {
+          url: flags.url ? String(flags.url) : undefined,
+          note: flags.note ? String(flags.note) : undefined,
+          project: flags.project ? String(flags.project) : undefined,
+        });
+        jsonOut(r);
+        process.exit(r.ok ? 0 : 1);
+      }
+      console.error("research: list | add");
+      process.exit(1);
     } catch (e) {
       console.error(String(e));
       process.exit(1);

@@ -45,3 +45,23 @@ export async function listSurfaces(project?: string, port = PORT): Promise<Surfa
   const data = await res.json();
   return data.surfaces ?? [];
 }
+
+export async function listResearch(project?: string, port = PORT): Promise<{ id: string; title: string }[]> {
+  const q = project ? `?project=${encodeURIComponent(project)}` : "";
+  const res = await fetch(`${apiBase(port)}/reactable/research${q}`);
+  const data = await res.json();
+  return data.research ?? [];
+}
+
+export async function addResearch(
+  title: string,
+  opts: { url?: string; note?: string; project?: string } = {},
+  port = PORT,
+) {
+  const res = await fetch(`${apiBase(port)}/reactable/research/add`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ title, url: opts.url ?? "", note: opts.note ?? "", project: opts.project ?? "" }),
+  });
+  return res.json();
+}
