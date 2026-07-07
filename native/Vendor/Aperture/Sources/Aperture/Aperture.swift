@@ -309,6 +309,9 @@ extension Aperture {
 		// System audio for window captures comes from this display-level
 		// audio-only stream feeding the same writer input.
 		private var audioStream: SCStream?
+		private var loggedFirstAudioBuffer = false
+		private var loggedFirstAudioAppend = false
+		private var loggedFirstAudioSkip = false
 		private var isStreamRecording = false
 		/// The writer that will combine all the video/audio inputs into the destination file
 		private var assetWriter: AVAssetWriter?
@@ -379,7 +382,7 @@ extension Aperture {
 		) async throws {
 			try await setupStream(target: target, options: options)
 			try await stream?.startCapture()
-			try? await audioStream?.startCapture()
+			await startAudioCapture()
 			isStreamRecording = true
 			isPrewarmed = true
 		}
@@ -554,6 +557,7 @@ extension Aperture {
 					audioConfig.excludesCurrentProcessAudio = false
 					let audioFilter = SCContentFilter(display: display, excludingWindows: [])
 					audioStream = SCStream(filter: audioFilter, configuration: audioConfig, delegate: self)
+					FileHandle.standardError.write(Data("aperture: system-audio stream created\n".utf8))
 				}
 			case .externalDevice:
 				filter = nil
@@ -591,6 +595,16 @@ extension Aperture {
 			}
 
 			storedStreamConfig = streamConfig
+		}
+
+		func startAudioCapture() async {
+			guard let audioStream else { return }
+			do {
+				try await audioStream.startCapture()
+				FileHandle.standardError.write(Data("aperture: system-audio capture started\n".utf8))
+			} catch {
+				FileHandle.standardError.write(Data("aperture: system-audio startCapture FAILED: \(error)\n".utf8))
+			}
 		}
 
 		func stop() async throws {
@@ -842,7 +856,7 @@ extension Aperture.RecordingSession {
 
 		if startStream {
 			try await stream?.startCapture()
-			try? await audioStream?.startCapture()
+			await startAudioCapture()
 			isStreamRecording = true
 		}
 		try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Swift.Error>) in
@@ -1023,6 +1037,10 @@ extension Aperture.RecordingSession: SCStreamOutput {
 				videoInput.append(sampleBuffer)
 			}
 		case .audio:
+			if !loggedFirstAudioBuffer {
+				loggedFirstAudioBuffer = true
+				FileHandle.standardError.write(Data("aperture: first system-audio buffer (writerRunning=\(isRunning))\n".utf8))
+			}
 			if
 				assetWriter != nil,
 				!isRunning,
@@ -1032,7 +1050,15 @@ extension Aperture.RecordingSession: SCStreamOutput {
 			}
 
 			if isRunning, let systemAudioInput, systemAudioInput.isReadyForMoreMediaData {
-				systemAudioInput.append(sampleBuffer)
+				let ok = systemAudioInput.append(sampleBuffer)
+				if !loggedFirstAudioAppend {
+					loggedFirstAudioAppend = true
+					let pts = sampleBuffer.presentationTimeStamp.seconds
+					FileHandle.standardError.write(Data("aperture: system-audio append ok=\(ok) pts=\(pts) writerStatus=\(assetWriter?.status.rawValue ?? -1) error=\(String(describing: assetWriter?.error))\n".utf8))
+				}
+			} else if isRunning, !loggedFirstAudioSkip {
+				loggedFirstAudioSkip = true
+				FileHandle.standardError.write(Data("aperture: system-audio buffer SKIPPED (input=\(systemAudioInput != nil) ready=\(systemAudioInput?.isReadyForMoreMediaData ?? false))\n".utf8))
 			}
 		case .microphone:
 			if
