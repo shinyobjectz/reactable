@@ -28,6 +28,8 @@ server :reactable_api do
   route "POST /reactable/agent/prewarm", :agent_prewarm, auth: :public
   route "POST /reactable/projects/create", :project_create, auth: :public
   route "GET /reactable/projects/list", :projects_list, auth: :public
+  route "GET /reactable/project", :project_get, auth: :public
+  route "GET /reactable/surfaces", :surfaces_list, auth: :public
 
   def health(_req), do: %{ok: true, service: "reactable"}
 
@@ -1028,14 +1030,138 @@ server :reactable_api do
   end
 
   def projects_list(_req) do
-    roots = discover_project_roots()
-    projects =
-      Enum.map(roots, fn path ->
-        slug = Path.basename(path)
-        %{id: slug, name: project_title_at(path) || slug, path: path}
+    projects = Enum.map(discover_project_roots(), &project_summary/1)
+    %{ok: true, projects: projects}
+  end
+
+  # Full project aggregate — the three deliverables (research · decks · takes)
+  # plus a flat Surface list (the atoms the Stage can show). Defaults to the
+  # active project (wb_data) when no id is given.
+  def project_get(req) do
+    id = safe(req.query["id"] || "")
+    root =
+      if id == "" do
+        wb_data()
+      else
+        Enum.find(discover_project_roots(), wb_data(), fn p -> Path.basename(p) == id end)
+      end
+
+    summary = project_summary(root)
+
+    Map.merge(summary, %{
+      ok: true,
+      research: research_items(root),
+      decks: deck_surfaces(root),
+      takes: take_surfaces(root),
+      surfaces: surfaces_for(root, summary.id)
+    })
+  end
+
+  # Flat Surface list. `?project=<id>` scopes to one project; otherwise every
+  # discovered project (feeds the cross-project ⌘I palette).
+  def surfaces_list(req) do
+    project = safe(req.query["project"] || "")
+
+    roots =
+      if project == "" do
+        discover_project_roots()
+      else
+        discover_project_roots() |> Enum.filter(fn p -> Path.basename(p) == project end)
+      end
+
+    surfaces =
+      Enum.flat_map(roots, fn root ->
+        surfaces_for(root, Path.basename(root))
       end)
 
-    %{ok: true, projects: projects}
+    %{ok: true, surfaces: surfaces}
+  end
+
+  defp project_summary(path) do
+    %{id: Path.basename(path), name: project_title_at(path) || Path.basename(path), path: path}
+  end
+
+  # A Surface is the atom the Stage shows: {kind, id, title, ref, project, kinds}.
+  # kind ∈ deck | take | doc | web | hyperframes | youtube | artifact.
+  defp surfaces_for(root, project_id) do
+    deck_surfaces(root, project_id) ++
+      take_surfaces(root, project_id) ++
+      doc_surfaces(root, project_id) ++
+      research_surfaces(root, project_id)
+  end
+
+  defp deck_surfaces(root, project_id \\ nil) do
+    pid = project_id || Path.basename(root)
+    dir = Path.join(root, "decks")
+
+    if File.dir?(dir) do
+      dir
+      |> File.ls!()
+      |> Enum.filter(fn s -> File.exists?(Path.join([dir, s, "deck.work"])) end)
+      |> Enum.sort()
+      |> Enum.map(fn slug ->
+        title = deck_title_from_file(Path.join([dir, slug, "deck.work"])) || slug
+        %{kind: "deck", id: "deck:#{slug}", title: title, ref: slug, project: pid}
+      end)
+    else
+      []
+    end
+  end
+
+  defp take_surfaces(root, project_id \\ nil) do
+    pid = project_id || Path.basename(root)
+    dir = Path.join(root, "takes")
+
+    if File.dir?(dir) do
+      dir
+      |> File.ls!()
+      |> Enum.filter(&String.starts_with?(&1, "take-"))
+      |> Enum.sort(:desc)
+      |> Enum.map(fn id ->
+        %{kind: "take", id: "take:#{id}", title: id, ref: id, project: pid}
+      end)
+    else
+      []
+    end
+  end
+
+  # Markdown / .work docs at the project root become `doc` surfaces.
+  defp doc_surfaces(root, project_id) do
+    if File.dir?(root) do
+      root
+      |> File.ls!()
+      |> Enum.filter(fn f ->
+        (String.ends_with?(f, ".md") or String.ends_with?(f, ".work")) and
+          File.regular?(Path.join(root, f))
+      end)
+      |> Enum.sort()
+      |> Enum.map(fn f ->
+        %{kind: "doc", id: "doc:#{f}", title: f, ref: f, project: project_id}
+      end)
+    else
+      []
+    end
+  end
+
+  defp research_items(root) do
+    dir = Path.join(root, "research")
+
+    if File.dir?(dir) do
+      dir
+      |> File.ls!()
+      |> Enum.sort()
+      |> Enum.map(fn item ->
+        %{id: item, path: Path.join(dir, item)}
+      end)
+    else
+      []
+    end
+  end
+
+  defp research_surfaces(root, project_id) do
+    Enum.map(research_items(root), fn item ->
+      %{kind: "research", id: "research:#{item.id}", title: item.id, ref: item.id, project: project_id}
+    end)
   end
 
   def project_create(req) do
@@ -1367,11 +1493,12 @@ server :reactable_api do
       end
 
     paths
-    # Normalize (expand + strip trailing slash) before dedup so "…/reactable/"
-    # and "…/reactable" collapse to one entry.
     |> Enum.map(fn p -> Path.expand(p) end)
-    |> Enum.uniq()
     |> Enum.filter(fn p -> File.exists?(Path.join(p, "index.work")) end)
+    # Dedup on the symlink-resolved, case-folded real path so the manifest entry,
+    # wb_data, and the ~/Reactable/projects/<x> convenience symlink (which points
+    # back at the same dir) collapse to one project.
+    |> Enum.uniq_by(fn p -> String.downcase(realpath(p)) end)
   end
 
   defp project_title_at(root) do

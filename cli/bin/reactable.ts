@@ -57,6 +57,7 @@ import {
 } from "../lib/speech.ts";
 import { ttsSpeak, ttsDoctor } from "../lib/tts.ts";
 import { agentChat, agentStatus, agentLlmProbe, createProject } from "../lib/agent.ts";
+import { getProject, listSurfaces } from "../lib/surface.ts";
 import { authLogin, authStatus, clearCredentials } from "../lib/auth.ts";
 import {
   youtubeConnect,
@@ -123,6 +124,8 @@ Usage: reactable <command> [args]
   agent chat "<message>" [--deck demo] [--json]
   agent status [--json]           local Gemma MLX via reactable-tools
   projects new "<title>" [--slug]   scaffold under ~/Reactable/projects/
+  project [<id>] [--json]           project aggregate: research · decks · takes · surfaces
+  surfaces [--project <id>] [--json]  flat Surface list (all projects if unscoped)
 
   decks list
   decks get <slug> [--json]
@@ -696,6 +699,34 @@ try {
     }
     console.error("agent: chat | status | pull | serve [--stop]");
     process.exit(1);
+  }
+
+  if (cmd === "project") {
+    try {
+      const proj = await getProject(sub || undefined);
+      if (flags.json) jsonOut(proj);
+      else {
+        console.log(`${proj.name} (${proj.id}) — ${proj.path}`);
+        console.log(`  research: ${proj.research.length} · decks: ${proj.decks.length} · takes: ${proj.takes.length}`);
+        for (const s of proj.surfaces) console.log(`  ${s.kind.padEnd(10)} ${s.title}`);
+      }
+      process.exit(0);
+    } catch (e) {
+      console.error(String(e));
+      process.exit(1);
+    }
+  }
+
+  if (cmd === "surfaces") {
+    try {
+      const surfaces = await listSurfaces(flags.project ? String(flags.project) : undefined);
+      if (flags.json) jsonOut({ ok: true, surfaces });
+      else for (const s of surfaces) console.log(`${s.kind.padEnd(10)} ${s.project}/${s.ref}  ${s.title}`);
+      process.exit(0);
+    } catch (e) {
+      console.error(String(e));
+      process.exit(1);
+    }
   }
 
   if (cmd === "projects" && sub === "new") {
