@@ -103,12 +103,13 @@ def zoom_exprs(clicks: list[tuple[float, float, float]], vw: int, vh: int, scale
     z_cases, x_cases, y_cases = [], [], []
     for t, cx, cy in clicks:
         start = int(t * fps)
-        ramp = max(6, int(0.35 * fps))
+        ramp = max(6, int(0.6 * fps))
         hold = max(8, int(dur * fps))
         end = start + ramp + hold + ramp
         cond = f"between(in,{start},{end})"
-        # Eased blend 0→1→0: ramp in, hold, ramp out — no hard cuts.
-        f = f"min(1,min((in-{start})/{ramp},({end}-in)/{ramp}))"
+        # Smoothstep-eased blend 0→1→0 (f*f*(3-2f)) — buttery ramps.
+        lin = f"min(1,min((in-{start})/{ramp},({end}-in)/{ramp}))"
+        f = f"({lin}*{lin}*(3-2*{lin}))"
         z_cases.append((cond, f"1+{scale - 1:.4f}*{f}"))
         x_cases.append((cond, f"(iw/2+({cx}-iw/2)*{f})-(iw/zoom/2)"))
         y_cases.append((cond, f"(ih/2+({cy}-ih/2)*{f})-(ih/zoom/2)"))
@@ -167,12 +168,81 @@ def write_word_captions(transcript: Path, out: Path) -> None:
 
 
 
+def write_cursor_png(out: Path, height: int) -> Path:
+    """Rasterize a macOS-style arrow cursor (black fill, white outline) to a
+    PNG with alpha — stdlib only (no PIL)."""
+    import struct
+    import zlib
+
+    # Classic arrow polygon in a 12x19 box, scaled to `height`.
+    poly = [(0, 0), (0, 16.2), (4.4, 12.6), (7.0, 18.4), (9.2, 17.4),
+            (6.6, 11.6), (11.8, 11.6)]
+    sc = height / 19.0
+    poly = [(x * sc, y * sc) for x, y in poly]
+    w = int(13 * sc) + 4
+    h = height + 4
+
+    def inside(px, py):
+        c = False
+        j = len(poly) - 1
+        for i in range(len(poly)):
+            xi, yi = poly[i]
+            xj, yj = poly[j]
+            if (yi > py) != (yj > py) and px < (xj - xi) * (py - yi) / (yj - yi) + xi:
+                c = not c
+            j = i
+        return c
+
+    ss = 3  # supersample
+    rows = []
+    cov = [[0.0] * w for _ in range(h)]
+    for y in range(h):
+        for x in range(w):
+            hits = 0
+            for sy in range(ss):
+                for sx in range(ss):
+                    if inside(x - 2 + (sx + 0.5) / ss, y - 2 + (sy + 0.5) / ss):
+                        hits += 1
+            cov[y][x] = hits / (ss * ss)
+    for y in range(h):
+        row = bytearray([0])
+        for x in range(w):
+            a = cov[y][x]
+            # white outline = neighborhood coverage beyond own fill
+            near = max(
+                cov[max(0, y + dy)][max(0, x + dx)]
+                for dy in (-2, -1, 0, 1, 2)
+                for dx in (-2, -1, 0, 1, 2)
+                if 0 <= y + dy < h and 0 <= x + dx < w
+            )
+            if a > 0.1:
+                v = int(30 * (1 - a) + 10)
+                row += bytes([v, v, v, int(255 * min(1, a * 1.4))])
+            elif near > 0.15:
+                row += bytes([255, 255, 255, int(255 * min(1, near))])
+            else:
+                row += bytes([0, 0, 0, 0])
+        rows.append(bytes(row))
+
+    def chunk(tag, data):
+        return (struct.pack(">I", len(data)) + tag + data
+                + struct.pack(">I", zlib.crc32(tag + data)))
+
+    png = (b"\x89PNG\r\n\x1a\n"
+           + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
+           + chunk(b"IDAT", zlib.compress(b"".join(rows)))
+           + chunk(b"IEND", b""))
+    out.write_bytes(png)
+    return out
+
+
 def write_cursor_cmd(
     events: list[dict], out: Path, vw: int, vh: int,
-    win: dict | None, t_stage: float, half: int,
+    win: dict | None, t_stage: float,
 ) -> Path | None:
-    """Cursor track as an ffmpeg sendcmd file: timed x/y updates for an
-    overlay\'d synthetic dot (libass-free; works in every ffmpeg build)."""
+    """Cursor track as an ffmpeg sendcmd file. Raw samples are sparse (~5Hz),
+    so positions are re-emitted at 30Hz through a critically-damped chase —
+    the Screen-Studio glide instead of discrete jumps."""
     samples = []
     for ev in events:
         if ev.get("type") not in ("cursor", "click"):
@@ -184,15 +254,23 @@ def write_cursor_cmd(
         samples.append((t, x, y))
     if not samples:
         return None
-    thinned = []
-    for smp in samples:
-        if not thinned or smp[0] - thinned[-1][0] >= 0.05:
-            thinned.append(smp)
+    samples.sort()
+    fps = 30.0
+    stiffness = 10.0  # 1/s — chase rate toward the latest sample
+    t0, t_end = samples[0][0], samples[-1][0] + 0.5
+    cx, cy = samples[0][1], samples[0][2]
+    idx = 0
     lines = []
-    for t, x, y in thinned:
-        lines.append(
-            f"{t:.3f} overlay@cur x {x - half:.0f}, overlay@cur y {y - half:.0f};"
-        )
+    t = t0
+    while t <= t_end:
+        while idx + 1 < len(samples) and samples[idx + 1][0] <= t:
+            idx += 1
+        tx, ty = samples[idx][1], samples[idx][2]
+        k = min(1.0, stiffness / fps)
+        cx += (tx - cx) * k
+        cy += (ty - cy) * k
+        lines.append(f"{t:.3f} overlay@cur x {cx:.0f}, overlay@cur y {cy:.0f};")
+        t += 1.0 / fps
     out.write_text("\n".join(lines) + "\n")
     return out
 
@@ -280,20 +358,17 @@ def render_take(take_dir: Path, aspects: list[str] | None = None) -> dict:
 
         chain = "[0:v]"
         cursor_node = ""
-        dot = max(28, vw // 46)
-        half = dot // 2
+        cursor_inputs: list[str] = []
+        cursor_h = max(34, vh // 32)
         cursor_cmd = write_cursor_cmd(
-            events, out_dir / "cursor.cmd", vw, vh, capture_window, t_stage, half
+            events, out_dir / "cursor.cmd", vw, vh, capture_window, t_stage
         )
         if cursor_cmd:
-            r1, r2 = int(dot * 0.30), int(dot * 0.42)
+            cursor_png = write_cursor_png(out_dir / "cursor.png", cursor_h)
+            cursor_inputs = ["-loop", "1", "-i", str(cursor_png)]
             cursor_node = (
-                f"color=c=black@0:s={dot}x{dot}:r=30:d={info['duration'] + 2:.1f},format=rgba,"
-                f"geq=lum=255:cb=128:cr=128:"
-                f"a='if(lte(hypot(X-{half},Y-{half}),{r1}),190,"
-                f"if(lte(hypot(X-{half},Y-{half}),{r2}),255,0))'[dot];"
                 f"{chain}sendcmd=f={cursor_cmd}[sc];"
-                f"[sc][dot]overlay@cur=x=-{dot * 2}:y=-{dot * 2}:eval=frame:eof_action=pass[cursored]"
+                f"[sc][{{CURSOR_IDX}}:v]overlay@cur=x=-200:y=-200:eval=frame:eof_action=pass[cursored]"
             )
             chain = "[cursored]"
         if trim_in > 0 or trim_out is not None:
@@ -342,6 +417,12 @@ def render_take(take_dir: Path, aspects: list[str] | None = None) -> dict:
                 f"{last}[cam]overlay={ox}:{oy}:format=auto[outv]"
             )
             last = "[outv]"
+
+        if cursor_node:
+            cursor_idx = len([a for a in inputs if a == "-i"])
+            inputs += cursor_inputs
+            cursor_node = cursor_node.replace("{CURSOR_IDX}", str(cursor_idx))
+            parts[0] = cursor_node
 
         audio_map = ["-map", "0:a?"]
         if has_mic:
