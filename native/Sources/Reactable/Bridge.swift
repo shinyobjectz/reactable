@@ -11,7 +11,6 @@ protocol ReactableBridgeDelegate: AnyObject {
     func bridgeCaptureSetTarget(kind: String, id: String?)
     func bridgeSelectStage()
     func bridgeSelectArea()
-    func bridgeOpenEditor()
     func bridgeOpenAgent()
     func bridgeCreateProject(title: String)
     func bridgeSelectProject(id: String)

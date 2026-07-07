@@ -381,12 +381,6 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         areaPicker?.begin()
     }
 
-    func bridgeOpenEditor() {
-        if let url = URL(string: "http://127.0.0.1:\(port)/editor") {
-            NSWorkspace.shared.open(url)
-        }
-    }
-
     func bridgeOpenAgent() {
         agent?.setDeck(state.deckSlug)
         agent?.toggle()

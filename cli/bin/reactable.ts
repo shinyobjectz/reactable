@@ -141,7 +141,7 @@ Usage: reactable <command> [args]
   takes hf init <id>
   takes hf render <id>
 
-  open bar|editor [--deck <slug>]
+  open bar
   stage open [--deck <slug>]        open native stage (preview = record surface)
   stage hide                        hide native stage window
   stage load --deck <slug>          switch deck in stage
@@ -430,7 +430,6 @@ function cmdOpen(target: string, deck?: string) {
   }
   const urls: Record<string, string> = {
     bar: `${apiBase()}/bar`,
-    editor: `${apiBase()}/editor`,
   };
   const url = urls[target];
   if (!url) {

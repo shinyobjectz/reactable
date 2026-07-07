@@ -1,0 +1,104 @@
+# Reactable taxonomy — data-first refactor (proposal)
+
+Status: **proposal, pending alignment** — 2026-07-07. Written before the bar refactor
+so the data model is settled first. See [[docs/GOALS.local-agent]] for the agent side.
+
+## The core insight
+
+There are only **Projects**. Everything else is a thing *inside* a project. A project
+holds any subset of three deliverables — none are required:
+
+```
+Project
+├── Research   (0..n)  captured context: sources, HAR/web captures, notes, docs
+├── Deck       (0..n)  pre-production: an ordered sequence of Surfaces + actions
+└── Video      (0..n)  recorded output (today's "take": stage.mov + cam.mov + events)
+```
+
+The pipeline is **research → deck → record → video**, but every node is optional:
+- just a video (record something, no deck)
+- research + deck (planned, not yet recorded)
+- research → deck → video (the full path)
+
+`deck` is *not* a peer of `project` in navigation (today's bar treats them as siblings —
+that's the confusion). You navigate **Project → what's on the Stage**.
+
+## Surface — the atom of the Stage
+
+A **Surface** is anything the Stage can display. This unifies today's per-slide `type`
+values into a first-class type the Stage shows directly:
+
+| Surface | Source | Today |
+|---------|--------|-------|
+| `deck` | ordered Surfaces + actions (reveal.js) | `decks/<slug>/deck.work` |
+| `doc` | markdown | slide `type: prose` |
+| `web` | url / iframe / dev-server | `iframe` / `dev` |
+| `hyperframes` | a registered HF project | `cli/lib/hf.ts` |
+| `video` | a take / rendered mp4 | `takes/<id>` |
+| `youtube` | a video id | `youtube` |
+| `artifact` | a `.work` artifact | `artifact` |
+
+A **Deck is just a Surface that sequences other Surfaces.** The Stage doesn't need a deck
+to show a doc or a web app — it shows any Surface. An agent can push a Surface onto the
+Stage; the ⌘I palette can pull any Surface from any Project onto the Stage.
+
+## Stage — the one presentation surface
+
+- Shows **one active Surface**, with **tabs** for multiple open Surfaces.
+- Tabs render as floating badges (location TBD — see Q4).
+- The Stage is also a **capture target** when recording (record the stage window).
+- **No editor.** The web take-editor is removed. Post-production is agent + CLI (ffmpeg /
+  hyperframes), not a bespoke editor UI.
+
+## Bar — the stateful navigation root
+
+The bar is the single navigator for every surface. Its state splits cleanly into:
+
+1. **Context**: active Project · active Surface (or deck + slide) on the Stage.
+2. **Windows** (each a chromeless drag-strip panel, toggled from its own button):
+   Stage · Agent · Cam.
+3. **Capture**: capture-target (stage-window / display / window / area / device) ·
+   cam · mic · system-audio · record/pause/stop · countdown.
+
+Key fix: today `sourceKind` conflates *what's on the stage* with *what to capture*.
+Split into **Stage content** (a Surface) and **Capture target** (what recording grabs).
+
+## What gets eliminated (wet / unaligned)
+
+- **Web editor**: `editor/`, `take_edit_get/save`, `take_render` web UI, `open editor`,
+  the `/editor` route. Gone.
+- **Deck-as-nav-peer**: bar's separate project/deck pickers → one Project picker + a
+  Surface/tab switcher.
+- **`sourceKind` overload**: split stage-content from capture-target (above).
+- **take vs video naming**: pick one user-facing term (Q2).
+
+## Refactor phases (after alignment)
+
+1. **Data model**: `Surface` + `Project{research,decks,videos}` schema in nexus + CLI;
+   remove editor; split capture-target from stage-content in `AppState`.
+2. **Bar rewrite** around the new state machine.
+3. **Stage**: accept any Surface + tabs.
+4. **Shared chromeless window** (drag strip + toggle) for Stage / Agent / Cam / future.
+5. **⌘I palette**: cross-project Surface finder → open on Stage.
+
+## Resolved decisions (2026-07-07)
+
+- **Deck cardinality: 0..n** — a project holds many decks; nav has a deck switcher.
+- **Recorded output stays "take"** — keep the term everywhere (no rename to video).
+  So the three project deliverables are **Research · Deck · Take**.
+- **Research is first-class, built this pass** — schema + storage + capture (reuses the
+  HAR/web-capture path) + browse + put-on-Stage.
+- **Tabs live in the drag-strip header** — the stage's draggable header doubles as the
+  tab bar (one combined chrome strip; no separate floating badges).
+
+Revised project shape:
+
+```
+Project
+├── Research   (0..n)  first-class: sources, HAR/web captures, notes, docs
+├── Deck       (0..n)  ordered Surfaces + actions
+└── Take       (0..n)  recorded output (stage.mov + cam.mov + events + manifest)
+```
+
+Stage header = drag strip + tab bar for open Surfaces. Any Research item, Deck, doc,
+web app, hyperframes project, or take can be opened as a Surface tab.

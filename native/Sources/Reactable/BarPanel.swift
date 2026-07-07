@@ -26,10 +26,6 @@ private final class BarMenuTarget: NSObject {
         panel?.pickArea()
     }
 
-    @objc func openEditor(_ sender: NSMenuItem) {
-        panel?.openEditorPanel()
-    }
-
     @objc func projectPicked(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else { return }
         panel?.pickProject(id)
@@ -266,10 +262,6 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
         bridge?.bridgeSelectArea()
     }
 
-    fileprivate func openEditorPanel() {
-        bridge?.bridgeOpenEditor()
-    }
-
     fileprivate func pickProject(_ id: String) {
         bridge?.bridgeSelectProject(id: id)
     }
@@ -451,7 +443,6 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
             ("Capture: Display…", #selector(BarMenuTarget.displayPickedMenu(_:))),
             ("Capture: Area…", #selector(BarMenuTarget.areaPick(_:))),
             ("Capture: Device…", #selector(BarMenuTarget.devicePickedMenu(_:))),
-            ("Open editor", #selector(BarMenuTarget.openEditor(_:))),
         ] {
             let item = menu.addItem(withTitle: title, action: sel, keyEquivalent: "")
             item.target = menuTarget
