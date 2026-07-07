@@ -7,6 +7,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     private var agent: AgentWindowController?
     private var palette: PaletteWindowController?
     private let micMeter = MicMeter()
+    private var micTimer: Timer?
     private var sidecar: NexusSidecar?
     private var stage: StageWindowController?
     private var bar: BarPanel?
@@ -63,6 +64,8 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         hotkeyMonitor = nil
         if let localMonitor { NSEvent.removeMonitor(localMonitor) }
         recordTimer?.invalidate()
+        micTimer?.invalidate()
+        micMeter.stop()
         globalHotkeys?.stop()
         if takeRecorder?.isActive == true {
             inputMonitor?.stop()
@@ -600,9 +603,16 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     func bridgeMicToggle(on: Bool) {
         state.micOn = on
         if on {
-            micMeter.onLevel = { [weak self] level in self?.bar?.pushMicLevel(level) }
             micMeter.start()
+            micTimer?.invalidate()
+            // Poll the meter on the main thread (~20fps) and push to the bar —
+            // the audio thread never touches the webview / main actor.
+            micTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.bar?.pushMicLevel(self?.micMeter.level() ?? 0) }
+            }
         } else {
+            micTimer?.invalidate()
+            micTimer = nil
             micMeter.stop()
             bar?.pushMicLevel(0)
         }
