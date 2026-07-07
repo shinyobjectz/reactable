@@ -1,0 +1,63 @@
+name: Mirror models to R2
+
+# Downloads a model tier from Hugging Face and mirrors it to the reactable
+# R2 bucket — entirely on GitHub's runners, so it never touches a laptop's
+# bandwidth. Manual trigger.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: "Which tier(s) to mirror"
+        type: choice
+        default: medium
+        options: [low, medium, high, all]
+
+concurrency:
+  group: mirror-models
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc || true
+          df -h /
+
+      - name: Install uv + wrangler
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          npm i -g wrangler
+
+      - name: Resolve tiers → repos
+        id: tiers
+        run: |
+          declare -A M=(
+            [low]=mlx-community/gemma-4-e2b-it-4bit
+            [medium]=mlx-community/gemma-4-e4b-it-4bit
+            [high]=mlx-community/gemma-4-12B-it-4bit
+          )
+          sel="${{ inputs.tier }}"
+          if [ "$sel" = all ]; then repos="${M[low]} ${M[medium]} ${M[high]}"; else repos="${M[$sel]}"; fi
+          echo "repos=$repos" >> "$GITHUB_OUTPUT"
+
+      - name: Download from HF + mirror to R2 (one tier at a time)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -uo pipefail
+          for repo in ${{ steps.tiers.outputs.repos }}; do
+            echo "::group::$repo"
+            uvx --from 'huggingface_hub[cli]' hf download "$repo"
+            bash scripts/upload-model-r2.sh "$repo"
+            # reclaim disk before the next (large) tier
+            rm -rf "$HOME/.cache/huggingface/hub/models--${repo//\//--}" || true
+            df -h /
+            echo "::endgroup::"
+          done

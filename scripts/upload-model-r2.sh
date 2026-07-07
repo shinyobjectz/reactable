@@ -37,22 +37,29 @@ put() {
   return 1
 }
 
+# Cross-platform file size (macOS: stat -f%z, Linux/CI: stat -c%s).
+fsize() { stat -f%z "$1" 2>/dev/null || stat -c%s "$1"; }
+
 echo "→ mirroring $REPO from $SNAP"
 ENTRIES=()
 for f in "$SNAP"/*; do
   name="$(basename "$f")"
   real="$(readlink -f "$f")"
   [ -f "$real" ] || continue
-  size=$(stat -f%z "$real")
+  size=$(fsize "$real")
 
   if [ "$size" -gt "$CHUNK" ]; then
+    # Extract, upload, and delete each part one at a time — keeps peak disk to
+    # (original + one 290MB part), so it fits a 14GB CI runner for any tier.
+    nparts=$(( (size + CHUNK - 1) / CHUNK ))
     tmp="$(mktemp -d)"
-    split -b "$CHUNK" "$real" "$tmp/$name.part."   # → name.part.aa, name.part.ab, …
     parts=()
-    for p in "$tmp/$name.part."*; do
-      pn="$(basename "$p")"
-      echo "  ↑ $pn ($(echo "scale=2; $(stat -f%z "$p")/1e9" | bc) GB)"
-      put "$BUCKET/models/$REPO/$pn" "$p"
+    for ((i = 0; i < nparts; i++)); do
+      pn="$name.part.$(printf '%03d' "$i")"
+      dd if="$real" of="$tmp/$pn" bs=1000000 skip=$(( i * 290 )) count=290 status=none 2>/dev/null
+      echo "  ↑ $pn ($((i + 1))/$nparts)"
+      put "$BUCKET/models/$REPO/$pn" "$tmp/$pn"
+      rm -f "$tmp/$pn"
       parts+=("\"$pn\"")
     done
     rm -rf "$tmp"
