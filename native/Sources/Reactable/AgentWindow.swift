@@ -85,6 +85,7 @@ final class AgentWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
 
         let root = NSView()
         win.contentView = root
+        ResizeCornersView.attach(to: root)
 
         let dragStrip = DragStripView()
         dragStrip.translatesAutoresizingMaskIntoConstraints = false

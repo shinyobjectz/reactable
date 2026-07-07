@@ -54,7 +54,7 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
         let size = NSSize(width: 300, height: 640)
         let win = KeyableWindow(
             contentRect: NSRect(origin: .zero, size: size),
-            styleMask: [.borderless, .fullSizeContentView],
+            styleMask: [.borderless, .fullSizeContentView, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -73,6 +73,7 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
         web.setValue(false, forKey: "drawsBackground")
         webView = web
         win.contentView = web
+        ResizeCornersView.attach(to: web)
         web.load(URLRequest(url: URL(string: "http://127.0.0.1:\(port)/projects")!))
         window = win
     }

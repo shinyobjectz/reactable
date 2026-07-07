@@ -244,6 +244,7 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
             web.bottomAnchor.constraint(equalTo: preview.bottomAnchor),
         ])
 
+        ResizeCornersView.attach(to: root)
         window = win
         centerOnScreen(win, size: shell)
         savedFrame = win.frame
