@@ -6,6 +6,7 @@ import AVFoundation
 final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDelegate, StageCommandDelegate {
     private var agent: AgentWindowController?
     private var palette: PaletteWindowController?
+    private let micMeter = MicMeter()
     private var sidecar: NexusSidecar?
     private var stage: StageWindowController?
     private var bar: BarPanel?
@@ -598,6 +599,13 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
 
     func bridgeMicToggle(on: Bool) {
         state.micOn = on
+        if on {
+            micMeter.onLevel = { [weak self] level in self?.bar?.pushMicLevel(level) }
+            micMeter.start()
+        } else {
+            micMeter.stop()
+            bar?.pushMicLevel(0)
+        }
         syncBar()
     }
 

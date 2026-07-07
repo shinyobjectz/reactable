@@ -188,6 +188,10 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
         webView?.evaluateJavaScript("window.ReactableBar?.setState(\(json))")
     }
 
+    func pushMicLevel(_ level: Float) {
+        webView?.evaluateJavaScript("window.ReactableBar?.setMicLevel(\(level))")
+    }
+
     func pushDevices(_ devices: [String: Any]) {
         devicesPayload = devices
         guard let data = try? JSONSerialization.data(withJSONObject: devices),

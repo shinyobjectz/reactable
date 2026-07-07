@@ -171,7 +171,8 @@ final class CamBubblePanel: NSWindow {
     }
 
     private func stopCamera() {
-        session?.stopRunning()
+        // stopRunning() blocks; do it off the main thread so the UI stays snappy.
+        if let s = session { DispatchQueue.global(qos: .userInitiated).async { s.stopRunning() } }
         session = nil
         movieOutput = nil
         previewView.detach()

@@ -48,6 +48,31 @@ client :bar do
     .btn.close { width: 28px; color: #888; margin-left: 2px; }
     .btn.close:hover { color: #fff; background: rgba(255,80,80,.25); }
     .timer { font: 11px ui-monospace, monospace; color: #888; min-width: 42px; text-align: center; user-select: none; -webkit-user-select: none; }
+
+    /* Toggle icons (cam/mic/sys): a clear diagonal strike when OFF. */
+    .btn.tog { position: relative; }
+    .btn.tog:not(.on) { color: #6f6f74; }
+    .btn.tog:not(.on)::after {
+      content: ''; position: absolute; left: 50%; top: 50%;
+      width: 22px; height: 2px; border-radius: 2px;
+      background: #9a9aa2;
+      box-shadow: 0 1px 0 rgba(0,0,0,.7), 0 -1px 0 rgba(0,0,0,.5);
+      transform: translate(-50%, -50%) rotate(-45deg);
+      pointer-events: none;
+    }
+
+    /* Mic waveform — a reactive gradient stroke on the bottom edge of the bar. */
+    .bar { position: relative; }
+    #mic-wave {
+      position: absolute; left: 12px; right: 12px; bottom: 3px; height: 3px;
+      border-radius: 3px; opacity: 0; transform-origin: center bottom;
+      background: linear-gradient(90deg, #6366f1, #22d3ee, #34d399, #22d3ee, #6366f1);
+      background-size: 200% 100%;
+      transition: opacity .25s ease;
+      pointer-events: none;
+    }
+    .bar.mic-on #mic-wave { opacity: .95; animation: micFlow 2.4s linear infinite; }
+    @keyframes micFlow { to { background-position: 200% 0; } }
   </style>
   <div class="shell">
   <div class="bar" id="bar">
@@ -68,9 +93,9 @@ client :bar do
       <span class="lbl" id="capture-label">Stage</span>
     </button>
     <div class="sep"></div>
-    <button class="btn icon" id="cam" title="Camera"><svg class="ic" viewBox="0 0 24 24"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg></button>
-    <button class="btn icon" id="mic" title="Microphone"><svg class="ic" viewBox="0 0 24 24"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></svg></button>
-    <button class="btn icon on" id="sys" title="System audio"><svg class="ic" viewBox="0 0 24 24"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 5.636a9 9 0 0 1 0 12.728"/></svg></button>
+    <button class="btn icon tog" id="cam" title="Camera"><svg class="ic" viewBox="0 0 24 24"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg></button>
+    <button class="btn icon tog" id="mic" title="Microphone"><svg class="ic" viewBox="0 0 24 24"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></svg></button>
+    <button class="btn icon tog on" id="sys" title="System audio"><svg class="ic" viewBox="0 0 24 24"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 5.636a9 9 0 0 1 0 12.728"/></svg></button>
     <div class="sep"></div>
     <button class="btn icon" id="prev" title="Previous slide"><svg class="ic" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
     <button class="btn icon" id="next" title="Next slide"><svg class="ic" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
@@ -84,6 +109,7 @@ client :bar do
       <button class="btn icon" id="gear" title="Settings"><svg class="ic" viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.015 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.015 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.015 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.015"/><circle cx="12" cy="12" r="3"/></svg></button>
     </div>
     <button class="btn icon close" id="close" title="Close bar and stage"><svg class="ic" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+    <div id="mic-wave"></div>
   </div>
   </div>
   <script>
@@ -118,6 +144,7 @@ client :bar do
       $('mic').classList.toggle('on', !!state.micOn);
       $('sys').classList.toggle('on', state.systemAudioOn !== false);
       $('agent').classList.toggle('on', !!state.agentVisible);
+      $('bar').classList.toggle('mic-on', !!state.micOn);
       $('timer').textContent = fmt(state.elapsed || 0);
       const rec = $('record');
       rec.classList.toggle('on', !!state.recording);
@@ -150,9 +177,11 @@ client :bar do
       }
       if (btn.id === 'gear') return send('bar.menu.settings', anchor(btn));
       if (btn.id === 'agent') return send('agent.open');
-      if (btn.id === 'cam') return send('cam.toggle', { on: !state.camOn });
-      if (btn.id === 'mic') return send('mic.toggle', { on: !state.micOn });
-      if (btn.id === 'sys') return send('systemAudio.toggle', { on: !state.systemAudioOn });
+      // Optimistic toggle — flip the icon immediately so it never lags behind
+      // native work (e.g. stopping the camera session). Native confirms via state.
+      if (btn.id === 'cam') { const on = !state.camOn; state.camOn = on; btn.classList.toggle('on', on); return send('cam.toggle', { on }); }
+      if (btn.id === 'mic') { const on = !state.micOn; state.micOn = on; btn.classList.toggle('on', on); $('bar').classList.toggle('mic-on', on); return send('mic.toggle', { on }); }
+      if (btn.id === 'sys') { const on = !(state.systemAudioOn !== false); state.systemAudioOn = on; btn.classList.toggle('on', on); return send('systemAudio.toggle', { on }); }
       if (btn.id === 'prev') return send('slide.prev');
       if (btn.id === 'next') return send('slide.next');
       if (btn.id === 'record') {
@@ -195,9 +224,17 @@ client :bar do
       });
     })();
 
+    const micWave = $('mic-wave');
     window.ReactableBar = {
       setState(s) { state = s; render(); },
       setDevices() { /* window list refreshed natively when picker opens */ },
+      // level 0..1 from the native mic meter → reactive height + glow.
+      setMicLevel(level) {
+        const l = Math.max(0, Math.min(1, level));
+        micWave.style.transform = 'scaleY(' + (1 + l * 3.5) + ')';
+        micWave.style.filter = 'brightness(' + (1 + l * 0.8) + ')';
+        micWave.style.boxShadow = '0 0 ' + (4 + l * 10) + 'px rgba(52,211,153,' + (0.3 + l * 0.5) + ')';
+      },
     };
 
     document.addEventListener('selectstart', (e) => e.preventDefault());
