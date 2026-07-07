@@ -3,6 +3,7 @@ import Aperture
 
 @MainActor
 final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDelegate, StageCommandDelegate {
+    private var agent: AgentWindowController?
     private var sidecar: NexusSidecar?
     private var stage: StageWindowController?
     private var bar: BarPanel?
@@ -27,20 +28,8 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     private var recordTimer: Timer?
 
     override init() {
-        bundledProjectRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        if let env = ProcessInfo.processInfo.environment["REACTABLE_NEXUS"], !env.isEmpty {
-            nexusRoot = URL(fileURLWithPath: env, isDirectory: true)
-        } else {
-            nexusRoot = bundledProjectRoot
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .appending(path: "workbooks/nexus", directoryHint: .isDirectory)
-        }
+        bundledProjectRoot = AppPaths.projectRoot()
+        nexusRoot = AppPaths.nexusRoot(near: bundledProjectRoot)
         activeProjectURL = bundledProjectRoot
         super.init()
     }
@@ -85,29 +74,20 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     }
 
     private static func appIcon() -> NSImage? {
-        let img = NSImage(size: NSSize(width: 256, height: 256), flipped: false) { rect in
-            NSColor.black.setFill()
-            rect.fill()
-            // purple ambient glow
-            let glow = NSBezierPath(ovalIn: rect.insetBy(dx: 40, dy: 100))
-            NSColor(calibratedRed: 0.16, green: 0.09, blue: 0.28, alpha: 0.45).setFill()
-            glow.fill()
-            // outer ring
-            let ring = NSBezierPath(ovalIn: rect.insetBy(dx: 28, dy: 28))
-            NSColor(calibratedRed: 0.88, green: 0.09, blue: 0.09, alpha: 0.95).setStroke()
-            ring.lineWidth = 6
-            ring.stroke()
-            // 3D sphere
-            let sphere = NSBezierPath(ovalIn: rect.insetBy(dx: 52, dy: 52))
-            NSColor(calibratedRed: 0.55, green: 0.05, blue: 0.05, alpha: 1).setFill()
-            sphere.fill()
-            let highlight = NSBezierPath(ovalIn: rect.insetBy(dx: 72, dy: 88))
-            NSColor(calibratedRed: 1, green: 0.35, blue: 0.35, alpha: 0.55).setFill()
-            highlight.fill()
-            return true
+        if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "png"),
+           let img = NSImage(contentsOf: url) {
+            return img
         }
-        img.isTemplate = false
-        return img
+        if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+           let img = NSImage(contentsOf: url) {
+            return img
+        }
+        // Dev fallback when running outside a bundled .app
+        if let resources = Bundle.main.resourceURL {
+            let png = resources.appendingPathComponent("AppIcon.png")
+            if let img = NSImage(contentsOf: png) { return img }
+        }
+        return nil
     }
 
     private static func menuBarIcon() -> NSImage? {
@@ -138,12 +118,14 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         let menu = NSMenu()
         addMenuItem(menu, title: "Toggle Stage", action: #selector(toggleStage), key: "o")
         addMenuItem(menu, title: "Show Bar", action: #selector(showBar), key: "b")
+        addMenuItem(menu, title: "Local Agent…", action: #selector(openAgent), key: "l")
         menu.addItem(.separator())
         projectsMenuItem = menu.addItem(withTitle: "Project", action: nil, keyEquivalent: "")
         projectsMenuItem?.submenu = NSMenu()
         decksMenuItem = menu.addItem(withTitle: "Deck", action: nil, keyEquivalent: "")
         decksMenuItem?.submenu = NSMenu()
         addMenuItem(menu, title: "Open Projects Folder…", action: #selector(revealProjectsFolder), key: "")
+        addMenuItem(menu, title: "New Project…", action: #selector(createProject), key: "n")
         menu.addItem(.separator())
         addMenuItem(menu, title: "Record", action: #selector(toggleRecord), key: "r")
         addMenuItem(menu, title: "Next slide →", action: #selector(nextSlide), key: "]")
@@ -214,10 +196,15 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             showBar()
             stagePoller = StageCommandPoller(port: port, delegate: self)
             stagePoller?.start()
+            agent = AgentWindowController(port: port, deck: state.deckSlug, bridge: self)
             syncBar()
-            await refreshDevices()
         } catch {
             fputs("reactable boot failed: \(error)\n", stderr)
+            let alert = NSAlert()
+            alert.messageText = "Reactable could not start"
+            alert.informativeText = String(describing: error)
+            alert.alertStyle = .critical
+            alert.runModal()
             NSApp.terminate(nil)
         }
     }
@@ -398,6 +385,50 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         }
     }
 
+    func bridgeOpenAgent() {
+        agent?.setDeck(state.deckSlug)
+        agent?.open()
+    }
+
+    func bridgeCreateProject(title: String) {
+        Task { await createProject(title: title) }
+    }
+
+    @objc private func openAgent() {
+        bridgeOpenAgent()
+    }
+
+    @objc private func createProjectPrompt() {
+        let alert = NSAlert()
+        alert.messageText = "New Reactable Project"
+        alert.informativeText = "Creates a project under ~/Reactable/projects/"
+        alert.addButton(withTitle: "Create")
+        alert.addButton(withTitle: "Cancel")
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        field.placeholderString = "My Talk"
+        alert.accessoryView = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let title = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return }
+        Task { await createProject(title: title) }
+    }
+
+    @objc private func createProject() {
+        createProjectPrompt()
+    }
+
+    private func createProject(title: String) async {
+        do {
+            let project = try ProjectRegistry.createProject(title: title)
+            await switchProject(id: project.id)
+            state.deckSlug = project.id
+            bridgeSelectDeck(slug: project.id)
+            fputs("reactable: created project → \(project.url.path())\n", stderr)
+        } catch {
+            fputs("reactable: create project failed: \(error)\n", stderr)
+        }
+    }
+
     func bridgeSelectProject(id: String) {
         Task { await switchProject(id: id) }
     }
@@ -411,6 +442,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             state.deckTitle = slug
         }
         stage?.loadDeck(slug)
+        agent?.setDeck(slug)
         ProjectRegistry.saveLastSelection(projectId: state.projectId, deckSlug: slug)
         syncBar()
         if state.sourceKind == "stage" { openStage() }
@@ -576,8 +608,53 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         syncBar()
     }
 
-    func bridgeRequestDevices() {
-        Task { await refreshDevices() }
+    func bridgeCopyAgentPrompt() {
+        AgentPrompt.copyToPasteboard(projectRoot: activeProjectURL, deck: state.deckSlug)
+        fputs("reactable: agent prompt copied to pasteboard\n", stderr)
+    }
+
+    func bridgeRequestDevices(includeIOS: Bool = false) {
+        Task { await refreshDevices(requestAccess: true, includeIOS: includeIOS) }
+    }
+
+    private func refreshDevices(requestAccess: Bool = false, includeIOS: Bool = false) async {
+        var payload: [String: Any] = [
+            "sources": [
+                ["kind": "stage", "label": "Stage window"],
+                ["kind": "display", "label": "Display"],
+                ["kind": "window", "label": "Window"],
+                ["kind": "area", "label": "Area"],
+                ["kind": "device", "label": "iPhone / external"],
+            ],
+            "screens": [] as [[String: String]],
+            "windows": [] as [[String: String]],
+            "ios": [] as [[String: String]],
+            "screenCaptureGranted": ScreenCaptureAccess.isGranted,
+        ]
+
+        let mayEnumerate = ScreenCaptureAccess.isGranted
+            || (requestAccess && ScreenCaptureAccess.requestIfNeeded())
+
+        guard mayEnumerate else {
+            bar?.pushDevices(payload)
+            return
+        }
+
+        payload["screenCaptureGranted"] = true
+
+        do {
+            let screens = try await Aperture.Devices.screen()
+            payload["screens"] = screens.map { ["id": $0.id, "label": $0.name] }
+            let windows = try await Aperture.Devices.window(excludeDesktopWindows: true, onScreenWindowsOnly: true)
+            payload["windows"] = windows.prefix(20).map { ["id": $0.id, "label": $0.title ?? $0.appName ?? $0.id] }
+            if includeIOS {
+                let ios = Aperture.Devices.iOS()
+                payload["ios"] = ios.map { ["id": $0.id, "label": $0.name] }
+            }
+        } catch {
+            fputs("reactable devices: \(error)\n", stderr)
+        }
+        bar?.pushDevices(payload)
     }
 
     private func beginRecording() {
@@ -693,32 +770,6 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
 
     func stageLiveState() -> (deck: String, visible: Bool, projectId: String) {
         (deck: state.deckSlug, visible: stage?.isVisible ?? false, projectId: state.projectId)
-    }
-
-    private func refreshDevices() async {
-        var payload: [String: Any] = [
-            "sources": [
-                ["kind": "stage", "label": "Stage window"],
-                ["kind": "display", "label": "Display"],
-                ["kind": "window", "label": "Window"],
-                ["kind": "area", "label": "Area"],
-                ["kind": "device", "label": "iPhone / external"],
-            ],
-            "screens": [] as [[String: String]],
-            "windows": [] as [[String: String]],
-            "ios": [] as [[String: String]],
-        ]
-        do {
-            let screens = try await Aperture.Devices.screen()
-            payload["screens"] = screens.map { ["id": $0.id, "label": $0.name] }
-            let windows = try await Aperture.Devices.window(excludeDesktopWindows: true, onScreenWindowsOnly: true)
-            payload["windows"] = windows.prefix(20).map { ["id": $0.id, "label": $0.title ?? $0.appName ?? $0.id] }
-            let ios = Aperture.Devices.iOS()
-            payload["ios"] = ios.map { ["id": $0.id, "label": $0.name] }
-        } catch {
-            fputs("reactable devices: \(error)\n", stderr)
-        }
-        bar?.pushDevices(payload)
     }
 
     // MARK: - Menu actions

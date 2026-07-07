@@ -1,6 +1,7 @@
 export interface Env {
   ASSETS: Fetcher;
   KV: KVNamespace;
+  DOWNLOADS: R2Bucket;
   SITE_URL: string;
   APP_NAME: string;
   GOOGLE_CLIENT_ID: string;

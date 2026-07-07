@@ -27,19 +27,69 @@ p0:
       echo "frame → native/spike-out/frame.png"
     fi
 
-# P1: build + launch menu-bar app (spawns nexus + stage window).
-dev:
+# P1: build, install to ~/Applications, and launch.
+dev: app
     #!/usr/bin/env bash
     set -euo pipefail
-    cd "{{native}}"
-    swift build -c release
-    .build/release/reactable
+    open "$HOME/Applications/Reactable.app"
 
 build:
     cd "{{native}}" && swift build -c release
 
-# Bundle a double-clickable Reactable.app (Dock + Launchpad).
+# Build Reactable.app and install to ~/Applications (replaces existing).
 app: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ROOT="{{root}}"
+    APP="$ROOT/dist/Reactable.app"
+    DEST="$HOME/Applications/Reactable.app"
+    rm -rf "$APP"
+    mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+    cp "{{native}}/.build/release/reactable" "$APP/Contents/MacOS/"
+    cp "{{native}}/Resources/Info.plist" "$APP/Contents/"
+    cp "{{native}}/Resources/AppIcon.icns" "$APP/Contents/Resources/"
+    cp "{{native}}/Resources/AppIcon.png" "$APP/Contents/Resources/"
+    chmod +x "$APP/Contents/MacOS/reactable"
+    # Bundled nexus sidecar (required for Dock/Launchpad — no system Elixir)
+    if [ ! -x "$ROOT/dist/reactable-nexus" ]; then
+      echo "→ building reactable-nexus sidecar…"
+      "$ROOT/scripts/build-sidecar.sh"
+    fi
+    if [ -x "$ROOT/dist/reactable-nexus" ]; then
+      cp "$ROOT/dist/reactable-nexus" "$APP/Contents/MacOS/"
+      chmod +x "$APP/Contents/MacOS/reactable-nexus"
+    else
+      echo "⚠ reactable-nexus missing — app will need Elixir in dev" >&2
+    fi
+    # Bundle sidecar tools if built
+    if [ -x "$ROOT/dist/reactable-tools" ]; then
+      cp "$ROOT/dist/reactable-tools" "$APP/Contents/MacOS/"
+    fi
+    # Replace installed copy (quit running instance first so binary can swap)
+    if pgrep -x reactable >/dev/null 2>&1; then
+      echo "→ quitting running Reactable…"
+      osascript -e 'tell application "Reactable" to quit' 2>/dev/null || pkill -x reactable || true
+      sleep 0.5
+    fi
+    # Orphan nexus listeners block the next boot
+    if command -v lsof >/dev/null; then
+      PIDS=$(lsof -tiTCP:4020 -sTCP:LISTEN 2>/dev/null || true)
+      if [ -n "$PIDS" ]; then
+        echo "→ freeing :4020 ($PIDS)…"
+        kill $PIDS 2>/dev/null || true
+        sleep 0.3
+      fi
+    fi
+    rm -rf "$DEST"
+    cp -R "$APP" "$DEST"
+    echo "→ $DEST (replaced)"
+    echo "→ $APP"
+
+# Alias — same as app (always replaces ~/Applications).
+install: app
+
+# Build only, no install to ~/Applications
+app-dist: build
     #!/usr/bin/env bash
     set -euo pipefail
     APP="{{root}}/dist/Reactable.app"
@@ -47,18 +97,22 @@ app: build
     mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
     cp "{{native}}/.build/release/reactable" "$APP/Contents/MacOS/"
     cp "{{native}}/Resources/Info.plist" "$APP/Contents/"
+    cp "{{native}}/Resources/AppIcon.icns" "$APP/Contents/Resources/"
+    cp "{{native}}/Resources/AppIcon.png" "$APP/Contents/Resources/"
     chmod +x "$APP/Contents/MacOS/reactable"
     echo "→ $APP"
 
-# Copy Reactable.app to ~/Applications (run `just app` first).
-install: app
-    #!/usr/bin/env bash
-    set -euo pipefail
-    DEST="$HOME/Applications/Reactable.app"
-    rm -rf "$DEST"
-    cp -R "{{root}}/dist/Reactable.app" "$DEST"
-    echo "Installed → $DEST"
-    echo "Open from Launchpad, Dock (pin it), or Spotlight."
+# Signed + notarized production DMG → dist/Reactable.dmg + R2 upload
+release:
+    bash "{{root}}/scripts/release-dmg.sh"
+
+# Preflight signing + notarization credentials
+release-check:
+    bash "{{root}}/scripts/check-apple-release.sh"
+
+# Burrito-wrapped nexus only (dev iteration)
+sidecar:
+    bash "{{root}}/scripts/build-sidecar.sh"
 
 # Headless nexus sidecar. Swift shell spawns this in production.
 serve:
@@ -100,6 +154,38 @@ render take="":
 # Synthetic take for CI / headless checks
 fixture:
     bash "{{root}}/scripts/fixture-take.sh"
+
+# Demo MP4 for video slides (decks/*/labs/sample.mp4)
+lab-samples:
+    bash "{{root}}/scripts/gen-lab-samples.sh"
+
+# Compile skill registry (CI + before skills install)
+skills-compile:
+    bun run "{{root}}/scripts/compile-skills.ts"
+
+# Rust tools sidecar → dist/reactable-tools
+tools:
+    bash "{{root}}/scripts/build-tools.sh"
+
+# MLX smoke — Moonshine STT, Kokoro TTS, speech edit (Apple Silicon)
+smoke-mlx take="take-fixture-validation":
+    bash "{{root}}/scripts/smoke-mlx.sh" {{take}}
+
+# Local agent scaffold smoke (Nexus routes + sidecar status; no model needed)
+smoke-agent:
+    bash "{{root}}/scripts/smoke-agent.sh"
+
+# Deterministic agent loop + sandbox tests (REACTABLE_AGENT_STUB=1; no model)
+test-agent-stub:
+    bash "{{root}}/scripts/test-agent-stub.sh"
+
+# Real-model E2E — needs default model cached (`just agent-pull` first)
+validate-agent-e2e:
+    bash "{{root}}/scripts/validate-agent-e2e.sh"
+
+# Pull the default local agent model (~2GB, one-time; no HF account)
+agent-pull:
+    "{{root}}/dist/reactable-tools" agent-pull
 
 p3:
     bash "{{root}}/scripts/p3-check.sh"

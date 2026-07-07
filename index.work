@@ -24,6 +24,7 @@ nexus sidecar. The plan of record is [[docs/PLAN]].
 | GitHub | [github.com/shinyobjectz/reactable](https://github.com/shinyobjectz/reactable) | own repo / submodule |
 | Stage | `present/` | `/present` |
 | Bar | `bar/` | `/bar` |
+| Local agent | `agent/` | `/agent` |
 | Editor | `editor/` | `/editor` |
 | Decks / takes | `decks/`, `takes/` | `.work` |
 

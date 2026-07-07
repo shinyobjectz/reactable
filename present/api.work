@@ -19,6 +19,14 @@ server :reactable_api do
   route "POST /reactable/stage", :stage_command, auth: :public
   route "POST /reactable/stage/ack", :stage_ack, auth: :public
   route "POST /reactable/stage/heartbeat", :stage_heartbeat, auth: :public
+  route "GET /reactable/har", :har_list, auth: :public
+  route "POST /reactable/har/capture", :har_capture, auth: :public
+  route "GET /reactable/har/:id", :har_get, auth: :public
+  route "POST /reactable/blitz/replay", :blitz_replay, auth: :public
+  route "POST /reactable/agent/chat", :agent_chat, auth: :public
+  route "GET /reactable/agent/status", :agent_status, auth: :public
+  route "POST /reactable/projects/create", :project_create, auth: :public
+  route "GET /reactable/projects/list", :projects_list, auth: :public
 
   def health(_req), do: %{ok: true, service: "reactable"}
 
@@ -850,6 +858,568 @@ server :reactable_api do
       _ -> nil
     end
   end
+
+  defp har_root(project) do
+    Path.join([wb_data(), ".reactable", "har", safe(project)])
+  end
+
+  def har_list(req) do
+    project = safe(req.query["project"] || "default")
+    index = Path.join(har_root(project), "index.json")
+
+    entries =
+      if File.exists?(index) do
+        case File.read(index) do
+          {:ok, body} ->
+            case Jason.decode(body) do
+              {:ok, list} when is_list(list) -> list
+              _ -> []
+            end
+          _ -> []
+        end
+      else
+        []
+      end
+
+    %{ok: true, project: project, entries: entries}
+  end
+
+  def har_capture(req) do
+    body = body_map(req)
+    url = to_string(body["url"] || req.query["url"] || "")
+    project = safe(body["project"] || req.query["project"] || "default")
+
+    cond do
+      url == "" -> {400, %{ok: false, error: "url required"}}
+      true ->
+        script = Path.join([wb_data(), "dist", "reactable-tools"])
+        args = ["har-capture", url, "--project", project, "--wb-data", wb_data()]
+
+        {out, code} =
+          if File.exists?(script) do
+            System.cmd(script, args, cd: wb_data(), stderr_to_stdout: true)
+          else
+            case System.find_executable("reactable-tools") do
+              nil -> {"reactable-tools not found — run: reactable tools build", 127}
+              bin -> System.cmd(bin, args, cd: wb_data(), stderr_to_stdout: true)
+            end
+          end
+
+        if code == 0 do
+          case Jason.decode(String.trim(out)) do
+            {:ok, m} -> Map.put(m, :ok, true)
+            _ -> %{ok: true, log: String.trim(out)}
+          end
+        else
+          {500, %{ok: false, error: String.trim(out)}}
+        end
+    end
+  end
+
+  def har_get(req) do
+    id = safe(req.params["id"])
+    project = safe(req.query["project"] || "default")
+    path = Path.join(har_root(project), "#{id}.json")
+
+    cond do
+      id == "" -> {400, %{ok: false, error: "id required"}}
+      not File.exists?(path) -> {404, %{ok: false, error: "not found"}}
+      true ->
+        case File.read(path) do
+          {:ok, body} ->
+            case Jason.decode(body) do
+              {:ok, m} -> Map.put(m, :ok, true)
+              _ -> {500, %{ok: false, error: "invalid har json"}}
+            end
+          _ -> {500, %{ok: false, error: "read failed"}}
+        end
+    end
+  end
+
+  def blitz_replay(req) do
+    body = body_map(req)
+    ref = safe(to_string(body["ref"] || ""))
+    project = safe(body["project"] || "default")
+
+    path = Path.join(har_root(project), "#{ref}.json")
+    body_path = Path.join(har_root(project), "#{ref}.body.html")
+
+    cond do
+      ref == "" -> {400, %{ok: false, error: "ref required"}}
+      not File.exists?(path) -> {404, %{ok: false, error: "har ref not found"}}
+      true ->
+        har = path |> File.read!() |> Jason.decode!()
+        url = Map.get(har, "url", "")
+
+        replay =
+          cond do
+            File.exists?(body_path) ->
+              html = File.read!(body_path)
+              case Nexus.Browse.Blitz.render_html(html, url) do
+                {:ok, text} -> %{via: :cached_blitz, text: text}
+                {:error, e} -> %{via: :cached_html, text: String.slice(html, 0, 8000), blitz_error: inspect(e)}
+              end
+
+            url != "" ->
+              case Nexus.Browse.read(url, render: true) do
+                {:ok, m} -> Map.put(m, :via, Map.get(m, :via, :blitz))
+                {:error, e} -> %{via: :error, error: inspect(e)}
+              end
+
+            true ->
+              %{via: :error, error: "no body or url"}
+          end
+
+        %{ok: true, ref: ref, url: url, replay: replay, assets: Map.get(har, "assets", [])}
+    end
+  end
+
+  def agent_status(_req) do
+    bin = tools_bin()
+    cond do
+      not File.exists?(bin) ->
+        %{ok: false, backend: "rust-mlx", error: "reactable-tools missing — run: reactable tools build"}
+
+      true ->
+        {out, code} = System.cmd(bin, ["agent-status"], cd: wb_data(), stderr_to_stdout: true)
+        case Jason.decode(String.trim(out)) do
+          {:ok, m} -> Map.merge(%{ok: code == 0, backend: "nexus+mlx"}, m)
+          _ -> %{ok: code == 0, backend: "nexus+mlx", log: String.trim(out)}
+        end
+    end
+  end
+
+  def agent_chat(req) do
+    body = body_map(req)
+    message = to_string(body["message"] || "")
+    history = body["history"] || []
+    deck = safe(body["deck"] || "demo")
+    max_turns = min(max_turns(body["max_turns"]), 8)
+
+    cond do
+      message == "" -> {400, %{ok: false, error: "message required"}}
+      true ->
+        case agent_turn_loop(message, history, deck, max_turns) do
+          {:ok, result} -> Map.put(result, :ok, true)
+          {:error, e} -> {500, %{ok: false, error: e}}
+        end
+    end
+  end
+
+  def projects_list(_req) do
+    roots = discover_project_roots()
+    projects =
+      Enum.map(roots, fn path ->
+        slug = Path.basename(path)
+        %{id: slug, name: project_title_at(path) || slug, path: path}
+      end)
+
+    %{ok: true, projects: projects}
+  end
+
+  def project_create(req) do
+    body = body_map(req)
+    title = String.trim(to_string(body["title"] || "Untitled"))
+    slug = safe(body["slug"] || slugify_title(title))
+
+    cond do
+      title == "" -> {400, %{ok: false, error: "title required"}}
+      slug == "" -> {400, %{ok: false, error: "invalid slug"}}
+      true ->
+        case scaffold_project(slug, title) do
+          {:ok, path} ->
+            register_project_path(path)
+            %{ok: true, slug: slug, title: title, path: path}
+
+          {:error, e} ->
+            {500, %{ok: false, error: e}}
+        end
+    end
+  end
+
+  defp agent_turn_loop(message, history, deck, max_turns) do
+    system = agent_system_prompt(deck)
+    messages = history ++ [%{"role" => "user", "content" => message}]
+    agent_turns(system, messages, max_turns, 0, [])
+  end
+
+  # Full transcript (including the original user message) rides through every
+  # recursion — assistant turns and tool results are appended, never replaced.
+  defp agent_turns(system, messages, max_turns, turn, tool_log) do
+    case llm_complete(system, messages) do
+      {:ok, text} ->
+        case parse_tool_calls(text) do
+          [] ->
+            if malformed_tool_block?(text) and turn + 1 < max_turns do
+              retry =
+                "Your tool block was malformed JSON. Emit ONLY one valid tool block: " <>
+                  ~s(```tool\n{"name":"...","args":{...}}\n```)
+
+              agent_turns(
+                system,
+                messages ++
+                  [%{"role" => "assistant", "content" => text}, %{"role" => "user", "content" => retry}],
+                max_turns,
+                turn + 1,
+                tool_log
+              )
+            else
+              {:ok, %{reply: text, tools: tool_log, turns: turn + 1}}
+            end
+
+          _tools when turn + 1 >= max_turns ->
+            {:ok, %{reply: text, tools: tool_log, turns: turn + 1, note: "max turns"}}
+
+          tools ->
+            results =
+              Enum.map(tools, fn tool ->
+                out = run_agent_tool(tool)
+                %{tool: tool, result: out}
+              end)
+
+            followup =
+              "Tool results:\n" <>
+                Enum.map_join(results, "\n", fn r ->
+                  Jason.encode!(r)
+                end)
+
+            agent_turns(
+              system,
+              messages ++
+                [%{"role" => "assistant", "content" => text}, %{"role" => "user", "content" => followup}],
+              max_turns,
+              turn + 1,
+              tool_log ++ results
+            )
+        end
+
+      {:error, e} ->
+        {:error, e}
+    end
+  end
+
+  defp malformed_tool_block?(text) when is_binary(text) do
+    String.contains?(text, "```tool") and parse_tool_calls(text) == []
+  end
+
+  # REACTABLE_AGENT_STUB=1 — deterministic LLM stand-in for loop/sandbox tests:
+  # a user message containing "STUB:" is echoed back verbatim (everything after
+  # the marker), so tests can drive exact tool blocks; anything else → "done".
+  defp llm_complete(system, messages) do
+    if System.get_env("REACTABLE_AGENT_STUB") == "1" do
+      last_user =
+        messages
+        |> Enum.reverse()
+        |> Enum.find_value(fn m ->
+          role = m["role"] || m[:role]
+          if to_string(role) == "user", do: to_string(m["content"] || m[:content] || "")
+        end)
+
+      case last_user && String.split(last_user, "STUB:", parts: 2) do
+        [_, payload] -> {:ok, payload}
+        _ -> {:ok, "done"}
+      end
+    else
+      llm_complete_server(system, messages)
+    end
+  end
+
+  defp llm_complete_server(system, messages) do
+    bin = tools_bin()
+
+    unless File.exists?(bin) do
+      {:error, "reactable-tools not found"}
+    else
+      req = %{system: system, messages: Enum.map(messages, &normalize_msg/1), max_tokens: 2048}
+      tmp_in = Path.join(System.tmp_dir!(), "reactable-agent-in-#{System.unique_integer([:positive])}.json")
+      tmp_out = Path.join(System.tmp_dir!(), "reactable-agent-out-#{System.unique_integer([:positive])}.json")
+      File.write!(tmp_in, Jason.encode!(req))
+
+      try do
+        {_, code} = System.cmd(bin, ["agent-chat", "--input", tmp_in, "--output", tmp_out], cd: wb_data(), stderr_to_stdout: true)
+
+        body =
+          if File.exists?(tmp_out) do
+            File.read!(tmp_out)
+          else
+            ""
+          end
+
+        case Jason.decode(body) do
+          {:ok, %{"ok" => true, "text" => text}} -> {:ok, text}
+          {:ok, %{"error" => err}} -> {:error, err}
+          _ when code != 0 -> {:error, String.trim(body)}
+          _ -> {:error, "agent-chat failed"}
+        end
+      after
+        File.rm(tmp_in)
+        File.rm(tmp_out)
+      end
+    end
+  end
+
+  defp normalize_msg(%{"role" => role, "content" => content}), do: %{role: role, content: to_string(content)}
+  defp normalize_msg(%{role: role, content: content}), do: %{role: to_string(role), content: to_string(content)}
+  defp normalize_msg(other), do: %{role: "user", content: inspect(other)}
+
+  defp parse_tool_calls(text) when is_binary(text) do
+    Regex.scan(~r/```tool\s*\n([\s\S]*?)```/m, text)
+    |> Enum.map(fn [_, body] -> Jason.decode!(String.trim(body)) end)
+    |> Enum.filter(&is_map/1)
+  rescue
+    _ -> []
+  end
+
+  defp run_agent_tool(%{"name" => "bash", "args" => %{"cmd" => cmd}}) when is_binary(cmd) do
+    if sandbox_cmd_allowed?(cmd) do
+      # Scrubbed environment + non-login shell: no user profile, no inherited env.
+      args =
+        ["-i" | Enum.map(sandbox_env(), fn {k, v} -> "#{k}=#{v}" end)] ++
+          ["/bin/bash", "-c", cmd]
+
+      {out, code} = System.cmd("/usr/bin/env", args, cd: wb_data(), stderr_to_stdout: true)
+      %{ok: code == 0, code: code, output: String.slice(out, 0, 8000)}
+    else
+      %{ok: false, error: "command not allowed in sandbox"}
+    end
+  end
+
+  defp run_agent_tool(%{"name" => "read_file", "args" => %{"path" => path}}) when is_binary(path) do
+    case safe_read(path) do
+      {:ok, body} -> %{ok: true, path: path, content: String.slice(body, 0, 12000)}
+      {:error, e} -> %{ok: false, error: e}
+    end
+  end
+
+  defp run_agent_tool(%{"name" => "write_file", "args" => %{"path" => path, "content" => content}}) when is_binary(path) do
+    case safe_write(path, to_string(content || "")) do
+      :ok -> %{ok: true, path: path}
+      {:error, e} -> %{ok: false, error: e}
+    end
+  end
+
+  defp run_agent_tool(%{"name" => name}) do
+    %{ok: false, error: "unknown tool #{name}"}
+  end
+
+  defp run_agent_tool(_), do: %{ok: false, error: "invalid tool payload"}
+
+  defp sandbox_cmd_allowed?(cmd) do
+    cmd = String.trim(cmd)
+    # "bun run " only — bare "bun " would allow `bun x <pkg>` (arbitrary code).
+    allowed_prefixes = ["reactable ", "bun run ", "ffmpeg ", "bash scripts/", "python3 scripts/"]
+    Enum.any?(allowed_prefixes, &String.starts_with?(cmd, &1))
+  end
+
+  defp sandbox_env do
+    [
+      {"WB_DATA", wb_data()},
+      {"HOME", System.get_env("HOME") || "/tmp"},
+      {"PATH", "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"}
+    ]
+  end
+
+  defp safe_read(rel) do
+    path = safe_path(rel)
+    if path && File.exists?(path), do: {:ok, File.read!(path)}, else: {:error, "missing or outside sandbox"}
+  end
+
+  defp safe_write(rel, content) do
+    path = safe_path(rel)
+    if path do
+      File.mkdir_p!(Path.dirname(path))
+      File.write!(path, content)
+      :ok
+    else
+      {:error, "path outside sandbox"}
+    end
+  end
+
+  defp safe_path(rel) when is_binary(rel) do
+    root = realpath(Path.expand(wb_data()))
+    path = realpath(Path.expand(Path.join(root, rel)))
+    if String.starts_with?(path, root <> "/") or path == root, do: path, else: nil
+  end
+
+  defp safe_path(_), do: nil
+
+  # Resolve symlinks at every component so a link inside the sandbox can't
+  # point reads/writes outside it. Works for not-yet-existing leaves.
+  defp realpath(path, depth \\ 0)
+  defp realpath(path, depth) when depth > 40, do: path
+
+  defp realpath(path, depth) do
+    case :file.read_link(path) do
+      {:ok, target} ->
+        realpath(Path.expand(to_string(target), Path.dirname(path)), depth + 1)
+
+      _ ->
+        dir = Path.dirname(path)
+        if dir == path, do: path, else: Path.join(realpath(dir, depth + 1), Path.basename(path))
+    end
+  end
+
+  defp tools_bin do
+    bundled = Path.join([wb_data(), "dist", "reactable-tools"])
+    if File.exists?(bundled), do: bundled, else: System.find_executable("reactable-tools") || bundled
+  end
+
+  defp agent_system_prompt(deck) do
+    prompt_path = Path.join([wb_data(), "skill", "dist", "agent-prompt.txt"])
+
+    base =
+      if File.exists?(prompt_path) do
+        File.read!(prompt_path)
+      else
+        "You are the Reactable local agent. Help author decks, run reactable CLI, and plan videos."
+      end
+
+    base <>
+      """
+
+      ## Local agent tools (offline)
+
+      To act inside the project sandbox (`#{wb_data()}`), emit ONE tool block and nothing else — no prose before or after it:
+
+      ```tool
+      {"name":"bash","args":{"cmd":"reactable decks list"}}
+      ```
+
+      Allowed tools:
+      - `bash` — commands starting with: reactable, bun run, ffmpeg, bash scripts/, python3 scripts/
+      - `read_file` — args: {"path": "relative/path"}
+      - `write_file` — args: {"path": "relative/path", "content": "..."}
+
+      Example — read a deck, then answer:
+      user: What is the first slide?
+      assistant: ```tool
+      {"name":"read_file","args":{"path":"decks/demo/deck.work"}}
+      ```
+      user: Tool results: {...}
+      assistant: The first slide is "welcome".
+
+      When no tool is needed, answer directly. After tool results arrive, either emit another tool block or give the final answer.
+
+      Active deck: #{deck}
+      """
+  end
+
+  defp discover_project_roots do
+    user_root = Path.expand("~/Reactable")
+    manifest = Path.join(user_root, "projects.json")
+    paths = [wb_data()]
+
+    paths =
+      if File.exists?(manifest) do
+        case Jason.decode(File.read!(manifest)) do
+          {:ok, %{"paths" => list}} when is_list(list) -> paths ++ list
+          _ -> paths
+        end
+      else
+        paths
+      end
+
+    user_projects = Path.join(user_root, "projects")
+    paths =
+      if File.dir?(user_projects) do
+        paths ++
+          (File.ls!(user_projects)
+           |> Enum.map(&Path.join(user_projects, &1)))
+      else
+        paths
+      end
+
+    paths
+    |> Enum.uniq()
+    |> Enum.filter(fn p -> File.exists?(Path.join(p, "index.work")) end)
+  end
+
+  defp project_title_at(root) do
+    path = Path.join(root, "index.work")
+    if File.exists?(path) do
+      path
+      |> File.read!()
+      |> String.split("\n", parts: 20)
+      |> Enum.find_value(fn line ->
+        if String.starts_with?(line, "# "), do: String.trim(String.slice(line, 2..-1//1))
+      end)
+    end
+  end
+
+  defp scaffold_project(slug, title) do
+    root = Path.expand(Path.join("~/Reactable/projects", slug))
+    if File.exists?(root), do: {:error, "project exists: #{slug}"}
+
+    File.mkdir_p!(root)
+    File.mkdir_p!(Path.join(root, "decks"))
+    File.mkdir_p!(Path.join(root, "takes"))
+
+    index = """
+    # #{title}
+
+    Reactable project — created by local agent.
+    """
+
+    deck = """
+    id: #{slug}
+    title: #{title}
+
+    slide do
+      id: welcome
+      type: prose
+      body: |
+        # #{title}
+
+        Built with the Reactable local agent.
+    end
+    """
+
+    File.write!(Path.join(root, "index.work"), index)
+    deck_dir = Path.join([root, "decks", slug])
+    File.mkdir_p!(deck_dir)
+    File.write!(Path.join(deck_dir, "deck.work"), deck)
+    {:ok, root}
+  end
+
+  defp register_project_path(path) do
+    user_root = Path.expand("~/Reactable")
+    File.mkdir_p!(user_root)
+    manifest = Path.join(user_root, "projects.json")
+
+    data =
+      if File.exists?(manifest) do
+        case Jason.decode(File.read!(manifest)) do
+          {:ok, m} when is_map(m) -> m
+          _ -> %{"version" => 1, "paths" => []}
+        end
+      else
+        %{"version" => 1, "paths" => []}
+      end
+
+    paths = Map.get(data, "paths", [])
+    unless path in paths do
+      data = Map.put(data, "paths", paths ++ [path])
+      File.write!(manifest, Jason.encode!(data, pretty: true))
+    end
+
+    :ok
+  end
+
+  defp slugify_title(title) do
+    title
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "-")
+    |> String.trim("-")
+  end
+
+  defp max_turns(v) when is_integer(v), do: v
+  defp max_turns(v) when is_binary(v) do
+    case Integer.parse(v) do
+      {n, _} -> n
+      _ -> 6
+    end
+  end
+  defp max_turns(_), do: 6
 
   defp safe(s) when is_binary(s) do
     s |> String.trim() |> String.replace(~r/[^a-z0-9_-]/, "")

@@ -1,0 +1,302 @@
+/* Reactable desktop — dot grid, draggable windows, app-faithful chrome */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@600;700;800&display=swap");
+
+:root {
+  --obsidian-0: #050505;
+  --obsidian-1: #0a0a0a;
+  --grid-dot: rgba(255, 255, 255, 0.14);
+  --grid-gap: 22px;
+  --chrome-faint: rgba(255, 255, 255, 0.08);
+  --chrome-line: rgba(255, 255, 255, 0.14);
+  --bar-bg: rgba(22, 22, 24, 0.92);
+  --strip-bg: rgba(31, 31, 31, 0.94);
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --display: "Syne", ui-sans-serif, system-ui, sans-serif;
+  --stage-radius: 12px;
+  --win-shadow: 0 24px 80px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font: 13px/1.5 var(--mono);
+  color: #ececec;
+  background: var(--obsidian-0);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* D2-style dot grid */
+.desktop {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background-color: #060606;
+  background-image: radial-gradient(circle, var(--grid-dot) 1px, transparent 1px);
+  background-size: var(--grid-gap) var(--grid-gap);
+  background-position: 0 0;
+}
+
+.desktop::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 180px;
+}
+
+/* Top floating dock (nav) */
+.top-dock {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30000;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 48px;
+  padding: 0 10px 0 8px;
+  background: var(--bar-bg);
+  border: 1px solid var(--chrome-faint);
+  border-radius: 14px;
+  backdrop-filter: blur(18px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+.dock-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 4px;
+  font: 700 11px/1 var(--display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #fff;
+  text-decoration: none;
+  border-right: 1px solid var(--chrome-faint);
+  margin-right: 2px;
+  height: 28px;
+}
+.dock-brand img { width: 22px; height: 22px; display: block; }
+
+.dock-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #ccc;
+  font: 500 11px/1 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.12s;
+}
+.dock-btn:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.dock-btn.primary { background: #fff; color: #111; }
+.dock-btn.primary:hover { background: #ddd; }
+.dock-btn.on { background: rgba(255, 255, 255, 0.16); color: #fff; }
+.dock-btn svg { width: 14px; height: 14px; }
+.dock-sep { width: 1px; height: 22px; background: var(--chrome-faint); margin: 0 2px; }
+
+.win.snapping { transition: left 0.12s ease-out, top 0.12s ease-out; }
+
+.hidden { display: none !important; }
+
+/* Desktop icons */
+.desktop-icons {
+  position: fixed;
+  left: 18px;
+  top: 88px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.desk-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 76px;
+  padding: 8px 4px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.12s, border-color 0.12s;
+}
+.desk-icon:hover, .desk-icon.selected {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--chrome-faint);
+}
+.desk-icon-glyph {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  background: var(--sheen, linear-gradient(155deg, rgba(255,255,255,.08), rgba(0,0,0,.3))), #111;
+  border: 1px solid var(--chrome-faint);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.desk-icon-glyph svg { width: 22px; height: 22px; stroke: #ddd; }
+.desk-icon span {
+  font: 500 9px/1.2 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #888;
+  max-width: 72px;
+  word-break: break-word;
+}
+.desk-icon:hover span { color: #ccc; }
+
+/* Draggable windows */
+.win {
+  position: absolute;
+  z-index: 200;
+  box-shadow: var(--win-shadow);
+}
+.win.focused { z-index: 500; }
+
+/* Terminal window */
+.term-win {
+  width: min(400px, 36vw);
+  left: 6%;
+  top: 22%;
+  background: #0a0a0a;
+  border: 1px solid var(--chrome-faint);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.win-titlebar {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  background: #141414;
+  border-bottom: 1px solid var(--chrome-faint);
+  cursor: grab;
+  touch-action: none;
+}
+.win-titlebar:active { cursor: grabbing; }
+.win-dot { width: 10px; height: 10px; border-radius: 50%; background: #333; }
+.win-dot.r { background: #5a3030; }
+.win-dot.y { background: #5a5030; }
+.win-dot.g { background: #305a38; }
+.win-title {
+  flex: 1;
+  text-align: center;
+  font: 500 10px/1 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #666;
+  margin-right: 24px;
+}
+.win-title-icon {
+  width: 14px;
+  height: 14px;
+  color: #888;
+  flex-shrink: 0;
+  margin-left: 2px;
+}
+
+.term-body {
+  padding: 14px;
+  min-height: 240px;
+  font: 12px/1.55 var(--mono);
+  color: #9a9590;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.term-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 2px;
+}
+.term-chip {
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid var(--chrome-faint);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #666;
+  font: 500 9px/1 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.term-line:hover .term-chip,
+.term-chip:focus { opacity: 1; }
+.term-chip:hover { background: rgba(255, 255, 255, 0.1); color: #ccc; }
+.term-body .prompt { color: #666; }
+.term-body .cmd { color: #d4d0cb; }
+.term-body .out { color: #666; margin-bottom: 8px; }
+.term-body .cursor {
+  display: inline-block;
+  width: 7px;
+  height: 14px;
+  background: #888;
+  vertical-align: text-bottom;
+  animation: blink 1s step-end infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+.term-copy {
+  margin-top: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--chrome-faint);
+  background: rgba(255, 255, 255, 0.06);
+  color: #ccc;
+  font: 500 10px/1 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.term-copy:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+.term-copy svg { width: 13px; height: 13px; }
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  background: #111;
+  border: 1px solid var(--chrome-faint);
+  font: 500 10px/1 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ccc;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 40000;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; }
+
+@media (max-width: 960px) {
+  .term-win { left: 6%; top: auto; bottom: 14%; width: 88vw; }
+  .desktop-icons { flex-direction: row; top: auto; bottom: 12px; left: 12px; right: 12px; justify-content: center; }
+}

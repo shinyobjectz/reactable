@@ -1,0 +1,83 @@
+# Local agent — goals to fully running, tested, vetted
+
+Status: **draft 2026-07-06** — supersedes the Phase 7 tail of [[docs/ROADMAP.agent-toolchain]].
+Target model: **`mlx-community/gemma-4-e4b-it-4bit`** (ungated, ~2 GB, multimodal-capable arch) — quality tier `gemma-4-12B-it-4bit`.
+
+## Ground truth (verified on this machine, 2026-07-06)
+
+| Fact | Evidence |
+|------|----------|
+| Current backend mistral.rs 0.8 (candle/Metal) **cannot load MLX-quant repos** | `tools/Cargo.toml` `agent-llm` feature |
+| `google/gemma-3-4b-it` blocked — gated repo, HTTP 401 without HF_TOKEN | `dist/reactable-tools agent-status` |
+| Weights already cached: Phi-3.5-mini (7.1 G), SmolLM2-360M (692 M) | `~/.cache/huggingface/hub` |
+| Phi-3.5 runs offline end-to-end through `agent-chat` (`HF_HUB_OFFLINE=1`) | ok:true completion |
+| …but ignored a "reply exactly PONG" system prompt → template/adherence unvetted | same run |
+| `mlx-community/gemma-4-*` is **ungated** (`config.json` → 200, `model_type: gemma4`) | curl |
+| mlx-lm **0.31.3** ships `gemma4` + `gemma4_text`; installed 0.29.1 does not | uvx probe |
+| mlx-lm 0.31.3 needs **`transformers==5.0.0` exactly** — newer 5.x breaks import (`AutoTokenizer.register`) | uvx probe |
+| mlx-vlm **0.6.4** ships `gemma4` + `gemma4_unified` (vision/multimodal path) | uvx probe |
+| Rust MLX path exists (voice crates use mlx-rs 0.25) but `mlx-lm-rs` 0.0.1 implements **qwen3 only** — no gemma | crate source |
+| gemma-4-e4b-it-4bit local generation **PASSED** — "Reply with exactly: PONG" → `PONG`, 52 tok/s gen, 4.27 GB peak mem | mlx_lm.generate 2026-07-06 |
+
+## Engine decision (G0)
+
+**Swap `agent-llm` from mistral.rs to a persistent MLX server process.**
+
+- `mlx_lm.server` (OpenAI-compatible) run via uv with the pinned pair `mlx-lm==0.31.3` + `transformers==5.0.0`, managed as a child process (spawn on first chat, idle-timeout kill).
+- Fixes the two worst defects at once: gated-Gemma dependency AND full model reload per turn (`llm_complete` currently spawns `agent-chat` → `TextModelBuilder::build()` every call).
+- Keep `agent-chat --input/--output` contract; it becomes an HTTP client to the local server, so `api.work` barely changes.
+- Later hardening (optional): port gemma4 to mlx-rs (extend mlx-lm-rs) for a fully self-contained binary. Not a blocker.
+
+## Goals
+
+### G0 — gemma-4 backend running ✅
+- [x] T0 spike: `mlx_lm.generate --model mlx-community/gemma-4-e4b-it-4bit` → exact-instruction `PONG`, 52 tok/s, 4.27 GB peak (2026-07-06; weights in HF cache)
+- [x] Sidecar-managed `mlx_lm.server` — persistent model, one load; pidfile + readiness + idle watchdog (`agent_llm.rs::ensure_server`); `reactable agent serve [--stop]`
+- [x] `agent-chat` → localhost HTTP `/v1/chat/completions`; same JSON contract (`api.work` `llm_complete` unchanged shape). `enable_thinking:false` so short budgets land in `content`
+- [x] Default `mlx-community/gemma-4-e4b-it-4bit`; `REACTABLE_AGENT_MODEL` overrides; 12B tier documented in verb doc
+- [x] `agent-status` → 4 states `server-ready`/`model-cached`/`needs-pull`/`uv-missing`, **offline** (HF cache scan + localhost probe; server spawns with `HF_HUB_OFFLINE=1`)
+- [x] `reactable agent pull` — explicit `hf download` with progress; chat path never downloads (errors → "run: reactable agent pull")
+- [x] uv-pinned env (`mlx-lm==0.31.3` + `transformers==5.0.0`, py3.12) resolved on first spawn; HF_TOKEN/license/`REACTABLE_AGENT_BUILD` purged from verb doc, e2e script, `/agent` banner, Justfile, build-tools.sh, ROADMAP
+
+### G1 — loop correctness ✅
+- [x] **History bug fixed**: `agent_turns` threads the full transcript (original user msg + assistant + tool results) through every recursion. E2e Tier2b confirms "teal" survives a tool turn
+- [x] Adherence vetted: gemma-4 returns exact `PONG` (warm e2e assertion); stub-independent
+- [x] Tool reliability: one-shot exemplar in system prompt + malformed-block corrective retry (`malformed_tool_block?`). **Real-model invoke-rate 3/3** on Tier-2 probes
+- [x] UI surfaces `tools`/`turns`/`note` meta line
+
+### G2 — sandbox vetting ✅
+- [x] `bun ` → `bun run ` only (stub T4 confirms `bun x` blocked)
+- [x] Write-then-execute policy: accepted + documented (local single-user; prefix-allowlisted `scripts/` only). See verb doc Sandbox
+- [x] `safe_path` resolves symlinks per-component (`realpath/2`, depth-capped) before prefix check — stub T9/T10 confirm symlink read+write escapes rejected
+- [x] Tool `bash` runs `/usr/bin/env -i` (scrubbed) + `/bin/bash -c` (non-login) with explicit WB_DATA/HOME/PATH
+- [x] Escape probes hard: stub T7/T8/T9/T10 (`/etc/passwd`, `../`, symlink r/w); e2e "no sandbox content leak" asserts `/etc/passwd` never surfaces
+
+### G3 — tests, deterministic + hard ✅
+- [x] `REACTABLE_AGENT_STUB=1` echo-stub in `llm_complete`; `scripts/test-agent-stub.sh` — **13/13**, no model
+- [x] Tier-2 promoted to hard failures in `validate-agent-e2e.sh` (invoke-rate asserted, not skipped)
+- [x] Latency asserted + recorded: **cold 6.9 s (<60 s), warm 6.5 s (<10 s)**, invoke-rate 3/3
+- [x] `just validate-agent-e2e` → **15 PASS, 0 FAIL, 1 manual** (native-UI only)
+- [x] CI: `.github/workflows/agent.yml` — macOS builds tools + offline `agent-status`; stub job gated on self-hosted runner (needs Elixir nexus)
+
+### G4 — UX finish ✅ (streaming deferred)
+- [~] Busy "Thinking…" indicator done; **token streaming deferred** — needs nexus SSE passthrough (chat is `System.cmd`, non-stream). Tracked in ROADMAP
+- [x] Engine badge + status from `agent/status` payload (model leaf, real state); pull/uv banners
+- [x] Failure banner → `reactable agent pull`
+- [x] `scripts/manual-agent-checklist.md` — bar robot, ⌘L, gear, Stage, project switch, pull path
+
+### G5 — multimodal (next milestone, not in "fully running" bar)
+- [ ] mlx-vlm 0.6.4 `gemma4`/`gemma4_unified` behind the same server — image input first (stage frames, take screenshots)
+- [ ] Reaction-take feedback loop (record → composite → feed back to agent) — roadmap Phase 7 tail
+- [ ] Audio input direct to gemma-4 vs existing moonshine STT — evaluate
+
+## Definition of done ("fully running, tested, vetted") — ✅ MET 2026-07-07
+
+1. [x] Fresh machine: `reactable agent pull` → chat offline, no HF account (pull path + offline status verified)
+2. [x] `just smoke-agent` (4/0), `just test-agent-stub` (13/0), `just validate-agent-e2e` (15/0, 1 manual-UI) all exit 0
+3. [x] G1 history fix + G2 sandbox decisions merged; escape probes hard-green (stub T7–T10 + e2e leak probe)
+4. [x] Latency in budget: cold 6.9 s, warm 6.5 s, invoke-rate 3/3 — recorded above
+5. [x] G5 (multimodal) + token-streaming explicitly deferred
+
+**Residual (not blocking DoD):** token streaming (nexus SSE), self-hosted stub CI runner, G5 vision via mlx-vlm.
+
+Home: [[index]] · Roadmap: [[docs/ROADMAP.agent-toolchain]] · Verb: `skill/verbs/local-agent.md`

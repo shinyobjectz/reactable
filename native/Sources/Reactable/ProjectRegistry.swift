@@ -119,6 +119,83 @@ enum ProjectRegistry {
         UserDefaults.standard.set(deckSlug, forKey: defaultsDeckKey)
     }
 
+    /// Scaffold a new project under ~/Reactable/projects/<slug>
+    static func createProject(title: String, slug: String? = nil) throws -> ReactableProject {
+        let fm = FileManager.default
+        try fm.createDirectory(at: userRoot, withIntermediateDirectories: true)
+        try fm.createDirectory(at: userProjectsDir, withIntermediateDirectories: true)
+        let id = slug ?? slugify(title)
+        guard !id.isEmpty else { throw ProjectError.invalidSlug }
+
+        let root = userProjectsDir.appending(path: id, directoryHint: .isDirectory)
+        if fm.fileExists(atPath: root.path()) { throw ProjectError.exists(id) }
+
+        try fm.createDirectory(at: root.appending(path: "decks", directoryHint: .isDirectory), withIntermediateDirectories: true)
+        try fm.createDirectory(at: root.appending(path: "takes", directoryHint: .isDirectory), withIntermediateDirectories: true)
+
+        let index = "# \(title)\n\nReactable project — created locally.\n"
+        try index.write(to: root.appending(path: "index.work"), atomically: true, encoding: .utf8)
+
+        let deckDir = root.appending(path: "decks/\(id)", directoryHint: .isDirectory)
+        try fm.createDirectory(at: deckDir, withIntermediateDirectories: true)
+        let deck = """
+        id: \(id)
+        title: \(title)
+
+        slide do
+          id: welcome
+          type: prose
+          body: |
+            # \(title)
+
+            Built with Reactable.
+        end
+        """
+        try deck.write(to: deckDir.appending(path: "deck.work"), atomically: true, encoding: .utf8)
+
+        registerPath(root)
+        return ReactableProject(id: id, name: title, url: root.standardizedFileURL)
+    }
+
+    static func registerPath(_ url: URL) {
+        let manifestURL = userRoot.appending(path: "projects.json")
+        var paths: [String] = []
+        if let data = try? Data(contentsOf: manifestURL),
+           let manifest = try? JSONDecoder().decode(ProjectsManifest.self, from: data) {
+            paths = manifest.paths
+        }
+        let p = url.standardizedFileURL.path()
+        guard !paths.contains(p) else { return }
+        paths.append(p)
+        let seed = ProjectsManifest(version: 1, paths: paths, notes: nil)
+        if let data = try? JSONEncoder().encode(seed) {
+            try? data.write(to: manifestURL)
+        }
+    }
+
+    private static func slugify(_ title: String) -> String {
+        let lowered = title.lowercased()
+        let allowed = lowered.unicodeScalars.map { c -> Character in
+            if ("a"..."z").contains(c) || ("0"..."9").contains(c) { return Character(c) }
+            return "-"
+        }
+        return String(allowed)
+            .replacingOccurrences(of: "--", with: "-")
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+    }
+
+    enum ProjectError: Error, CustomStringConvertible {
+        case invalidSlug
+        case exists(String)
+
+        var description: String {
+            switch self {
+            case .invalidSlug: "Invalid project slug"
+            case .exists(let id): "Project already exists: \(id)"
+            }
+        }
+    }
+
     static func lastSelection(defaultProject: String, defaultDeck: String) -> (projectId: String, deckSlug: String) {
         (
             UserDefaults.standard.string(forKey: defaultsProjectKey) ?? defaultProject,

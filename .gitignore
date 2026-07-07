@@ -3,6 +3,15 @@ native/.build/
 native/spike-out/
 dist/
 
+# Rust tools
+tools/target/
+
+# Sidecar (Elixir)
+sidecar/_build/
+sidecar/deps/
+sidecar/burrito_out/
+*.dump
+
 # Web
 web/node_modules/
 web/.wrangler/
@@ -10,6 +19,7 @@ web/.wrangler/
 # Runtime / local
 .reactable/
 .nexus/
+.wb-data/
 takes/
 *.mov
 .env

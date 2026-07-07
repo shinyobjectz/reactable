@@ -12,6 +12,8 @@ protocol ReactableBridgeDelegate: AnyObject {
     func bridgeSelectStage()
     func bridgeSelectArea()
     func bridgeOpenEditor()
+    func bridgeOpenAgent()
+    func bridgeCreateProject(title: String)
     func bridgeSelectProject(id: String)
     func bridgeSelectDeck(slug: String)
     func bridgeRevealProjectsFolder()
@@ -22,7 +24,8 @@ protocol ReactableBridgeDelegate: AnyObject {
     func bridgeMicToggle(on: Bool)
     func bridgeSystemAudioToggle(on: Bool)
     func bridgeSettingSet(key: String, value: Bool)
-    func bridgeRequestDevices()
+    func bridgeRequestDevices(includeIOS: Bool)
+    func bridgeCopyAgentPrompt()
     func bridgeBarClose()
 }
 

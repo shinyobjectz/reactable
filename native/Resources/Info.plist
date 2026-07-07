@@ -26,5 +26,13 @@
 	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Reactable shows your camera in the picture-in-picture bubble while recording.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Reactable records your microphone with each take.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>Reactable captures your stage and screen while you present.</string>
 </dict>
 </plist>

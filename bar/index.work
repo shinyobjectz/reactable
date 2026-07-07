@@ -79,6 +79,7 @@ client :bar do
     <button class="btn rec icon" id="record" title="Record (⌘R)"><svg class="ic" viewBox="0 0 24 24" style="fill:currentColor;stroke:none"><circle cx="12" cy="12" r="6"/></svg></button>
     <button class="btn icon" id="stop" title="Stop" style="display:none"><svg class="ic" viewBox="0 0 24 24" style="fill:currentColor;stroke:none"><rect x="7" y="7" width="10" height="10" rx="1"/></svg></button>
     <div class="sep"></div>
+    <button class="btn icon" id="agent" title="Local agent (offline Gemma)"><svg class="ic" viewBox="0 0 24 24"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M9 13v2"/><path d="M15 13v2"/></svg></button>
     <div class="gear-wrap">
       <button class="btn icon" id="gear" title="Settings"><svg class="ic" viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.015 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.015 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.015 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.015"/><circle cx="12" cy="12" r="3"/></svg></button>
     </div>
@@ -147,6 +148,7 @@ client :bar do
         return send('bar.menu.decks', anchor(btn));
       }
       if (btn.id === 'gear') return send('bar.menu.settings', anchor(btn));
+      if (btn.id === 'agent') return send('agent.open');
       if (btn.id === 'cam') return send('cam.toggle', { on: !state.camOn });
       if (btn.id === 'mic') return send('mic.toggle', { on: !state.micOn });
       if (btn.id === 'sys') return send('systemAudio.toggle', { on: !state.systemAudioOn });
@@ -204,7 +206,6 @@ client :bar do
     }
     window.addEventListener('load', syncBarWidth);
 
-    send('devices.list');
     render();
   })();
   </script>

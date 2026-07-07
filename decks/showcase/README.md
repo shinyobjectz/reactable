@@ -20,7 +20,7 @@ just reactable stage --deck showcase
 | format-html | html | Inline HTML/CSS/animation |
 | format-iframe-local | iframe | Chart app from `labs/chart.html` |
 | format-iframe-remote | iframe | tldraw.com (network) |
-| format-video | video | Big Buck Bunny MP4 |
+| format-video | video | Local `labs/sample.mp4` (run `scripts/gen-lab-samples.sh` if missing) |
 | format-youtube | youtube | YouTube embed |
 | format-whiteboard | iframe | Drawing canvas |
 | end | markdown | Recap |

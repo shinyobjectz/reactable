@@ -1,0 +1,178 @@
+# Agent toolchain roadmap
+
+Status: **Phases 2–5 scaffold shipped** — tools sidecar, HAR/Blitz API, speech edit lane.
+
+Home: [[index]] · CLI plan: [[docs/CLI]]
+
+## Goal
+
+Ship a **verb-indexed agent surface** so any model (Cursor, Claude Code, Codex, Pi) can:
+
+1. Install Reactable (app + CLI + skills)
+2. Author decks and record on the native stage
+3. Post with ffmpeg and/or HyperFrames
+4. Call bundled native tools (ffmpeg, ASR, VAD, isolation, HAR) from the CLI
+
+Progressive disclosure: thin `SKILL.md` → `verbs/*.md` → upstream skills (hyperframes, gsap).
+
+---
+
+## Phase 1 — Skills + install (now)
+
+| Item | Status | Path |
+|------|--------|------|
+| Skill manifest (source of truth) | done | `skill/manifest.json` |
+| CI compile → registry + skills.sh JSON | done | `scripts/compile-skills.ts` |
+| Verb-indexed references | done | `skill/verbs/*.md` |
+| `reactable skills prompt` | done | `cli/lib/agent-prompt.ts` |
+| `reactable install app` | done | `cli/lib/app-install.ts` |
+| Bar → Copy agent prompt | done | `BarPanel` gear menu |
+| skills.sh publish manifest | done | `skill/dist/skills.sh.json` |
+| Publish to skills.sh (manual) | pending | register repo on skills.sh |
+
+```bash
+bun run scripts/compile-skills.ts
+reactable skills install --user
+reactable skills prompt --deck showcase
+```
+
+---
+
+## Phase 2 — HyperFrames + ffmpeg ship with CLI
+
+| Item | Status | Notes |
+|------|--------|------|
+| HyperFrames npm dep in CLI | done | `tools doctor` checks npx/global |
+| `reactable tools doctor` | done | `cli/lib/tools.ts` |
+| Bundle hyperframes skills on `skills install` | done | `reactable tools install hyperframes` |
+| ffmpeg in sidecar | partial | host ffmpeg via sidecar passthrough; static bundle TBD |
+
+## Phase 3 — Rust tools sidecar
+
+| Item | Status |
+|------|--------|
+| `dist/reactable-tools` | done |
+| ffmpeg passthrough + extract-audio | done |
+| transcribe (moonshine → whisper) | partial |
+| VAD trim-silence / silencedetect | done |
+| remove-filler | done |
+| HAR capture/list | done |
+| background isolation | stub |
+
+Build: `just tools` or `bash scripts/build-tools.sh`
+
+## Phase 4 — HAR + Blitz replay
+
+| Item | Status |
+|------|--------|
+| HAR cache `.reactable/har/` | done |
+| CLI `har capture/list/replay` | done |
+| `POST /reactable/blitz/replay` | done |
+| `decks import <url>` | pending |
+
+## Phase 5 — Speech edit lane
+
+| Item | Status |
+|------|--------|
+| `takes transcribe` | done (needs ASR on host) |
+| `edit remove-filler` | done |
+| `edit trim-silence` | done |
+| `edit captions` → WEBVTT | done |
+| composite.py word captions | done |
+
+---
+
+## Phase 6 — Compositing, camera, synthetic agent video
+
+| Item | Status |
+|------|--------|
+| Layout preset catalog | doc | `skill/references/compositing-layouts.md` |
+| Compositing verbs | doc | `skill/verbs/compositing.md` |
+| DOM / 3D camera targeting | doc | `skill/verbs/camera-dom.md` |
+| Agent video without webcam | doc | `skill/verbs/agent-synthetic.md` |
+| Kokoro TTS CLI | done | `reactable tts speak` → `reactable-tools` (`voice-tts` + MLX) |
+| Moonshine ASR | done | `reactable takes transcribe` → `voice-stt` + MLX |
+| `composite presets apply` | pending | timed `edit.json` layouts |
+| DOM focus events in record | pending | `dom-focus` in events.jsonl |
+| `shorts cut` | pending | 9:16 cutdown + Kokoro re-voice |
+
+```bash
+reactable tts doctor
+reactable tts speak --text "..." -o voice.wav
+reactable composite presets list          # planned
+reactable synth take --deck demo          # planned
+```
+
+---
+
+## skills.sh collection structure
+
+Published as **`shinyobjectz/reactable`** with sub-skills or one bundle:
+
+```
+skill/dist/bundle/
+  SKILL.md
+  VERBS.md              # compiled router
+  verbs/
+  references/
+  dist/registry.json
+```
+
+Related skills **linked, not vendored** (hyperframes, gsap) per AGENTS.md open-by-default.
+
+CI: `.github/workflows/skills.yml` on every push → compile + artifact upload.
+
+---
+
+## Agent verb map (progressive disclosure)
+
+| Agent intent | Load | Tools |
+|--------------|------|-------|
+| New talk | `verbs/decks.md` | — |
+| Preview / record | `verbs/stage.md` | native app |
+| Fast export | `verbs/post-ffmpeg.md` | ffmpeg |
+| Motion post | `verbs/post-hyperframes.md` | hyperframes, gsap |
+| YouTube clips | `verbs/youtube.md` | OAuth |
+| Setup | `verbs/setup.md` | npm, skills.sh |
+| Transcribe / edit speech | `verbs/speech-edit.md` | moonshine, vad |
+| Web replay | `verbs/har-blitz.md` | har, blitz |
+| Compositing / layouts | `verbs/compositing.md` | ffmpeg, hyperframes |
+| DOM camera / cursor | `verbs/camera-dom.md` | gsap, hyperframes |
+| Agent synthetic video | `verbs/agent-synthetic.md` | kokoro, stage |
+| TTS / shorts voice | `verbs/kokoro-tts.md` | kokoro |
+| Local offline agent | `verbs/local-agent.md` | gemma-mlx, nexus |
+
+---
+
+## Phase 7 — Local offline agent (Gemma MLX)
+
+| Item | Status |
+|------|--------|
+| Rust `agent-chat` / `agent-status` / `agent-pull` / `agent-serve` | done | `reactable-tools` → `mlx_lm.server` client |
+| gemma-4 backend (mlx_lm.server, uv-pinned, offline) | done | `mlx-community/gemma-4-e4b-it-4bit` |
+| Nexus agent loop + sandbox | done | `POST /reactable/agent/chat`; history-safe, symlink-safe |
+| Swift agent window | done | `AgentWindow.swift` → `/agent` |
+| Bar + tray agent entry | done | robot icon, ⌘L |
+| New project (bar/tray/CLI) | done | `ProjectRegistry.createProject`, `projects new` |
+| Tests: stub loop/sandbox + real-model e2e | done | `just test-agent-stub` · `just validate-agent-e2e` |
+| Token streaming into `/agent` (SSE) | pending | needs nexus SSE passthrough (chat is currently non-stream) |
+| Gemma 4 multimodal | pending | vision via mlx-vlm 0.6.4 (`gemma4_unified`) |
+| Stage review toolbar + reaction take | pending | record-over-video feedback loop |
+
+Full running/tested/vetted plan → [[docs/GOALS.local-agent]] (gemma-4 mlx_lm.server engine, loop fixes, sandbox vetting, hard e2e).
+
+```bash
+reactable agent pull       # one-time model download (no HF account)
+reactable agent status     # server-ready | model-cached | needs-pull
+# open agent from bar → chat offline
+reactable projects new "Hook deck"
+```
+
+---
+
+## Next actions
+
+1. Register `shinyobjectz/reactable` on skills.sh; wire landing `term-copy` to `skills prompt` text.
+2. Scaffold `tools/` Rust crate with ffmpeg + MLX (voice-stt, voice-tts).
+3. Add `reactable tools doctor` and sidecar spawn from CLI.
+4. Research background isolation crates (e.g. `rembg`, `MODNet`) for offline macOS.

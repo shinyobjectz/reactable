@@ -12,6 +12,7 @@ account_id = "6d4b74aeb10f455fbf88141901e7595d"
 [assets]
 directory = "public"
 binding = "ASSETS"
+run_worker_first = ["/api/*", "/download/*"]
 
 # Secrets (wrangler secret put):
 #   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET — Web OAuth client for reactable.app
@@ -25,3 +26,7 @@ APP_NAME = "Reactable"
 [[kv_namespaces]]
 binding = "KV"
 id = "ff030257db05481c9436fe9ee6261a1c"
+
+[[r2_buckets]]
+binding = "DOWNLOADS"
+bucket_name = "reactable-downloads"

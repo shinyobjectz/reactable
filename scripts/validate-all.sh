@@ -13,6 +13,10 @@ echo "════════════════════════�
 echo " reactable validate-all"
 echo "═══════════════════════════════════════"
 
+if [ ! -f "$ROOT/decks/showcase/labs/sample.mp4" ] || [ ! -f "$ROOT/decks/demo/labs/sample.mp4" ]; then
+  bash "$ROOT/scripts/gen-lab-samples.sh"
+fi
+
 # P0 — Aperture cross-origin spike
 echo ""
 echo "── P0 spike ──"
@@ -65,7 +69,7 @@ if curl -sf "http://127.0.0.1:$PORT/reactable/deck?slug=demo" | grep -q '"slides
 else
   bad "deck API"
 fi
-for route in present bar editor; do
+for route in present bar editor agent; do
   if curl -sf "http://127.0.0.1:$PORT/$route" | head -c 200 | grep -qiE 'html|reactable|reveal|editor'; then
     ok "route /$route"
   else
@@ -182,6 +186,11 @@ if command -v bun >/dev/null; then
   else
     bad "labs API"
   fi
+  if curl -sfI "http://127.0.0.1:$PORT/reactable/labs/sample.mp4?deck=showcase" | grep -qi 'video/mp4'; then
+    ok "labs sample.mp4"
+  else
+    bad "labs sample.mp4 (run scripts/gen-lab-samples.sh)"
+  fi
   if curl -sf -X POST "http://127.0.0.1:$PORT/reactable/stage" \
       -H 'content-type: application/json' \
       -d '{"action":"open","deck":"demo"}' | grep -q '"ok"'; then
@@ -193,6 +202,26 @@ if command -v bun >/dev/null; then
     ok "deck work slides compiled"
   else
     bad "deck work slides compiled"
+  fi
+  if bun run "$ROOT/cli/bin/reactable.ts" tools doctor 2>/dev/null | grep -q 'reactable-tools'; then
+    ok "tools doctor"
+  else
+    bad "tools doctor (run: just tools)"
+  fi
+  if bash "$ROOT/scripts/smoke-mlx.sh" take-fixture-validation >/tmp/reactable-mlx-smoke.log 2>&1; then
+    ok "mlx smoke (stt/tts/edit)"
+  else
+    bad "mlx smoke — see /tmp/reactable-mlx-smoke.log"
+  fi
+  if bun run "$ROOT/cli/bin/reactable.ts" har capture https://example.com --project validate >/dev/null 2>&1; then
+    ok "har capture"
+  else
+    bad "har capture"
+  fi
+  if curl -sf "http://127.0.0.1:$PORT/reactable/har?project=validate" | grep -q '"ok"'; then
+    ok "har API"
+  else
+    bad "har API"
   fi
   if bun run "$ROOT/cli/bin/reactable.ts" takes hf init take-fixture-validation >/dev/null 2>&1 && \
      [ -f "$ROOT/takes/take-fixture-validation/hyperframes/compositions/take-edit.html" ]; then

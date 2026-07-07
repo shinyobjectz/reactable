@@ -1,0 +1,39 @@
+name: Agent
+
+on:
+  push:
+    paths:
+      - "tools/**"
+      - "present/api.work"
+      - "scripts/test-agent-stub.sh"
+      - "scripts/validate-agent-e2e.sh"
+      - "scripts/smoke-agent.sh"
+  pull_request:
+    paths:
+      - "tools/**"
+      - "present/api.work"
+
+jobs:
+  # macOS-only: reactable-tools depends on MLX voice crates (Apple Silicon).
+  build-tools:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build reactable-tools
+        run: cargo build --release --manifest-path tools/Cargo.toml
+      - name: agent-status runs offline (no network, no model required)
+        run: |
+          OUT=$(./tools/target/release/reactable-tools agent-status || true)
+          echo "$OUT"
+          echo "$OUT" | grep -q '"state"' || { echo "no state field"; exit 1; }
+
+  # Deterministic loop/sandbox tests need the Elixir nexus (external dep) —
+  # run on a self-hosted runner that has the workbooks checkout + uv.
+  stub-tests:
+    runs-on: [self-hosted, macos, reactable]
+    if: ${{ false }} # enable once a self-hosted runner is registered
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/build-tools.sh
+      - run: just test-agent-stub

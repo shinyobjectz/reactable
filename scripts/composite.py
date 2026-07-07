@@ -92,6 +92,10 @@ def zoom_exprs(clicks: list[tuple[float, float, float]], vw: int, vh: int, scale
 
 
 def write_captions(events: list[dict], out: Path) -> None:
+    transcript = out.parent.parent / "transcript.json"
+    if transcript.exists():
+        write_word_captions(transcript, out)
+        return
     slides = [e for e in events if e.get("type") == "slide"]
     lines = []
     for i, ev in enumerate(slides):
@@ -108,6 +112,27 @@ def fmt_srt(sec: float) -> str:
     m, s = divmod(rem, 60)
     ms = int((sec - int(sec)) * 1000)
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def fmt_vtt(sec: float) -> str:
+    h, rem = divmod(int(sec), 3600)
+    m, s = divmod(rem, 60)
+    ms = int((sec - int(sec)) * 1000)
+    return f"{h:02d}:{m:02d}:{s:02d}.{ms:03d}"
+
+
+def write_word_captions(transcript: Path, out: Path) -> None:
+    data = json.loads(transcript.read_text())
+    words = data.get("words") or []
+    lines = ["WEBVTT", ""]
+    for i, w in enumerate(words):
+        start = float(w.get("start", 0))
+        end = float(w.get("end", start + 0.4))
+        text = str(w.get("word", "")).strip()
+        if not text:
+            continue
+        lines += [str(i + 1), f"{fmt_vtt(start)} --> {fmt_vtt(end)}", text, ""]
+    out.write_text("\n".join(lines))
 
 
 def render_take(take_dir: Path, aspects: list[str] | None = None) -> dict:

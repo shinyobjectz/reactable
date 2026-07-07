@@ -20,11 +20,15 @@ Project root: `projects/reactable/`
 
 ```bash
 cd projects/reactable
-bun run cli/bin/reactable.ts skills install        # → .cursor/skills/reactable
-bun run cli/bin/reactable.ts skills install --user # → ~/.cursor/skills/reactable
+bun run scripts/compile-skills.ts   # CI produces skill/dist/
+reactable skills install --user     # → ~/.cursor/skills/reactable
+reactable skills prompt             # copy-paste for any agent
+reactable install app               # macOS DMG → /Applications
 ```
 
-Also load **`hyperframes`** and **`hyperframes-cli`** for video post.
+Verb-indexed references: `skill/verbs/` · registry: `skill/dist/registry.json`
+
+Also load **`hyperframes`** and **`hyperframes-cli`** for video post (`npx hyperframes init`).
 
 ## Quick map
 

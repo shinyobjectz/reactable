@@ -44,6 +44,19 @@ import {
   installSkills,
   userCursorSkillPath,
 } from "../lib/skills.ts";
+import { buildAgentPrompt, readAgentPrompt } from "../lib/agent-prompt.ts";
+import { installAppFromWeb } from "../lib/app-install.ts";
+import { toolsDoctor, installHyperframesSkills, runTools } from "../lib/tools.ts";
+import { harCapture, harList, blitzReplay } from "../lib/har.ts";
+import {
+  transcribeTake,
+  removeFiller,
+  trimSilence,
+  writeWordCaptions,
+  applyFillerCutsToEdit,
+} from "../lib/speech.ts";
+import { ttsSpeak, ttsDoctor } from "../lib/tts.ts";
+import { agentChat, agentStatus, agentLlmProbe, createProject } from "../lib/agent.ts";
 import { authLogin, authStatus, clearCredentials } from "../lib/auth.ts";
 import {
   youtubeConnect,
@@ -86,7 +99,30 @@ Usage: reactable <command> [args]
 
   serve                         headless nexus sidecar (:${PORT})
   doctor                        check toolchain + project layout
+  install app                   download + install Reactable.app (macOS)
   skills install [--user]       install agent skills (project or ~/.cursor)
+  skills prompt [--deck <slug>] print copy-paste block for any agent
+  skills list [--json]          verb-indexed skill registry
+
+  tools doctor [--json]         ffmpeg, hyperframes, reactable-tools sidecar
+  tools install hyperframes     run npx hyperframes init (skills + CLI)
+  tools build                   build dist/reactable-tools (Rust)
+
+  har capture <url> [--project] cache page refs under .reactable/har/
+  har list [--project] [--json]
+  har replay --ref <id>         Blitz replay via nexus (requires serve)
+
+  takes transcribe <id> [--model UsefulSensors/moonshine-tiny]
+  edit remove-filler <id> [--aggressive]
+  edit trim-silence <id>
+  edit captions <id>              word-level WEBVTT from transcript
+
+  tts speak --text "<script>" -o <wav> [--voice af_heart]
+  tts doctor [--json]             moonshine + kokoro via Rust MLX sidecar
+
+  agent chat "<message>" [--deck demo] [--json]
+  agent status [--json]           local Gemma MLX via reactable-tools
+  projects new "<title>" [--slug]   scaffold under ~/Reactable/projects/
 
   decks list
   decks get <slug> [--json]
@@ -126,7 +162,7 @@ Project root: ${PROJECT}
 
 Note: \`open present\` is deprecated — use \`stage open\`. The stage WKWebView is the only presentation surface.`;
 
-function cmdDoctor() {
+function cmdDoctor(asJson = false) {
   const checks: { name: string; ok: boolean; detail?: string }[] = [];
   const ok = (name: string, pass: boolean, detail?: string) =>
     checks.push({ name, ok: pass, detail });
@@ -135,18 +171,31 @@ function cmdDoctor() {
   ok("nexus path", existsSync(join(NEXUS, "mix.exs")), NEXUS);
   ok("bun", spawnSync("bun", ["--version"], { stdio: "ignore" }).status === 0);
   ok("python3", spawnSync("python3", ["--version"], { stdio: "ignore" }).status === 0);
-  ok("ffmpeg", spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0);
-  ok(
-    "hyperframes (npx)",
-    spawnSync("npx", ["hyperframes", "--version"], { stdio: "ignore" }).status === 0,
-  );
   ok("decks/", existsSync(decksDir()));
   ok("takes/", existsSync(join(PROJECT, "takes")));
 
-  for (const c of checks) {
-    console.log(`${c.ok ? "✓" : "✗"} ${c.name}${c.detail ? ` — ${c.detail}` : ""}`);
+  const tools = toolsDoctor(PROJECT);
+  for (const c of tools.checks) checks.push(c);
+
+  if (asJson) jsonOut({ ok: checks.every((c) => c.ok), checks });
+  else {
+    for (const c of checks) {
+      console.log(`${c.ok ? "✓" : "✗"} ${c.name}${c.detail ? ` — ${c.detail}` : ""}`);
+    }
   }
   return checks.every((c) => c.ok) ? 0 : 1;
+}
+
+function cmdToolsDoctor(asJson: boolean) {
+  const r = toolsDoctor(PROJECT);
+  if (asJson) jsonOut(r);
+  else {
+    for (const c of r.checks) {
+      console.log(`${c.ok ? "✓" : "✗"} ${c.name}${c.detail ? ` — ${c.detail}` : ""}`);
+    }
+    console.log(r.ok ? "\n✓ tools ready" : "\n✗ tools incomplete — run: reactable tools build");
+  }
+  return r.ok ? 0 : 1;
 }
 
 function cmdDecksList() {
@@ -201,6 +250,13 @@ function parseFlags(args: string[]) {
       const key = a.slice(2);
       const next = args[i + 1];
       if (next && !next.startsWith("--")) {
+        flags[key] = next;
+        i++;
+      } else flags[key] = true;
+    } else if (a.startsWith("-") && a.length === 2) {
+      const key = a.slice(1);
+      const next = args[i + 1];
+      if (next && !next.startsWith("-")) {
         flags[key] = next;
         i++;
       } else flags[key] = true;
@@ -487,12 +543,220 @@ try {
     );
   }
 
-  if (cmd === "doctor") process.exit(cmdDoctor());
+  if (cmd === "doctor") process.exit(cmdDoctor(Boolean(flags.json)));
+
+  if (cmd === "tools") {
+    if (sub === "doctor") process.exit(cmdToolsDoctor(Boolean(flags.json)));
+    if (sub === "build") {
+      process.exit(sh("bash", [join(PROJECT, "scripts/build-tools.sh")], PROJECT));
+    }
+    if (sub === "install" && third === "hyperframes") {
+      process.exit(installHyperframesSkills() ? 0 : 1);
+    }
+    console.error("tools: doctor | build | install hyperframes");
+    process.exit(1);
+  }
+
+  if (cmd === "har") {
+    const project = String(flags.project || "default");
+    if (sub === "capture" && third) {
+      try {
+        jsonOut(harCapture(third, project));
+        process.exit(0);
+      } catch (e) {
+        console.error(String(e));
+        process.exit(1);
+      }
+    }
+    if (sub === "list") {
+      try {
+        const data = harList(project);
+        if (flags.json) jsonOut(data);
+        else (data.entries ?? []).forEach((e: { id: string; url: string }) => console.log(`${e.id}  ${e.url}`));
+        process.exit(0);
+      } catch (e) {
+        console.error(String(e));
+        process.exit(1);
+      }
+    }
+    if (sub === "replay" && flags.ref) {
+      try {
+        jsonOut(await blitzReplay(String(flags.ref), project, PORT));
+        process.exit(0);
+      } catch (e) {
+        console.error(String(e));
+        process.exit(1);
+      }
+    }
+    console.error("har: capture <url> | list | replay --ref <id>");
+    process.exit(1);
+  }
+
+  if (cmd === "edit") {
+    if (sub === "remove-filler" && third) {
+      try {
+        const r = removeFiller(third, Boolean(flags.aggressive));
+        applyFillerCutsToEdit(third);
+        jsonOut(r);
+        process.exit(0);
+      } catch (e) {
+        console.error(String(e));
+        process.exit(1);
+      }
+    }
+    if (sub === "trim-silence" && third) {
+      try {
+        jsonOut(trimSilence(third));
+        process.exit(0);
+      } catch (e) {
+        console.error(String(e));
+        process.exit(1);
+      }
+    }
+    if (sub === "captions" && third) {
+      try {
+        const vtt = writeWordCaptions(third);
+        console.log(`→ ${vtt}`);
+        process.exit(0);
+      } catch (e) {
+        console.error(String(e));
+        process.exit(1);
+      }
+    }
+    console.error("edit: remove-filler | trim-silence | captions <take-id>");
+    process.exit(1);
+  }
+
+  if (cmd === "tts") {
+    if (sub === "doctor") {
+      const d = ttsDoctor();
+      if (flags.json) jsonOut(d);
+      else {
+        console.log(`backend: ${d.backend ?? "rust-mlx"}`);
+        console.log(`${d.moonshine?.ok ? "✓" : "✗"} moonshine — ${d.moonshine?.via ?? "missing"}`);
+        console.log(`${d.kokoro?.ok ? "✓" : "✗"} kokoro — ${d.kokoro?.via ?? "missing"}`);
+      }
+      process.exit(d.kokoro?.ok || d.moonshine?.ok ? 0 : 1);
+    }
+    if (sub === "speak") {
+      const text = String(flags.text || "");
+      const out = String(flags.o || flags.output || "");
+      if (!text || !out) {
+        console.error("tts speak --text \"...\" -o path.wav");
+        process.exit(1);
+      }
+      try {
+        jsonOut(ttsSpeak(text, out, flags.voice ? String(flags.voice) : undefined));
+        process.exit(0);
+      } catch (e) {
+        console.error(String(e));
+        process.exit(1);
+      }
+    }
+    console.error("tts: speak | doctor");
+    process.exit(1);
+  }
+
+  if (cmd === "agent") {
+    if (sub === "status") {
+      try {
+        const s = flags.json ? await agentStatus() : agentLlmProbe();
+        if (flags.json) jsonOut(s);
+        else {
+          console.log(`backend: ${s.backend ?? s.engine ?? "mlx-lm"}`);
+          console.log(`${s.ok ? "✓" : "✗"} ${s.state ?? "unknown"}${s.hint ? ` — ${s.hint}` : ""}`);
+        }
+        process.exit(s.ok ? 0 : 1);
+      } catch (e) {
+        console.error(String(e));
+        process.exit(1);
+      }
+    }
+    if (sub === "chat") {
+      const message = rest.slice(1).join(" ") || String(flags.message || "");
+      if (!message) {
+        console.error("agent chat \"your message\"");
+        process.exit(1);
+      }
+      try {
+        const r = await agentChat(message, { deck: String(flags.deck || "demo") });
+        if (flags.json) jsonOut(r);
+        else console.log(r.reply ?? "");
+        process.exit(0);
+      } catch (e) {
+        console.error(String(e));
+        process.exit(1);
+      }
+    }
+    if (sub === "pull") {
+      const model = flags.model ? ["--model", String(flags.model)] : [];
+      process.exit(runTools(["agent-pull", ...model]).status);
+    }
+    if (sub === "serve") {
+      process.exit(runTools(flags.stop ? ["agent-serve", "--stop"] : ["agent-serve"]).status);
+    }
+    console.error("agent: chat | status | pull | serve [--stop]");
+    process.exit(1);
+  }
+
+  if (cmd === "projects" && sub === "new") {
+    const title = rest.slice(1).join(" ") || String(flags.title || "");
+    if (!title) {
+      console.error("projects new \"My Talk\"");
+      process.exit(1);
+    }
+    try {
+      jsonOut(await createProject(title, flags.slug ? String(flags.slug) : undefined));
+      process.exit(0);
+    } catch (e) {
+      console.error(String(e));
+      process.exit(1);
+    }
+  }
+
+  if (cmd === "install" && sub === "app") {
+    try {
+      const dest = await installAppFromWeb();
+      console.log(`installed → ${dest}`);
+      process.exit(0);
+    } catch (e) {
+      console.error(String(e));
+      process.exit(1);
+    }
+  }
+
+  if (cmd === "skills" && sub === "compile") {
+    process.exit(sh("bun", ["run", join(PROJECT, "scripts/compile-skills.ts")], PROJECT));
+  }
 
   if (cmd === "skills" && sub === "install") {
+    if (!existsSync(join(PROJECT, "skill", "dist", "registry.json"))) {
+      sh("bun", ["run", join(PROJECT, "scripts/compile-skills.ts")], PROJECT);
+    }
     const dest = flags.user ? userCursorSkillPath() : defaultCursorSkillPath(PROJECT);
     installSkills(dest);
     console.log(`skills → ${dest}`);
+    process.exit(0);
+  }
+
+  if (cmd === "skills" && sub === "prompt") {
+    const deck = (flags.deck as string) || "demo";
+    console.log(readAgentPrompt({ deck, projectRoot: PROJECT }));
+    process.exit(0);
+  }
+
+  if (cmd === "skills" && sub === "list") {
+    const regPath = join(PROJECT, "skill", "dist", "registry.json");
+    const srcPath = join(PROJECT, "skill", "manifest.json");
+    const path = existsSync(regPath) ? regPath : srcPath;
+    const data = JSON.parse(readFileSync(path, "utf8"));
+    if (flags.json) jsonOut(data);
+    else {
+      console.log(`registry ${data.contentHash ?? "source"} · ${data.compiledAt ?? "manifest"}`);
+      for (const v of data.verbIndex ?? []) {
+        console.log(`  ${v.verbs.join(", ")} → ${v.reference}`);
+      }
+    }
     process.exit(0);
   }
 
@@ -518,6 +782,22 @@ try {
     if (sub === "edit") process.exit(cmdTakesEdit(third, fourth, flags.file ? String(flags.file) : undefined));
     if (sub === "hf" && third === "init") process.exit(cmdTakesHfInit(fourth));
     if (sub === "hf" && third === "render") process.exit(cmdTakesHfRender(fourth));
+    if (sub === "transcribe" && third) {
+      try {
+        const model =
+          flags.model
+            ? String(flags.model)
+            : flags.engine === "moonshine-base"
+              ? "UsefulSensors/moonshine-base"
+              : "UsefulSensors/moonshine-tiny";
+        jsonOut(transcribeTake(third, model));
+        writeWordCaptions(third);
+        process.exit(0);
+      } catch (e) {
+        console.error(String(e));
+        process.exit(1);
+      }
+    }
   }
 
   if (cmd === "take") {

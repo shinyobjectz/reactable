@@ -1,0 +1,31 @@
+name: Skills registry
+
+on:
+  push:
+    paths:
+      - "skill/**"
+      - "scripts/compile-skills.ts"
+      - "cli/lib/agent-prompt.ts"
+  pull_request:
+    paths:
+      - "skill/**"
+      - "scripts/compile-skills.ts"
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Compile skill registry
+        run: bun run scripts/compile-skills.ts
+      - name: Verify outputs
+        run: test -f skill/dist/registry.json && test -f skill/dist/skills.sh.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reactable-skills
+          path: |
+            skill/dist/registry.json
+            skill/dist/skills.sh.json
+            skill/dist/agent-prompt.txt
+            skill/dist/bundle/

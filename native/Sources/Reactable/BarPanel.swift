@@ -63,6 +63,18 @@ private final class BarMenuTarget: NSObject {
     @objc func toggleSetting(_ sender: NSMenuItem) {
         panel?.toggleSetting(sender)
     }
+
+    @objc func copyAgentPrompt(_ sender: NSMenuItem) {
+        panel?.copyAgentPrompt()
+    }
+
+    @objc func openAgent(_ sender: NSMenuItem) {
+        panel?.openAgent()
+    }
+
+    @objc func createProject(_ sender: NSMenuItem) {
+        panel?.createProject()
+    }
 }
 
 @MainActor
@@ -191,15 +203,15 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
         case "capture.selectStage":
             bridge.bridgeSelectStage()
         case "capture.selectWindow":
-            bridge.bridgeRequestDevices()
+            bridge.bridgeRequestDevices(includeIOS: false)
             showWindowMenu(anchor: payload)
         case "capture.selectArea":
             bridge.bridgeSelectArea()
         case "capture.selectDisplay":
-            bridge.bridgeRequestDevices()
+            bridge.bridgeRequestDevices(includeIOS: false)
             showDisplayMenu(anchor: payload)
         case "capture.selectDevice":
-            bridge.bridgeRequestDevices()
+            bridge.bridgeRequestDevices(includeIOS: true)
             showDeviceMenu(anchor: payload)
         case "capture.setTarget":
             bridge.bridgeCaptureSetTarget(kind: payload["kind"] as? String ?? "stage", id: payload["id"] as? String)
@@ -220,7 +232,7 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
                 bridge.bridgeSettingSet(key: key, value: val)
             }
         case "devices.list":
-            bridge.bridgeRequestDevices()
+            break
         case "bar.close":
             bridge.bridgeBarClose()
         case "bar.moveBy":
@@ -237,6 +249,8 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
             showProjectsMenu(anchor: payload)
         case "bar.menu.decks":
             showDecksMenu(anchor: payload)
+        case "agent.open":
+            bridge.bridgeOpenAgent()
         default:
             fputs("reactable bar: unknown action \(action)\n", stderr)
         }
@@ -284,6 +298,8 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
             menu.addItem(withTitle: "No projects found", action: nil, keyEquivalent: "").isEnabled = false
         }
         menu.addItem(.separator())
+        let newProj = menu.addItem(withTitle: "New project…", action: #selector(BarMenuTarget.createProject(_:)), keyEquivalent: "")
+        newProj.target = menuTarget
         let open = menu.addItem(withTitle: "Open Projects folder…", action: #selector(BarMenuTarget.revealProjects(_:)), keyEquivalent: "")
         open.target = menuTarget
         menu.popUp(positioning: nil, at: point, in: webView)
@@ -319,6 +335,29 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
         } else {
             bridge?.bridgeSettingSet(key: key, value: next)
         }
+    }
+
+    fileprivate func copyAgentPrompt() {
+        bridge?.bridgeCopyAgentPrompt()
+    }
+
+    fileprivate func openAgent() {
+        bridge?.bridgeOpenAgent()
+    }
+
+    fileprivate func createProject() {
+        let alert = NSAlert()
+        alert.messageText = "New Reactable Project"
+        alert.informativeText = "Creates ~/Reactable/projects/<slug>"
+        alert.addButton(withTitle: "Create")
+        alert.addButton(withTitle: "Cancel")
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        field.placeholderString = "My Talk"
+        alert.accessoryView = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let title = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return }
+        bridge?.bridgeCreateProject(title: title)
     }
 
     private func showWindowMenu(anchor: [String: Any]) {
@@ -361,6 +400,14 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
 
         menu.addItem(.separator())
 
+        let agentItem = menu.addItem(withTitle: "Local agent…", action: #selector(BarMenuTarget.openAgent(_:)), keyEquivalent: "")
+        agentItem.target = menuTarget
+
+        let copyPrompt = menu.addItem(withTitle: "Copy agent prompt…", action: #selector(BarMenuTarget.copyAgentPrompt(_:)), keyEquivalent: "")
+        copyPrompt.target = menuTarget
+
+        menu.addItem(.separator())
+
         let projectItem = NSMenuItem(title: "Project", action: nil, keyEquivalent: "")
         let projectSub = NSMenu()
         for entry in appState.projects {
@@ -375,6 +422,8 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
             projectSub.addItem(withTitle: "No projects", action: nil, keyEquivalent: "").isEnabled = false
         }
         projectSub.addItem(.separator())
+        let newProject = projectSub.addItem(withTitle: "New project…", action: #selector(BarMenuTarget.createProject(_:)), keyEquivalent: "")
+        newProject.target = menuTarget
         let openFolder = projectSub.addItem(withTitle: "Open Projects folder…", action: #selector(BarMenuTarget.revealProjects(_:)), keyEquivalent: "")
         openFolder.target = menuTarget
         projectItem.submenu = projectSub

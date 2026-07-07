@@ -54,10 +54,10 @@ async function googleCallback(req: Request, env: Env): Promise<Response> {
   const oauthErr = url.searchParams.get("error");
 
   if (oauthErr) {
-    return json({ ok: false, error: oauthErr }, { status: 400 });
+    return redirect(`${env.SITE_URL}/app/?error=${encodeURIComponent(oauthErr)}`);
   }
   if (!code || !state) {
-    return json({ ok: false, error: "missing code or state" }, { status: 400 });
+    return redirect(`${env.SITE_URL}/app/?error=${encodeURIComponent("missing code or state")}`);
   }
 
   try {
@@ -75,12 +75,13 @@ async function googleCallback(req: Request, env: Env): Promise<Response> {
     });
     const tokens = (await tokenRes.json()) as Record<string, unknown>;
     if (!tokenRes.ok) {
-      return json({ ok: false, error: oauthError(tokens.error) || "token exchange failed" }, { status: 400 });
+      const msg = oauthError(tokens.error) || "token exchange failed";
+      return redirect(`${env.SITE_URL}/app/?error=${encodeURIComponent(msg)}`);
     }
 
     const accessToken = String(tokens.access_token || "");
     if (!accessToken) {
-      return json({ ok: false, error: "no access_token in response" }, { status: 400 });
+      return redirect(`${env.SITE_URL}/app/?error=${encodeURIComponent("no access_token")}`);
     }
 
     const profileRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
@@ -88,7 +89,7 @@ async function googleCallback(req: Request, env: Env): Promise<Response> {
     });
     const profile = (await profileRes.json()) as Record<string, string>;
     if (!profileRes.ok || !profile.email) {
-      return json({ ok: false, error: "profile fetch failed" }, { status: 400 });
+      return redirect(`${env.SITE_URL}/app/?error=${encodeURIComponent("profile fetch failed")}`);
     }
 
     const session: Session = {
@@ -111,19 +112,20 @@ async function googleCallback(req: Request, env: Env): Promise<Response> {
         { expirationTtl: 300 },
       );
       await env.KV.delete(`cli_state:${state}`);
-      return redirect(`${env.SITE_URL}/app?cli=connected`);
+      return redirect(`${env.SITE_URL}/app/?cli=connected`);
     }
 
     return new Response(null, {
       status: 302,
       headers: {
-        location: `${env.SITE_URL}/app`,
+        location: `${env.SITE_URL}/app/`,
         "set-cookie": sessionCookie(sealed),
       },
     });
   } catch (e) {
     console.error("googleCallback", e);
-    return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    const msg = e instanceof Error ? e.message : String(e);
+    return redirect(`${env.SITE_URL}/app/?error=${encodeURIComponent(msg)}`);
   }
 }
 
@@ -193,8 +195,20 @@ async function downloadInfo(_req: Request, env: Env): Promise<Response> {
     platform: "macos",
     version: "0.1.0",
     url: `${env.SITE_URL}/download/Reactable.dmg`,
-    note: "Build with `just app` and upload to R2 or GitHub Releases — wire DOWNLOAD_URL in wrangler vars.",
   });
+}
+
+async function downloadDmg(_req: Request, env: Env): Promise<Response> {
+  const obj = await env.DOWNLOADS.get("Reactable.dmg");
+  if (!obj) {
+    return json({ ok: false, error: "Reactable.dmg not found in R2" }, { status: 404 });
+  }
+  const headers = new Headers();
+  obj.writeHttpMetadata(headers);
+  headers.set("content-type", "application/x-apple-diskimage");
+  headers.set("content-disposition", 'attachment; filename="Reactable.dmg"');
+  headers.set("cache-control", "public, max-age=3600");
+  return new Response(obj.body, { headers });
 }
 
 export default {
@@ -220,15 +234,15 @@ async function handle(req: Request, env: Env): Promise<Response> {
   if (path === "/api/auth/cli/start" && req.method === "POST") return cliStart(req, env);
   if (path === "/api/auth/cli/poll" && req.method === "POST") return cliPoll(req, env);
   if (path === "/api/download" && req.method === "GET") return downloadInfo(req, env);
+  if (path === "/download/Reactable.dmg" && req.method === "GET") return downloadDmg(req, env);
   if (path === "/api/youtube/connect" && req.method === "GET") return youtubeConnect(req, env);
   if (path === "/api/youtube/callback" && req.method === "GET") return youtubeCallback(req, env);
   if (path === "/api/youtube/status" && req.method === "GET") return youtubeStatus(req, env);
   if (path === "/api/youtube/search" && req.method === "GET") return youtubeSearch(req, env);
   if (path === "/api/youtube/proxy" && req.method === "GET") return youtubeProxy(req, env);
 
-  // SPA routes
-  if (path === "/app" || path === "/app/") {
-    return env.ASSETS.fetch(new Request(new URL("/app/index.html", url.origin), req));
+  if (path === "/app.html") {
+    return redirect(`${env.SITE_URL}/app/`);
   }
 
   return env.ASSETS.fetch(req);

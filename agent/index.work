@@ -1,0 +1,399 @@
+# Local agent — offline chat
+
+Native `AgentWindow` loads this page at `/agent`. Nexus orchestrates tools;
+Gemma runs in `reactable-tools` (Rust MLX).
+
+client :agent do
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; height: 100%; overflow: hidden;
+      font: 13px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif;
+      background: #09090b; color: #ececee;
+      -webkit-font-smoothing: antialiased;
+    }
+    .app {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      height: 100vh;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99,102,241,.12), transparent 55%),
+        #09090b;
+    }
+
+    /* ── Header ── */
+    header {
+      padding: 14px 16px 12px;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      background: rgba(14,14,18,.88);
+      backdrop-filter: blur(16px);
+    }
+    .header-row {
+      display: flex; align-items: center; gap: 8px; min-width: 0;
+    }
+    .header-row h1 {
+      font-size: 14px; font-weight: 650; margin: 0;
+      letter-spacing: -.02em; color: #fafafa;
+    }
+    .badge {
+      flex-shrink: 0;
+      font: 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: #a5b4fc;
+      background: rgba(99,102,241,.14);
+      border: 1px solid rgba(129,140,248,.28);
+      padding: 3px 8px; border-radius: 999px;
+    }
+    .header-meta {
+      margin-top: 6px;
+      font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: #71717a;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .header-meta.ok { color: #6ee7b7; }
+    .header-meta.warn { color: #fbbf24; }
+
+    /* ── Log ── */
+    #log {
+      overflow: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      scroll-behavior: smooth;
+    }
+    .msg {
+      max-width: min(92%, 520px);
+      padding: 10px 13px;
+      border-radius: 14px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .msg.user {
+      align-self: flex-end;
+      background: linear-gradient(135deg, #4338ca, #3730a3);
+      color: #fff;
+      border-bottom-right-radius: 4px;
+      box-shadow: 0 4px 14px rgba(67,56,202,.25);
+    }
+    .msg.assistant {
+      align-self: flex-start;
+      background: rgba(24,24,27,.95);
+      border: 1px solid rgba(255,255,255,.08);
+      border-bottom-left-radius: 4px;
+    }
+    .msg.typing {
+      color: #a1a1aa;
+      font-style: italic;
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity: .45; } 50% { opacity: .9; } }
+    .msg.system {
+      align-self: center;
+      max-width: 100%;
+      text-align: center;
+      font-size: 11px;
+      color: #71717a;
+      background: transparent;
+      padding: 8px 12px;
+    }
+    .msg.error {
+      align-self: stretch;
+      font-size: 12px;
+      color: #fca5a5;
+      background: rgba(248,113,113,.08);
+      border: 1px solid rgba(248,113,113,.2);
+    }
+    .banner {
+      align-self: stretch;
+      display: flex; gap: 10px; align-items: flex-start;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(248,113,113,.08);
+      border: 1px solid rgba(248,113,113,.22);
+      color: #fca5a5;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .banner code {
+      font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+      display: block;
+      margin-top: 6px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      background: rgba(0,0,0,.35);
+      color: #fecaca;
+      word-break: break-all;
+    }
+    .tools {
+      font: 10px ui-monospace, monospace;
+      color: #a1a1aa;
+      margin-top: 8px;
+      opacity: .9;
+    }
+
+    /* ── Composer ── */
+    .composer-wrap {
+      padding: 12px 14px 14px;
+      border-top: 1px solid rgba(255,255,255,.06);
+      background: rgba(12,12,16,.92);
+      backdrop-filter: blur(16px);
+    }
+    .composer {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.1);
+      background: rgba(20,20,24,.95);
+      box-shadow: 0 8px 32px rgba(0,0,0,.35);
+      overflow: hidden;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .composer:focus-within {
+      border-color: rgba(99,102,241,.55);
+      box-shadow: 0 8px 32px rgba(0,0,0,.35), 0 0 0 1px rgba(99,102,241,.25);
+    }
+    textarea {
+      width: 100%;
+      min-height: 52px;
+      max-height: 160px;
+      padding: 12px 14px 8px;
+      border: 0;
+      resize: none;
+      background: transparent;
+      color: #f4f4f5;
+      font: inherit;
+      line-height: 1.5;
+    }
+    textarea::placeholder { color: #52525b; }
+    textarea:focus { outline: none; }
+    .composer-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 6px 8px 8px;
+      border-top: 1px solid rgba(255,255,255,.05);
+    }
+    .composer-hint {
+      font-size: 10px;
+      color: #52525b;
+      padding-left: 6px;
+      user-select: none;
+    }
+    .composer-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      height: 30px;
+      padding: 0 12px;
+      border: 0;
+      border-radius: 8px;
+      font: 600 12px/1 ui-sans-serif, system-ui, sans-serif;
+      cursor: pointer;
+      transition: background .12s, opacity .12s;
+    }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-ghost {
+      background: rgba(255,255,255,.06);
+      color: #a1a1aa;
+    }
+    .btn-ghost:hover:not(:disabled) { background: rgba(255,255,255,.1); color: #e4e4e7; }
+    .btn-primary {
+      background: #6366f1;
+      color: #fff;
+      min-width: 64px;
+    }
+    .btn-primary:hover:not(:disabled) { background: #5558e3; }
+    .btn svg {
+      width: 14px; height: 14px;
+      stroke: currentColor; fill: none;
+      stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round;
+    }
+  </style>
+  <div class="app">
+    <header>
+      <div class="header-row">
+        <h1>Reactable Agent</h1>
+        <span class="badge" id="engine">gemma · mlx</span>
+      </div>
+      <div class="header-meta" id="status">Checking model…</div>
+    </header>
+
+    <div id="log"></div>
+
+    <div class="composer-wrap">
+      <div class="composer">
+        <textarea id="input" rows="2" placeholder="Plan a deck, run the CLI, or describe a video…"></textarea>
+        <div class="composer-bar">
+          <span class="composer-hint">↵ send · ⇧↵ newline</span>
+          <div class="composer-actions">
+            <button type="button" class="btn btn-ghost" id="stage" title="Open stage preview">
+              <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+              Stage
+            </button>
+            <button type="button" class="btn btn-primary" id="send">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+  (function () {
+    const log = document.getElementById('log');
+    const input = document.getElementById('input');
+    const sendBtn = document.getElementById('send');
+    const stageBtn = document.getElementById('stage');
+    const statusEl = document.getElementById('status');
+    const engineEl = document.getElementById('engine');
+    const params = new URLSearchParams(location.search);
+    const deck = params.get('deck') || 'demo';
+    let history = [];
+    let busy = false;
+
+    function sendNative(action, payload = {}) {
+      window.webkit?.messageHandlers?.reactable?.postMessage({ action, payload, t: Date.now() });
+    }
+
+    function resizeInput() {
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+    }
+
+    function append(role, text, extra) {
+      const el = document.createElement('div');
+      el.className = 'msg ' + role;
+      el.textContent = text;
+      if (extra) {
+        const t = document.createElement('div');
+        t.className = 'tools';
+        t.textContent = extra;
+        el.appendChild(t);
+      }
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function showBanner(html) {
+      const el = document.createElement('div');
+      el.className = 'banner';
+      el.innerHTML = html;
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function shortEngine(engine, model) {
+      const id = model || engine || '';
+      return id.split('/').slice(-1)[0] || 'mlx-lm';
+    }
+
+    async function checkStatus() {
+      try {
+        const res = await fetch('/reactable/agent/status');
+        const data = await res.json();
+        engineEl.textContent = shortEngine(data.engine, data.model);
+        if (data.ok) {
+          statusEl.textContent = data.state === 'server-ready'
+            ? 'Model ready · offline'
+            : 'Model cached · loads on first message';
+          statusEl.className = 'header-meta ok';
+        } else if (data.state === 'needs-pull') {
+          statusEl.textContent = 'Model not downloaded';
+          statusEl.className = 'header-meta warn';
+          showBanner(
+            'The local model is not downloaded yet (one-time ~2GB, no account needed).<code>reactable agent pull</code>'
+          );
+        } else if (data.state === 'uv-missing') {
+          statusEl.textContent = 'uv runtime missing';
+          statusEl.className = 'header-meta warn';
+          showBanner(
+            'The <code>uv</code> Python runner is required to run the local model.<code>curl -LsSf https://astral.sh/uv/install.sh | sh</code>'
+          );
+        } else {
+          statusEl.textContent = data.hint || 'Model not ready';
+          statusEl.className = 'header-meta warn';
+          showBanner((data.error || data.hint || 'Model not ready') + '<code>reactable agent pull</code>');
+        }
+      } catch (e) {
+        statusEl.textContent = 'Nexus unreachable';
+        statusEl.className = 'header-meta warn';
+        showBanner(String(e));
+      }
+    }
+
+    function showTyping() {
+      const el = document.createElement('div');
+      el.className = 'msg assistant typing';
+      el.textContent = 'Thinking…';
+      el.dataset.typing = '1';
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+      return el;
+    }
+
+    async function chat(message) {
+      busy = true;
+      sendBtn.disabled = true;
+      append('user', message);
+      history.push({ role: 'user', content: message });
+      const typing = showTyping();
+      try {
+        const res = await fetch('/reactable/agent/chat', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ message, history: history.slice(0, -1), deck, max_turns: 6 }),
+        });
+        const data = await res.json();
+        typing.remove();
+        if (!data.ok) {
+          append('error', data.error || 'Chat failed');
+          return;
+        }
+        const meta = [];
+        if (data.tools?.length) meta.push(`${data.tools.length} tool run(s)`);
+        if (data.turns > 1) meta.push(`${data.turns} turns`);
+        if (data.note) meta.push(data.note);
+        append('assistant', data.reply || '(empty)', meta.join(' · '));
+        history.push({ role: 'assistant', content: data.reply || '' });
+      } catch (e) {
+        typing.remove();
+        append('error', String(e));
+      } finally {
+        busy = false;
+        sendBtn.disabled = false;
+        input.focus();
+      }
+    }
+
+    sendBtn.addEventListener('click', () => {
+      const text = input.value.trim();
+      if (!text || busy) return;
+      input.value = '';
+      resizeInput();
+      chat(text);
+    });
+
+    input.addEventListener('input', resizeInput);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendBtn.click();
+      }
+    });
+
+    stageBtn.addEventListener('click', () => sendNative('agent.openStage', { deck }));
+
+    append('system', 'Offline agent — plans decks, runs reactable CLI, edits files in your project sandbox.');
+    checkStatus();
+    resizeInput();
+    input.focus();
+  })();
+  </script>
+end
