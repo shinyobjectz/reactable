@@ -245,7 +245,18 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     private func syncBar() {
         state.stageVisible = stage?.isVisible ?? false
         state.agentVisible = agent?.isVisible ?? false
+        state.captureLabel = captureTargetLabel()
         bar?.pushState(state)
+    }
+
+    private func captureTargetLabel() -> String {
+        switch state.sourceKind {
+        case "display": return "Display"
+        case "window": return "Window"
+        case "area": return "Area"
+        case "device": return "Device"
+        default: return "Stage"
+        }
     }
 
     // MARK: - ReactableBridgeDelegate
@@ -354,20 +365,19 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         bar?.pushState(state)
     }
 
+    // Stage visibility — independent of the capture target (you can show the
+    // stage while recording a window, or record the stage while it's hidden).
+    func bridgeToggleStage() {
+        if stage?.isVisible == true { hideStage() } else { openStage() }
+    }
+
+    // Capture-target selectors set what recording grabs; they no longer touch
+    // stage visibility.
     func bridgeSelectStage() {
-        if state.sourceKind == "stage" {
-            if stage?.isVisible == true {
-                hideStage()
-            } else {
-                openStage()
-            }
-            syncBar()
-            return
-        }
         state.sourceKind = "stage"
         state.captureTargetId = nil
         state.areaRect = nil
-        openStage()
+        if stage?.isVisible != true { openStage() }
         syncBar()
     }
 
@@ -909,12 +919,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     }
 
     @objc private func toggleStage() {
-        if stage?.isVisible == true {
-            hideStage()
-        } else {
-            state.sourceKind = "stage"
-            openStage()
-        }
+        bridgeToggleStage()
     }
     @objc private func toggleRecord() {
         if state.recording { bridgeRecordStop() }

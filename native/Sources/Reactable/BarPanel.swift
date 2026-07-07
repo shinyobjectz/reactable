@@ -26,6 +26,19 @@ private final class BarMenuTarget: NSObject {
         panel?.pickArea()
     }
 
+    // Capture-source picker entries (the single "capture" button's menu).
+    @objc func captureStage(_ sender: NSMenuItem) { panel?.pickCaptureStage() }
+    @objc func captureArea(_ sender: NSMenuItem) { panel?.pickArea() }
+    @objc func captureDisplayMenu(_ sender: NSMenuItem) {
+        panel?.requestDevicesThen { $0.showDisplayMenu(anchor: ["x": 120, "y": 0, "h": 32]) }
+    }
+    @objc func captureWindowMenu(_ sender: NSMenuItem) {
+        panel?.requestDevicesThen { $0.showWindowMenu(anchor: ["x": 120, "y": 0, "h": 32]) }
+    }
+    @objc func captureDeviceMenu(_ sender: NSMenuItem) {
+        panel?.requestDevicesThen(includeIOS: true) { $0.showDeviceMenu(anchor: ["x": 120, "y": 0, "h": 32]) }
+    }
+
     @objc func projectPicked(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else { return }
         panel?.pickProject(id)
@@ -196,6 +209,10 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
         case "record.stop": bridge.bridgeRecordStop()
         case "slide.next": bridge.bridgeSlideNext()
         case "slide.prev": bridge.bridgeSlidePrev()
+        case "stage.toggle":
+            bridge.bridgeToggleStage()
+        case "capture.menu":
+            showCaptureMenu(anchor: payload)
         case "capture.selectStage":
             bridge.bridgeSelectStage()
         case "capture.selectWindow":
@@ -352,7 +369,40 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
         bridge?.bridgeCreateProject(title: title)
     }
 
-    private func showWindowMenu(anchor: [String: Any]) {
+    // Capture-source picker — one menu for the whole capture-target choice,
+    // decoupled from stage visibility. Stage / Display / Window / Area / Device.
+    fileprivate func showCaptureMenu(anchor: [String: Any]) {
+        guard let webView, let point = menuPoint(from: anchor, in: webView) else { return }
+        let kind = appState.sourceKind
+        let menu = NSMenu()
+        func item(_ title: String, _ sel: Selector, on: Bool) {
+            let it = menu.addItem(withTitle: title, action: sel, keyEquivalent: "")
+            it.target = menuTarget
+            it.state = on ? .on : .off
+        }
+        item("Stage window", #selector(BarMenuTarget.captureStage(_:)), on: kind == "stage")
+        item("Entire display…", #selector(BarMenuTarget.captureDisplayMenu(_:)), on: kind == "display")
+        item("A window…", #selector(BarMenuTarget.captureWindowMenu(_:)), on: kind == "window")
+        item("Screen area…", #selector(BarMenuTarget.captureArea(_:)), on: kind == "area")
+        item("Capture device…", #selector(BarMenuTarget.captureDeviceMenu(_:)), on: kind == "device")
+        menu.popUp(positioning: nil, at: point, in: webView)
+    }
+
+    fileprivate func pickCaptureStage() {
+        bridge?.bridgeSelectStage()
+    }
+
+    fileprivate func requestDevicesThen(includeIOS: Bool = false, _ show: @escaping (BarPanel) -> Void) {
+        bridge?.bridgeRequestDevices(includeIOS: includeIOS)
+        // devicesPayload updates async via pushDevices; the menus read the cached
+        // list, so a short delay lets a fresh enumeration land before we show it.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self else { return }
+            show(self)
+        }
+    }
+
+    fileprivate func showWindowMenu(anchor: [String: Any]) {
         guard let webView, let point = menuPoint(from: anchor, in: webView) else { return }
         let list = devicesPayload["windows"] as? [[String: Any]] ?? []
 

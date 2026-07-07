@@ -59,13 +59,13 @@ client :bar do
       <span class="lbl" id="picker-label">demo</span>
     </button>
     <div class="sep"></div>
-    <button class="btn mode" id="mode-stage" type="button" title="Toggle stage preview (capture surface)">
+    <button class="btn mode" id="mode-stage" type="button" title="Show / hide the stage window">
       <svg class="ic sm" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="m9 8 2 2 4-4"/></svg>
       Stage
     </button>
-    <button class="btn mode" id="mode-window" type="button" title="Record a specific window">
-      <svg class="ic sm" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/><circle cx="6" cy="7" r=".8" fill="currentColor" stroke="none"/><circle cx="8.5" cy="7" r=".8" fill="currentColor" stroke="none"/></svg>
-      Window
+    <button class="btn mode" id="capture" type="button" title="Capture source for recording">
+      <svg class="ic sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>
+      <span class="lbl" id="capture-label">Stage</span>
     </button>
     <div class="sep"></div>
     <button class="btn icon" id="cam" title="Camera"><svg class="ic" viewBox="0 0 24 24"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg></button>
@@ -106,14 +106,14 @@ client :bar do
     }
 
     function render() {
-      const kind = state.sourceKind || 'stage';
+      // Stage button = pure window-visibility toggle (independent of capture).
       const stageBtn = $('mode-stage');
-      stageBtn.classList.toggle('on', kind === 'stage');
-      stageBtn.classList.toggle('collapsed', kind === 'stage' && !state.stageVisible);
-      stageBtn.title = kind === 'stage' && state.stageVisible
-        ? 'Hide stage preview'
-        : 'Show stage preview';
-      $('mode-window').classList.toggle('on', kind === 'window');
+      stageBtn.classList.toggle('on', !!state.stageVisible);
+      stageBtn.title = state.stageVisible ? 'Hide the stage window' : 'Show the stage window';
+      // Capture-source picker — reflects what recording will grab.
+      const capture = $('capture');
+      $('capture-label').textContent = state.captureLabel || 'Stage';
+      capture.classList.toggle('on', (state.sourceKind || 'stage') !== 'stage');
       $('cam').classList.toggle('on', !!state.camOn);
       $('mic').classList.toggle('on', !!state.micOn);
       $('sys').classList.toggle('on', state.systemAudioOn !== false);
@@ -142,8 +142,8 @@ client :bar do
     function handleTap(target, ev) {
       const btn = target.closest('button');
       if (!btn) return;
-      if (btn.id === 'mode-stage') return send('capture.selectStage');
-      if (btn.id === 'mode-window') return send('capture.selectWindow', anchor(btn));
+      if (btn.id === 'mode-stage') return send('stage.toggle');
+      if (btn.id === 'capture') return send('capture.menu', anchor(btn));
       if (btn.id === 'picker') {
         if (ev?.metaKey) return send('bar.menu.projects', anchor(btn));
         return send('bar.menu.decks', anchor(btn));

@@ -9,6 +9,7 @@ protocol ReactableBridgeDelegate: AnyObject {
     func bridgeSlideNext()
     func bridgeSlidePrev()
     func bridgeCaptureSetTarget(kind: String, id: String?)
+    func bridgeToggleStage()
     func bridgeSelectStage()
     func bridgeSelectArea()
     func bridgeOpenAgent()
@@ -39,6 +40,7 @@ final class AppState {
     var areaRect: CGRect?
     var stageVisible = false
     var agentVisible = false
+    var captureLabel = "Stage"
     var projectId = "reactable"
     var projectName = "reactable"
     var deckSlug = "showcase"
@@ -67,6 +69,7 @@ final class AppState {
             "captureTargetId": captureTargetId as Any,
             "stageVisible": stageVisible,
             "agentVisible": agentVisible,
+            "captureLabel": captureLabel,
             "projectId": projectId,
             "projectName": projectName,
             "deckSlug": deckSlug,
