@@ -14,7 +14,15 @@ CACHE="$HOME/.cache/huggingface/hub/models--${REPO//\//--}"
 SNAP="$(find "$CACHE/snapshots" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | head -1)"
 [ -n "$SNAP" ] || { echo "not cached: $REPO (run: reactable agent pull)"; exit 1; }
 
-put() { wrangler r2 object put "$1" --file "$2" --remote >/dev/null 2>&1; }
+# Skip objects already served (resumable across restarts); else upload.
+put() {
+  local key="$1" file="$2"
+  if curl -sfI "https://reactable.app/download/${key#reactable-downloads/}" >/dev/null 2>&1; then
+    echo "    (already in R2, skip)"
+    return 0
+  fi
+  wrangler r2 object put "$key" --file "$file" --remote >/dev/null 2>&1
+}
 
 echo "→ mirroring $REPO from $SNAP"
 ENTRIES=()
