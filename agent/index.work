@@ -391,6 +391,9 @@ client :agent do
     stageBtn.addEventListener('click', () => sendNative('agent.openStage', { deck }));
 
     append('system', 'Offline agent — plans decks, runs reactable CLI, edits files in your project sandbox.');
+    // Spawn + warm the model as soon as the window opens, so the first
+    // message is fast instead of eating the cold-start.
+    fetch('/reactable/agent/prewarm', { method: 'POST' }).catch(() => {});
     checkStatus();
     resizeInput();
     input.focus();

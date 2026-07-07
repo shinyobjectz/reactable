@@ -1,0 +1,25 @@
+# Broken deck
+
+deck do
+  id: broken
+  title: Broken Deck
+end
+
+preload do
+end
+
+slide do
+  id: dup
+  type: prose
+  notes: First slide.
+end
+
+## First
+
+slide do
+  id: dup
+  type: prose
+  notes: Second slide — duplicate id, fails validation.
+end
+
+## Second

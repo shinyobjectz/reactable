@@ -1,0 +1,36 @@
+# Demo deck
+
+deck do
+  id: demo
+  title: Reactable Demo
+end
+
+preload do
+end
+
+script do
+  id: open-log
+  on: deck.open
+  run: echo demo deck open
+  detach: true
+end
+
+slide do
+  id: welcome
+  type: prose
+  notes: Opening slide.
+end
+
+## Welcome
+
+Intro to the demo.
+
+slide do
+  id: agenda
+  type: prose
+  notes: What we cover.
+end
+
+## Agenda
+
+Three parts.

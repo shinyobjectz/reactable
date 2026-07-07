@@ -673,7 +673,7 @@ try {
       }
     }
     if (sub === "chat") {
-      const message = rest.slice(1).join(" ") || String(flags.message || "");
+      const message = rest.slice(2).join(" ") || String(flags.message || "");
       if (!message) {
         console.error("agent chat \"your message\"");
         process.exit(1);
@@ -700,7 +700,7 @@ try {
   }
 
   if (cmd === "projects" && sub === "new") {
-    const title = rest.slice(1).join(" ") || String(flags.title || "");
+    const title = rest.slice(2).join(" ") || String(flags.title || "");
     if (!title) {
       console.error("projects new \"My Talk\"");
       process.exit(1);
@@ -766,7 +766,7 @@ try {
       process.exit(0);
     }
     if (sub === "get") process.exit(cmdDecksGet(third, Boolean(flags.json)));
-    if (sub === "new") process.exit(cmdDecksNew(rest.slice(1).join(" ") || "Untitled deck"));
+    if (sub === "new") process.exit(cmdDecksNew(rest.slice(2).join(" ") || "Untitled deck"));
     if (sub === "validate") process.exit(cmdDecksValidate(third));
     if (sub === "slide" && third === "add") process.exit(cmdDecksSlideAdd(fourth, flags));
     if (sub === "slide" && third === "move") process.exit(cmdDecksSlideMove(fourth, fifth, Number(flags.to || 0)));

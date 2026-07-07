@@ -25,6 +25,7 @@ server :reactable_api do
   route "POST /reactable/blitz/replay", :blitz_replay, auth: :public
   route "POST /reactable/agent/chat", :agent_chat, auth: :public
   route "GET /reactable/agent/status", :agent_status, auth: :public
+  route "POST /reactable/agent/prewarm", :agent_prewarm, auth: :public
   route "POST /reactable/projects/create", :project_create, auth: :public
   route "GET /reactable/projects/list", :projects_list, auth: :public
 
@@ -989,6 +990,26 @@ server :reactable_api do
     end
   end
 
+  # Fire-and-forget: spawn + warm the model server in the background so the
+  # first real turn is hot. Returns immediately; safe to call repeatedly.
+  def agent_prewarm(_req) do
+    if System.get_env("REACTABLE_AGENT_STUB") == "1" do
+      %{ok: true, prewarm: :stub}
+    else
+      bin = tools_bin()
+
+      if File.exists?(bin) do
+        Task.start(fn ->
+          System.cmd(bin, ["agent-serve"], cd: wb_data(), stderr_to_stdout: true)
+        end)
+
+        %{ok: true, prewarm: :started}
+      else
+        %{ok: false, error: "reactable-tools not found"}
+      end
+    end
+  end
+
   def agent_chat(req) do
     body = body_map(req)
     message = to_string(body["message"] || "")
@@ -1212,10 +1233,26 @@ server :reactable_api do
   end
 
   defp sandbox_env do
+    home = System.get_env("HOME") || "/tmp"
+    # Include the user bin dirs where `reactable` (bun link) and uv land, so the
+    # allowlisted `reactable …` commands actually resolve. Still no profile sourced.
+    path =
+      Enum.join(
+        [
+          "#{home}/.bun/bin",
+          "#{home}/.local/bin",
+          "/opt/homebrew/bin",
+          "/usr/local/bin",
+          "/usr/bin",
+          "/bin"
+        ],
+        ":"
+      )
+
     [
       {"WB_DATA", wb_data()},
-      {"HOME", System.get_env("HOME") || "/tmp"},
-      {"PATH", "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"}
+      {"HOME", home},
+      {"PATH", path}
     ]
   end
 

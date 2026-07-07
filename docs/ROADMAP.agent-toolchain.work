@@ -155,6 +155,8 @@ CI: `.github/workflows/skills.yml` on every push → compile + artifact upload.
 | Bar + tray agent entry | done | robot icon, ⌘L |
 | New project (bar/tray/CLI) | done | `ProjectRegistry.createProject`, `projects new` |
 | Tests: stub loop/sandbox + real-model e2e | done | `just test-agent-stub` · `just validate-agent-e2e` |
+| Agentic eval (real edits/builds, deterministic checkers) | done | `just eval` → 21/21 on gemma-4 |
+| Turn-speed: warmup-on-spawn + proactive prewarm | done | first turn 3.1s→0.34s; steady 0.26s |
 | Token streaming into `/agent` (SSE) | pending | needs nexus SSE passthrough (chat is currently non-stream) |
 | Gemma 4 multimodal | pending | vision via mlx-vlm 0.6.4 (`gemma4_unified`) |
 | Stage review toolbar + reaction take | pending | record-over-video feedback loop |

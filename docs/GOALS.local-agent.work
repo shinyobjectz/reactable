@@ -80,4 +80,45 @@ Target model: **`mlx-community/gemma-4-e4b-it-4bit`** (ungated, ~2 GB, multimoda
 
 **Residual (not blocking DoD):** token streaming (nexus SSE), self-hosted stub CI runner, G5 vision via mlx-vlm.
 
+---
+
+## Post-DoD: turn speed + agentic eval (2026-07-07)
+
+### Latency — profiled, not guessed
+Measured each layer to find the real cost:
+
+| Layer | Time |
+|-------|------|
+| Raw mlx server, steady state | 0.26 s |
+| reactable-tools + nexus wrappers | +0.02 s |
+| Server spawn → ready | 2.1 s |
+| **First inference (cold GPU)** | **3.1 s** ← the only slow moment |
+| Inferences 2+ | 0.26 s |
+
+Steady-state was already fast; the whole "6.5 s warm" in the earlier e2e was the
+*second* inference while Metal kernels compiled + weights faulted in. Fix:
+- **Warmup on spawn** (`agent_llm.rs::warmup`) — throwaway 1-token completion after
+  readiness compiles kernels NOW, so the user's first real turn is hot. Spawn cost
+  4.5 s, **first user turn 0.34 s** (was 3.1 s).
+- **Proactive prewarm** — `POST /reactable/agent/prewarm` (background `agent-serve`);
+  `/agent` UI fires it on window-open, so even the spawn is hidden behind the click.
+
+### Agentic eval — `just eval`
+Real edit/build tasks graded by deterministic checkers against the resulting
+workspace state (not the model's prose). Isolated workspace (fixture copy, `WB_DATA`
+override, `present/`+`skill/`+`dist/` symlinked for live routes), restored per trial.
+`scripts/eval/` — `tasks.json`, `run.py`, `fixture/`, `report.work`.
+
+**Result: 21/21 (100%)** on gemma-4-e4b-it-4bit, 3 trials × 7 tasks (count/read/
+add-slide/rename/create-deck/fix-broken/write-outline). Warm turns 1–3 s; multi-tool
+tasks (rename, fix-broken) 8–15 s.
+
+**Bugs the eval surfaced + fixed (dogfooding):**
+1. `decks slide add` crashed — `attrs is not defined` in `serializeSlide` (`deck.ts`)
+2. `decks new` / `agent chat` / `projects new` off-by-one — `rest.slice(1)` kept the
+   subcommand token (title "new Roadmap", message "chat hi")
+3. CLI `decks` ignored `WB_DATA` — added `DATA_ROOT` so agent commands hit the active project
+4. Sandbox scrubbed-PATH dropped `~/.bun/bin` → `reactable: command not found`
+5. `just serve` hardcoded `WB_DATA={{root}}` → now honors a pre-set value
+
 Home: [[index]] · Roadmap: [[docs/ROADMAP.agent-toolchain]] · Verb: `skill/verbs/local-agent.md`

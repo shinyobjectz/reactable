@@ -121,7 +121,8 @@ serve:
     [ -f "{{root}}/.env" ] && { set -a; . "{{root}}/.env"; set +a; }
     cd "{{NEXUS}}"
     export SHINYOBJECTZ_ROOT="$(cd '{{root}}/../..' && pwd)"
-    WB_SERVE=1 PORT={{PORT}} WB_DATA="{{root}}" SHINYOBJECTZ_ROOT="$SHINYOBJECTZ_ROOT" elixir --no-halt -S mix run
+    # Honor a pre-set WB_DATA (e.g. the eval workspace); default to the project root.
+    WB_SERVE=1 PORT={{PORT}} WB_DATA="${WB_DATA:-{{root}}}" SHINYOBJECTZ_ROOT="$SHINYOBJECTZ_ROOT" elixir --no-halt -S mix run
 
 # Verify nexus API (run `just serve` in another terminal first).
 check:
@@ -186,6 +187,10 @@ validate-agent-e2e:
 # Pull the default local agent model (~2GB, one-time; no HF account)
 agent-pull:
     "{{root}}/dist/reactable-tools" agent-pull
+
+# Agentic eval — real edits/builds in an isolated workspace, deterministic checks
+eval *args:
+    python3 "{{root}}/scripts/eval/run.py" {{args}}
 
 p3:
     bash "{{root}}/scripts/p3-check.sh"

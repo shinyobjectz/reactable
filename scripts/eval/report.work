@@ -1,0 +1,17 @@
+# Local agent eval — real edits/builds
+
+Model: `mlx-community/gemma-4-e4b-it-4bit` · trials/task: 3 · **21/21 (100%)**
+
+Each task = a natural-language instruction the agent must satisfy by mutating an isolated workspace; a deterministic checker verifies the actual file/deck state, not the model's prose. Fixture restored per trial.
+
+| Task | Kind | Pass | Avg s | Avg tools |
+|------|------|------|-------|-----------|
+| count-decks | read | 3/3 | 1.61 | 1.0 |
+| read-title | read | 3/3 | 1.8 | 1.0 |
+| add-slide | edit | 3/3 | 2.0 | 1.0 |
+| rename-title | edit | 3/3 | 8.77 | 2.0 |
+| create-deck | build | 3/3 | 2.5 | 1.0 |
+| fix-broken | build | 3/3 | 15.34 | 2.0 |
+| write-outline | build | 3/3 | 2.64 | 1.0 |
+
+Regenerate: `just eval` · raw: `scripts/eval/last-run.json`

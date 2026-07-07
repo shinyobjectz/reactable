@@ -240,6 +240,9 @@ pub fn ensure_server(model: &str) -> Result<u16, String> {
     while Instant::now() < deadline {
         // We own this spawn, so any responding server on the port is ours.
         if server_model(port).is_some() {
+            // Fire a throwaway completion so Metal kernels compile and weights
+            // fault in NOW — otherwise the user's first real turn eats ~3s.
+            warmup(port, model);
             return Ok(port);
         }
         std::thread::sleep(Duration::from_millis(500));
@@ -248,6 +251,20 @@ pub fn ensure_server(model: &str) -> Result<u16, String> {
         "mlx_lm.server did not become ready in 240s — see {}",
         dir.join("server.log").display()
     ))
+}
+
+fn warmup(port: u16, model: &str) {
+    let body = serde_json::json!({
+        "model": model,
+        "messages": [{"role": "user", "content": "warmup"}],
+        "max_tokens": 1,
+        "stream": false,
+        "chat_template_kwargs": {"enable_thinking": false},
+    });
+    let url = format!("http://127.0.0.1:{port}/v1/chat/completions");
+    let _ = ureq::post(&url)
+        .timeout(Duration::from_secs(60))
+        .send_json(body);
 }
 
 fn spawn_idle_watchdog(pid: i32, dir: &Path) {

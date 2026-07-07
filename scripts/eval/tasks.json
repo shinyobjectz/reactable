@@ -1,0 +1,51 @@
+{
+  "meta": {
+    "model": "mlx-community/gemma-4-e4b-it-4bit",
+    "note": "Deterministic agentic eval — real edits/builds in an isolated reactable workspace, checked against ground truth. Fixture restored before every trial.",
+    "baseline_decks": ["broken", "demo"]
+  },
+  "tasks": [
+    {
+      "id": "count-decks",
+      "kind": "read",
+      "instruction": "How many decks are in this project? Use the bash tool to run `reactable decks list`, then reply with just the number.",
+      "check": {"type": "reply_has_number", "value": 2}
+    },
+    {
+      "id": "read-title",
+      "kind": "read",
+      "instruction": "Read the demo deck and tell me its title. Use the read_file tool on decks/demo/deck.work.",
+      "check": {"type": "reply_contains", "value": "Reactable Demo"}
+    },
+    {
+      "id": "add-slide",
+      "kind": "edit",
+      "instruction": "Add a new prose slide with id \"closing\" to the demo deck. You can run `reactable decks slide add demo --id closing --type prose` with the bash tool.",
+      "check": {"type": "deck_slide", "deck": "demo", "slide_id": "closing", "min_slides": 3}
+    },
+    {
+      "id": "rename-title",
+      "kind": "edit",
+      "instruction": "Change the title of the demo deck to exactly \"Reactable Live\". Use read_file then write_file on decks/demo/deck.work.",
+      "check": {"type": "deck_title", "deck": "demo", "title": "Reactable Live"}
+    },
+    {
+      "id": "create-deck",
+      "kind": "build",
+      "instruction": "Create a new deck titled \"Roadmap\". You can run `reactable decks new Roadmap` with the bash tool.",
+      "check": {"type": "new_deck_valid", "title_contains": "roadmap"}
+    },
+    {
+      "id": "fix-broken",
+      "kind": "build",
+      "instruction": "The deck \"broken\" fails `reactable decks validate broken` with a duplicate slide id. Read decks/broken/deck.work, fix it so validation passes (give the two slides distinct ids), and write it back.",
+      "check": {"type": "deck_validates", "deck": "broken"}
+    },
+    {
+      "id": "write-outline",
+      "kind": "build",
+      "instruction": "Create a file at notes/outline.md containing a markdown bullet list of exactly three talk ideas (one per line, each starting with \"- \"). Use the write_file tool.",
+      "check": {"type": "file_bullets", "path": "notes/outline.md", "min_bullets": 3}
+    }
+  ]
+}

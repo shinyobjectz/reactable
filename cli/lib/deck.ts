@@ -223,7 +223,7 @@ function serializeSlide(slide: Slide): string {
   const lines = ["slide do", `  id: ${slide.id}`];
   const type = slide.type || "prose";
   lines.push(`  type: ${type}`);
-  if (attrs.notes) lines.push(`  notes: ${slide.notes}`);
+  if (slide.notes) lines.push(`  notes: ${slide.notes}`);
   if (slide.theme) lines.push(`  theme: ${slide.theme}`);
   if (slide.url) lines.push(`  url: ${slide.url}`);
   if (slide.src) lines.push(`  src: ${slide.src}`);

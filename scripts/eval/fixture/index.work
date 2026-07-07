@@ -1,0 +1,3 @@
+# Eval Workspace
+
+Frozen fixture project for the local-agent eval suite. Restored before every trial.

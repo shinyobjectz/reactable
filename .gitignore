@@ -24,6 +24,9 @@ takes/
 *.mov
 .env
 
+# Eval run artifact (report.work is the committed baseline; raw json churns)
+scripts/eval/last-run.json
+
 # OS
 .DS_Store
 
