@@ -7,6 +7,8 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     private var agent: AgentWindowController?
     private var palette: PaletteWindowController?
     private var stageManager: StageManagerPanel?
+    private var cachedSlides: [[String: Any]] = []
+    private let captureOutline = CaptureOutline()
     private let micMeter = MicMeter()
     private var micTimer: Timer?
     private var sidecar: NexusSidecar?
@@ -676,7 +678,28 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     }
 
     func bridgeOpenStageManager() {
-        stageManager?.toggle()
+        if stageManager?.isVisible == true {
+            stageManager?.hide()
+            return
+        }
+        Task {
+            await refreshDeckSlides()
+            stageManager?.open()
+        }
+    }
+
+    /// Current deck's slides for the manager — each is a lineup-able scene.
+    private func refreshDeckSlides() async {
+        cachedSlides = []
+        guard let url = URL(string: "http://127.0.0.1:\(port)/reactable/deck?deck=\(state.deckSlug)"),
+              let (data, _) = try? await URLSession.shared.data(from: url),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let slides = obj["slides"] as? [[String: Any]] else { return }
+        cachedSlides = slides.enumerated().map { i, slide in
+            ["idx": i,
+             "id": slide["id"] as? String ?? "slide-\(i + 1)",
+             "type": slide["type"] as? String ?? "html"]
+        }
     }
 
     /// Everything recordable, for the Stage Manager's search: on-screen
@@ -713,6 +736,8 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             "windows": windows,
             "displays": displays,
             "decks": state.decks,
+            "slides": cachedSlides,
+            "deckSlug": state.deckSlug,
             "tabs": tabs,
             "lineup": lineup,
         ]
@@ -729,13 +754,40 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     /// displays switch the capture target (and re-prewarm for it).
     private func activateScene(kind: String, ref: String, title: String) {
         switch kind {
+        case "slide":
+            // A deck slide IS a lineup scene: jump the stage to it.
+            captureOutline.hide()
+            if stage == nil || stage?.isVisible != true { openStage() }
+            stage?.gotoSlide(Int(ref) ?? 0)
+            bridgeSelectStage()
         case "deck":
+            captureOutline.hide()
             bridgeSelectDeck(slug: ref)
             bridgeSelectStage()
             openStage()
-        case "window", "display":
-            bridgeCaptureSetTarget(kind: kind, id: ref)
+        case "window":
+            // External scene: stage steps aside, target comes forward with a
+            // recording outline so it's obvious what's being captured.
+            stage?.hide()
+            if let id = Int(ref) {
+                if let pid = CaptureOutline.windowPID(id: id) {
+                    NSRunningApplication(processIdentifier: pid)?.activate()
+                }
+                captureOutline.show(windowID: id)
+            }
+            bridgeCaptureSetTarget(kind: "window", id: ref)
+            syncBar()
+        case "display":
+            stage?.hide()
+            if let id = Int(ref), let screen = NSScreen.screens.first(where: {
+                ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.intValue == id
+            }) {
+                captureOutline.show(frame: screen.visibleFrame)
+            }
+            bridgeCaptureSetTarget(kind: "display", id: ref)
+            syncBar()
         default:
+            captureOutline.hide()
             if stage == nil || stage?.isVisible != true { openStage() }
             stage?.openSurface(StageSurface(kind: kind, ref: ref, title: title, project: ""))
             bridgeSelectStage()

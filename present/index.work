@@ -501,6 +501,7 @@ client :present do
       window.RevealDeck = {
         next() { Reveal.next(); },
         prev() { Reveal.prev(); },
+        goto(h) { Reveal.slide(Number(h) || 0); },
         indices() { return Reveal.getIndices(); },
         currentNotes() {
           const idx = Reveal.getIndices().h;

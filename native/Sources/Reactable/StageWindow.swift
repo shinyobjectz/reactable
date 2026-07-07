@@ -152,6 +152,7 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
     }
 
     func nextSlide() { webView?.evaluateJavaScript("window.RevealDeck?.next()") }
+    func gotoSlide(_ index: Int) { webView?.evaluateJavaScript("window.RevealDeck?.goto(\(index))") }
     func prevSlide() { webView?.evaluateJavaScript("window.RevealDeck?.prev()") }
 
     func fetchCurrentNotes(completion: ((String) -> Void)? = nil) {

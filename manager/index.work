@@ -23,6 +23,7 @@ client :manager do
     .kind.window { background: rgba(59,130,246,.2); color: #93c5fd; }
     .kind.display { background: rgba(236,72,153,.18); color: #f9a8d4; }
     .kind.deck { background: rgba(16,185,129,.18); color: #6ee7b7; }
+    .kind.slide { background: rgba(250,204,21,.16); color: #fde68a; }
     .kind.web, .kind.youtube, .kind.doc { background: rgba(168,85,247,.2); color: #d8b4fe; }
     .item .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
     .item .sub { color: #77777f; font-size: 11px; flex-shrink: 0; }
@@ -64,7 +65,7 @@ client :manager do
     const send = (action, payload = {}) =>
       window.webkit?.messageHandlers?.reactable?.postMessage({ action, payload });
 
-    let data = { windows: [], displays: [], decks: [], tabs: [] };
+    let data = { windows: [], displays: [], decks: [], slides: [], tabs: [] };
     let lineup = [];
     let current = -1;
 
@@ -72,6 +73,7 @@ client :manager do
       const items = [];
       for (const w of data.windows) items.push({ kind: 'window', ref: String(w.id), title: w.title || w.app, sub: w.app });
       for (const d of data.displays) items.push({ kind: 'display', ref: String(d.id), title: d.name, sub: 'full screen' });
+      for (const sl of data.slides || []) items.push({ kind: 'slide', ref: String(sl.idx), title: `${sl.idx + 1} · ${sl.id}`, sub: (data.deckSlug || 'deck') + ' · ' + sl.type });
       for (const k of data.decks) items.push({ kind: 'deck', ref: k.slug, title: k.title || k.slug, sub: 'deck' });
       for (const t of data.tabs) items.push({ kind: t.kind, ref: t.ref, title: t.title || t.ref, sub: 'stage tab' });
       return items;
