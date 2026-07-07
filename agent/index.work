@@ -1,4 +1,4 @@
-# Local agent — offline chat
+# Reactable Agent — chat panel
 
 Native `AgentWindow` loads this page at `/agent`. Nexus orchestrates tools;
 Gemma runs in `reactable-tools` (Rust MLX).
@@ -271,31 +271,93 @@ client :agent do
     .tier-meta { font: 11px ui-monospace, monospace; color: #71717a; }
     .tier-actions { display: flex; gap: 8px; margin-top: 4px; }
     .tier-actions .btn { height: 30px; padding: 0 14px; }
+    /* ——— monochrome retheme + menu/tools/tail (overrides above rules) ——— */
+    html, body { background: #0a0a0a; color: #e7e7e7; }
+    .badge { background: #161616; border: 1px solid #2c2c2c; color: #d4d4d4; }
+    .btn-primary { background: #ededed; color: #0a0a0a; }
+    .btn-primary:hover { background: #fff; }
+    .composer { background: #101010; border-color: #262626; }
+    .composer:focus-within { border-color: #4a4a4a; box-shadow: none; }
+    .msg.user .content { background: #1c1c1c; border: 1px solid #2a2a2a; }
+    .msg.assistant .content { background: transparent; }
+    a { color: #d4d4d4; }
+    .menu-btn { width: 30px; height: 30px; margin-left: auto; border: 1px solid #2c2c2c; border-radius: 8px; background: #141414; color: #b3b3b3; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+    .menu-btn:hover { color: #fff; border-color: #3d3d3d; }
+    .menu-btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; }
+    #menu { position: absolute; top: 52px; right: 12px; z-index: 40; width: 300px; max-height: 70vh; overflow-y: auto; background: #0f0f0f; border: 1px solid #2a2a2a; border-radius: 12px; box-shadow: 0 18px 50px rgba(0,0,0,.6); padding: 6px; }
+    .menu-title { font: 600 10px/1 ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; color: #6f6f6f; padding: 10px 10px 6px; }
+    .menu-section + .menu-section { border-top: 1px solid #1f1f1f; margin-top: 4px; }
+    .menu-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: #d4d4d4; text-decoration: none; font-size: 12.5px; }
+    .menu-row:hover { background: #1a1a1a; }
+    .menu-row svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; opacity: .8; }
+    .menu-row .chev { margin-left: auto; color: #565656; }
+    .tool-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; color: #d4d4d4; }
+    .tool-row:hover { background: #161616; }
+    .tool-row svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: .8; }
+    .tool-row .name { flex: 1; }
+    .tool-more { border: 0; background: none; color: #6f6f6f; cursor: pointer; font-size: 15px; padding: 0 2px; }
+    .tool-more:hover { color: #fff; }
+    .tool-toggle { position: relative; width: 30px; height: 17px; border-radius: 999px; background: #2a2a2a; border: 0; cursor: pointer; transition: background .15s; }
+    .tool-toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: #8a8a8a; transition: transform .15s, background .15s; }
+    .tool-toggle.on { background: #e7e7e7; }
+    .tool-toggle.on::after { transform: translateX(13px); background: #0a0a0a; }
+    .tool-prompt { display: none; padding: 4px 10px 10px 35px; }
+    .tool-prompt.open { display: block; }
+    .tool-prompt textarea { width: 100%; min-height: 44px; background: #141414; border: 1px solid #2a2a2a; border-radius: 8px; color: #ddd; font: 12px/1.4 inherit; padding: 7px 9px; resize: vertical; }
+    .send-plane { width: 34px; height: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
+    .send-plane svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    /* activity tail — thin shimmer strip under the log while thinking */
+    #tail { height: 3px; margin: 0 14px; border-radius: 3px; opacity: 0; background: linear-gradient(90deg, #1c1c1c, #efefef, #1c1c1c); background-size: 200% 100%; transition: opacity .25s ease; }
+    #tail.on { opacity: 1; animation: tailFlow 1.4s linear infinite; }
+    @keyframes tailFlow { to { background-position: 200% 0; } }
   </style>
   <div class="app">
     <header>
       <div class="header-row">
         <h1>Reactable Agent</h1>
-        <span class="badge" id="engine">gemma · mlx</span>
-        <button type="button" class="badge-btn" id="models-btn" title="Choose model">Models</button>
+        <span class="badge" id="engine">MiniMax-M3</span>
+        <span class="header-meta" id="status" hidden></span>
+        <button type="button" class="menu-btn" id="menu-btn" title="Menu">
+          <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
       </div>
-      <div class="header-meta" id="status">Checking model…</div>
     </header>
+
+    <div id="menu" hidden>
+      <div class="menu-section">
+        <div class="menu-title">Account</div>
+        <a class="menu-row link" href="https://platform.minimax.io" target="_blank">
+          <svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+          <span>Top up credits</span><span class="chev">›</span>
+        </a>
+        <a class="menu-row link" href="#" id="connect-youtube">
+          <svg viewBox="0 0 24 24"><path d="m10 9 5 3-5 3z"/><rect x="2" y="4" width="20" height="16" rx="4"/></svg>
+          <span>Connect YouTube</span><span class="chev">›</span>
+        </a>
+        <a class="menu-row link" href="https://www.pexels.com/api/" target="_blank">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>
+          <span>Connect stock (Pexels / Unsplash)</span><span class="chev">›</span>
+        </a>
+      </div>
+      <div class="menu-section">
+        <div class="menu-title">Tools</div>
+        <div id="tool-list"></div>
+      </div>
+    </div>
 
     <div id="log"></div>
     <div id="models" hidden></div>
 
+    <div id="tail"></div>
     <div class="composer-wrap">
       <div class="composer">
         <textarea id="input" rows="2" placeholder="Plan a deck, run the CLI, or describe a video…"></textarea>
         <div class="composer-bar">
           <span class="composer-hint">↵ send · ⇧↵ newline</span>
           <div class="composer-actions">
-            <button type="button" class="btn btn-ghost" id="stage" title="Open stage preview">
-              <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-              Stage
+            <button type="button" class="btn btn-primary send-plane" id="send" title="Send">
+              <svg viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>
             </button>
-            <button type="button" class="btn btn-primary" id="send">Send</button>
           </div>
         </div>
       </div>
@@ -306,7 +368,6 @@ client :agent do
     const log = document.getElementById('log');
     const input = document.getElementById('input');
     const sendBtn = document.getElementById('send');
-    const stageBtn = document.getElementById('stage');
     const statusEl = document.getElementById('status');
     const engineEl = document.getElementById('engine');
     const params = new URLSearchParams(location.search);
@@ -523,15 +584,18 @@ client :agent do
 
     async function chat(message) {
       busy = true;
+      document.getElementById('tail').classList.add('on');
       sendBtn.disabled = true;
       append('user', message);
       history.push({ role: 'user', content: message });
       const typing = showTyping();
       try {
+        const fm = toolFrontmatter();
+        const wire = fm ? fm + '\n\n' + message : message;
         const res = await fetch('/reactable/agent/chat', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ message, history: history.slice(0, -1), deck, max_turns: 6 }),
+          body: JSON.stringify({ message: wire, history: history.slice(0, -1), deck, max_turns: 6 }),
         });
         const data = await res.json();
         typing.remove();
@@ -550,6 +614,7 @@ client :agent do
         append('error', String(e));
       } finally {
         busy = false;
+        document.getElementById('tail').classList.remove('on');
         sendBtn.disabled = false;
         input.focus();
       }
@@ -571,15 +636,82 @@ client :agent do
       }
     });
 
-    stageBtn.addEventListener('click', () => sendNative('agent.openStage', { deck }));
 
-    document.getElementById('models-btn').addEventListener('click', () => {
-      const showing = modelsEl.classList.contains('show');
-      if (showing) { showModels(false); checkStatus(); }
-      else { showModels(true); loadModels(); }
+    // ——— hamburger menu: account links + agent tools ———
+    const menuEl = document.getElementById('menu');
+    document.getElementById('menu-btn').addEventListener('click', () => {
+      menuEl.hidden = !menuEl.hidden;
+      if (!menuEl.hidden) renderTools();
+    });
+    document.addEventListener('pointerdown', (e) => {
+      if (!menuEl.hidden && !menuEl.contains(e.target) && !e.target.closest('#menu-btn')) {
+        menuEl.hidden = true;
+      }
+    });
+    document.getElementById('connect-youtube').addEventListener('click', (e) => {
+      e.preventDefault();
+      append('system', 'Run in a terminal: reactable youtube connect');
+      menuEl.hidden = true;
     });
 
-    append('system', 'Offline agent — plans decks, runs reactable CLI, edits files in your project sandbox.');
+    // Agent tools — toggle on/off, optional prompt rides the skill frontmatter.
+    const TOOLS = [
+      { id: 'voice-enhance', name: 'Voice enhancing', desc: 'DeepFilterNet denoise (edit clean-voice)',
+        icon: '<svg viewBox="0 0 24 24"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></svg>' },
+      { id: 'silence-detect', name: 'Silence detection', desc: 'trim dead air (edit trim-silence)',
+        icon: '<svg viewBox="0 0 24 24"><path d="M2 12h4l3-8 4 16 3-8h6"/></svg>' },
+      { id: 'transcribe', name: 'Transcription', desc: 'word-level transcript (takes transcribe)',
+        icon: '<svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7"/></svg>' },
+      { id: 'captions', name: 'Captions', desc: 'stage-aligned WEBVTT (edit captions)',
+        icon: '<svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 14h4m2 0h6M6 10h2m2 0h8"/></svg>' },
+      { id: 'remove-filler', name: 'Filler removal', desc: 'cut ums and stalls (edit remove-filler)',
+        icon: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>' },
+    ];
+    const toolCfg = JSON.parse(localStorage.getItem('agent-tools') || '{}');
+    function saveTools() { localStorage.setItem('agent-tools', JSON.stringify(toolCfg)); }
+
+    function renderTools() {
+      const box = document.getElementById('tool-list');
+      box.innerHTML = '';
+      for (const t of TOOLS) {
+        const cfg = toolCfg[t.id] || { on: true, prompt: '' };
+        toolCfg[t.id] = cfg;
+        const row = document.createElement('div');
+        row.className = 'tool-row';
+        row.innerHTML = `${t.icon}<span class="name" title="${t.desc}">${t.name}</span>
+          <button class="tool-more" title="Add a prompt for this tool">⋯</button>
+          <button class="tool-toggle${cfg.on ? ' on' : ''}"></button>`;
+        const prompt = document.createElement('div');
+        prompt.className = 'tool-prompt';
+        prompt.innerHTML = `<textarea placeholder="Guidance for the agent when using ${t.name.toLowerCase()}…">${cfg.prompt || ''}</textarea>`;
+        row.querySelector('.tool-toggle').addEventListener('click', (e) => {
+          cfg.on = !cfg.on;
+          e.target.classList.toggle('on', cfg.on);
+          saveTools();
+        });
+        row.querySelector('.tool-more').addEventListener('click', () => prompt.classList.toggle('open'));
+        prompt.querySelector('textarea').addEventListener('input', (e) => {
+          cfg.prompt = e.target.value;
+          saveTools();
+        });
+        box.appendChild(row);
+        box.appendChild(prompt);
+      }
+    }
+
+    // Frontmatter surfaced to the agent with every message.
+    function toolFrontmatter() {
+      const lines = [];
+      for (const t of TOOLS) {
+        const cfg = toolCfg[t.id];
+        if (!cfg || !cfg.on) continue;
+        lines.push(`- ${t.id}: enabled${cfg.prompt ? ` — ${cfg.prompt.replace(/\n/g, ' ')}` : ''} (${t.desc})`);
+      }
+      if (!lines.length) return '';
+      return '---tools\n' + lines.join('\n') + '\n---';
+    }
+
+    append('system', 'Plans decks, runs the reactable CLI, edits files in your project sandbox.');
     // Spawn + warm the model as soon as the window opens, so the first
     // message is fast instead of eating the cold-start. Only if a model exists.
     fetch('/reactable/agent/status').then(r => r.json()).then(s => {

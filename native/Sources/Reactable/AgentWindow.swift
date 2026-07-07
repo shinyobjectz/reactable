@@ -60,7 +60,7 @@ final class AgentWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
     // MARK: - Window lifecycle
 
     private func createWindow() {
-        let shell = Chrome.shellSize(for: NSSize(width: 460, height: 640))
+        let shell = Chrome.shellSize(for: NSSize(width: 460, height: 780))
 
         let win = KeyableWindow(
             contentRect: NSRect(x: 0, y: 0, width: shell.width, height: shell.height),
