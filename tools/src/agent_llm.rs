@@ -268,32 +268,56 @@ fn dir_size(dir: &Path) -> u64 {
 
 pub const DOWNLOAD_BASE: &str = "https://reactable.app/download/models";
 
-/// Pull a model from our R2 mirror into local_model_dir with resumable
-/// (range) downloads. Returns Err if the mirror lacks the model (caller then
-/// falls back to Hugging Face).
+#[derive(Deserialize)]
+struct ManifestEntry {
+    name: String,
+    #[serde(default)]
+    parts: Vec<String>, // empty → single object at <name>
+}
+
+/// Pull a model from our R2 mirror into local_model_dir. Files stored as parts
+/// (over R2's 300 MiB put cap) are downloaded and concatenated. Resumable per
+/// part. Returns Err if the mirror lacks the model (caller falls back to HF).
 pub fn pull_from_r2(repo: &str, progress: bool) -> Result<(), String> {
     let base = format!("{DOWNLOAD_BASE}/{repo}");
-    let manifest_url = format!("{base}/manifest.json");
-    let body = ureq::get(&manifest_url)
+    let body = ureq::get(&format!("{base}/manifest.json"))
         .timeout(Duration::from_secs(30))
         .call()
         .map_err(|e| format!("no R2 mirror ({e})"))?
         .into_string()
         .map_err(|e| e.to_string())?;
-    let files: Vec<String> =
+    let entries: Vec<ManifestEntry> =
         serde_json::from_str(&body).map_err(|e| format!("bad manifest: {e}"))?;
-    if files.is_empty() {
+    if entries.is_empty() {
         return Err("empty manifest".into());
     }
 
     let dir = local_model_dir(repo);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
-    for (i, file) in files.iter().enumerate() {
+    for (i, entry) in entries.iter().enumerate() {
         if progress {
-            eprintln!("  [{}/{}] {file}", i + 1, files.len());
+            eprintln!("  [{}/{}] {}", i + 1, entries.len(), entry.name);
         }
-        download_resumable(&format!("{base}/{file}"), &dir.join(file))?;
+        let dest = dir.join(&entry.name);
+        if entry.parts.is_empty() {
+            download_resumable(&format!("{base}/{}", entry.name), &dest)?;
+        } else {
+            // Download each part, then concatenate into the final file.
+            let part_dir = dir.join(format!(".{}.parts", entry.name));
+            fs::create_dir_all(&part_dir).map_err(|e| e.to_string())?;
+            let mut out = fs::File::create(&dest).map_err(|e| e.to_string())?;
+            for (j, part) in entry.parts.iter().enumerate() {
+                let ppath = part_dir.join(part);
+                if progress {
+                    eprintln!("      part {}/{}", j + 1, entry.parts.len());
+                }
+                download_resumable(&format!("{base}/{part}"), &ppath)?;
+                let mut pf = fs::File::open(&ppath).map_err(|e| e.to_string())?;
+                std::io::copy(&mut pf, &mut out).map_err(|e| e.to_string())?;
+            }
+            let _ = fs::remove_dir_all(&part_dir);
+        }
     }
     Ok(())
 }
