@@ -85,7 +85,6 @@ final class AgentWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
 
         let root = NSView()
         win.contentView = root
-        ResizeCornersView.attach(to: root)
 
         let dragStrip = DragStripView()
         dragStrip.translatesAutoresizingMaskIntoConstraints = false
@@ -124,6 +123,7 @@ final class AgentWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
             web.bottomAnchor.constraint(equalTo: frame.bottomAnchor),
         ])
 
+        ResizeCornersView.attach(to: root)
         window = win
         centerOnScreen(win, size: shell)
         savedFrame = win.frame

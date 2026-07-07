@@ -22,11 +22,11 @@ enum PanelChrome {
             strip.topAnchor.constraint(equalTo: root.topAnchor),
             strip.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             strip.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            strip.heightAnchor.constraint(equalToConstant: 22),
-            content.topAnchor.constraint(equalTo: strip.bottomAnchor),
-            content.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            content.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            content.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            strip.heightAnchor.constraint(equalToConstant: Chrome.dragStripHeight),
+            content.topAnchor.constraint(equalTo: strip.bottomAnchor, constant: Chrome.gapBelowDrag),
+            content.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: Chrome.frameMargin),
+            content.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -Chrome.frameMargin),
+            content.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -Chrome.frameMargin),
         ])
         ResizeCornersView.attach(to: root)
     }
