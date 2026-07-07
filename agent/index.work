@@ -16,17 +16,13 @@ client :agent do
       display: grid;
       grid-template-rows: auto 1fr auto;
       height: 100vh;
-      background:
-        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99,102,241,.12), transparent 55%),
-        #09090b;
+      background: #141414;
     }
 
     /* ── Header ── */
     header {
-      padding: 14px 16px 12px;
-      border-bottom: 1px solid rgba(255,255,255,.06);
-      background: rgba(14,14,18,.88);
-      backdrop-filter: blur(16px);
+      padding: 10px 16px 8px;
+      background: transparent;
     }
     .header-row {
       display: flex; align-items: center; gap: 8px; min-width: 0;
@@ -155,10 +151,8 @@ client :agent do
 
     /* ── Composer ── */
     .composer-wrap {
-      padding: 12px 14px 14px;
-      border-top: 1px solid rgba(255,255,255,.06);
-      background: rgba(12,12,16,.92);
-      backdrop-filter: blur(16px);
+      padding: 12px 2px 4px;
+      background: transparent;
     }
     .composer {
       display: flex;
@@ -272,7 +266,7 @@ client :agent do
     .tier-actions { display: flex; gap: 8px; margin-top: 4px; }
     .tier-actions .btn { height: 30px; padding: 0 14px; }
     /* ——— monochrome retheme + menu/tools/tail (overrides above rules) ——— */
-    html, body { background: #0a0a0a; color: #e7e7e7; }
+    html, body { background: #141414; color: #e7e7e7; }
     .badge { background: #161616; border: 1px solid #2c2c2c; color: #d4d4d4; }
     .btn-primary { background: #ededed; color: #0a0a0a; }
     .btn-primary:hover { background: #fff; }

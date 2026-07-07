@@ -50,6 +50,10 @@ enum PanelChrome {
 
     static func install(in win: NSWindow, content: NSView, title: String, onClose: @escaping () -> Void) {
         let root = NSView()
+        root.wantsLayer = true
+        root.layer?.backgroundColor = NSColor(white: 0.08, alpha: 1).cgColor
+        root.layer?.cornerRadius = 14
+        root.layer?.masksToBounds = true
         win.contentView = root
 
         let strip = DragStripView()

@@ -40,7 +40,7 @@ final class DragStripView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        NSColor(white: 0.12, alpha: 0.92).setFill()
+        NSColor(white: 0.08, alpha: 1).setFill()
         dirtyRect.fill()
         // Horizontal six-dot grip — same handle language as the bar's drag grip.
         NSColor(white: 1, alpha: 0.26).setFill()
