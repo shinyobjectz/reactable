@@ -96,9 +96,9 @@ final class TakeRecorder {
             nonisolated(unsafe) let recorder = stageRecorder
             let kind = target.kind
             let targetID = target.targetID
-            // For window captures the crop is the deck content region — the
+            // For stage captures the crop is the deck content region — the
             // drag strip and frame chrome stay out of stage.mov.
-            let cropRect = target.kind == "window" ? stageContentRect : target.cropRect
+            let cropRect = target.kind == "stage" ? stageContentRect : target.cropRect
             try await Self.race(seconds: 15, label: "capture start") {
                 try await Self.startStageCapture(
                     recorder: recorder,
@@ -232,7 +232,7 @@ final class TakeRecorder {
                 .appending(path: "reactable-prewarm.mov"),
             targetID: target.targetID,
             framesPerSecond: 30,
-            cropRect: target.kind == "window" ? stageContentRect : target.cropRect,
+            cropRect: target.kind == "stage" ? stageContentRect : target.cropRect,
             showCursor: false,
             highlightClicks: false,
             videoCodec: .h264,
