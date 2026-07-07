@@ -15,9 +15,10 @@ SNAP="$(find "$CACHE/snapshots" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | he
 [ -n "$SNAP" ] || { echo "not cached: $REPO (run: reactable agent pull)"; exit 1; }
 
 # Skip objects already served (resumable across restarts); else upload.
+# Uses a 1-byte GET range (the worker serves GET, not HEAD).
 put() {
   local key="$1" file="$2"
-  if curl -sfI "https://reactable.app/download/${key#reactable-downloads/}" >/dev/null 2>&1; then
+  if curl -sf -r 0-0 "https://reactable.app/download/${key#reactable-downloads/}" -o /dev/null 2>/dev/null; then
     echo "    (already in R2, skip)"
     return 0
   fi
