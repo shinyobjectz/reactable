@@ -1,32 +1,8 @@
 import AppKit
 import WebKit
 
-// Local agent shell — chromeless window with the same drag strip + rounded frame
-// as the stage (no titlebar / traffic lights). Toggled on/off from the bar AI button.
-
-private let agentDragStripHeight: CGFloat = 28
-private let agentGapBelowDrag: CGFloat = 8
-private let agentFrameMargin: CGFloat = 12
-private let agentCornerRadius: CGFloat = 12
-private let agentShowAnimDuration: TimeInterval = 0.18
-
-@MainActor
-private final class AgentDragStripView: NSView {
-    override func mouseDown(with event: NSEvent) {
-        WindowDrag.begin(in: self)
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        NSColor(white: 0.12, alpha: 0.92).setFill()
-        dirtyRect.fill()
-        let grip = NSBezierPath(
-            roundedRect: NSRect(x: bounds.midX - 18, y: bounds.midY - 2, width: 36, height: 4),
-            xRadius: 2, yRadius: 2
-        )
-        NSColor(white: 1, alpha: 0.22).setFill()
-        grip.fill()
-    }
-}
+// Local agent shell — chromeless window using the shared Chrome (drag strip +
+// rounded frame, no titlebar / traffic lights). Toggled on/off from the bar AI button.
 
 @MainActor
 final class AgentWindowController: NSObject, NSWindowDelegate, WKScriptMessageHandler {
@@ -83,15 +59,8 @@ final class AgentWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
 
     // MARK: - Window lifecycle
 
-    private func shellSize(for content: NSSize) -> NSSize {
-        NSSize(
-            width: content.width + agentFrameMargin * 2,
-            height: agentDragStripHeight + agentGapBelowDrag + content.height + agentFrameMargin
-        )
-    }
-
     private func createWindow() {
-        let shell = shellSize(for: NSSize(width: 460, height: 640))
+        let shell = Chrome.shellSize(for: NSSize(width: 460, height: 640))
 
         let win = KeyableWindow(
             contentRect: NSRect(x: 0, y: 0, width: shell.width, height: shell.height),
@@ -101,7 +70,7 @@ final class AgentWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         )
         win.delegate = self
         win.isReleasedWhenClosed = false
-        win.minSize = shellSize(for: NSSize(width: 380, height: 480))
+        win.minSize = Chrome.shellSize(for: NSSize(width: 380, height: 480))
         win.title = "Reactable Agent"
         win.backgroundColor = .clear
         win.isOpaque = false
@@ -112,18 +81,12 @@ final class AgentWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         let root = NSView()
         win.contentView = root
 
-        let dragStrip = AgentDragStripView()
+        let dragStrip = DragStripView()
         dragStrip.translatesAutoresizingMaskIntoConstraints = false
         dragStrip.toolTip = "Drag to move agent"
 
-        let frame = NSView()
+        let frame = ContentFrameView()
         frame.translatesAutoresizingMaskIntoConstraints = false
-        frame.wantsLayer = true
-        frame.layer?.cornerRadius = agentCornerRadius
-        frame.layer?.masksToBounds = true
-        frame.layer?.backgroundColor = NSColor(white: 0.035, alpha: 1).cgColor
-        frame.layer?.borderColor = NSColor(white: 1, alpha: 0.14).cgColor
-        frame.layer?.borderWidth = 1
 
         let config = WKWebViewConfiguration()
         config.userContentController.add(self, name: "reactable")
@@ -142,12 +105,12 @@ final class AgentWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
             dragStrip.topAnchor.constraint(equalTo: root.topAnchor),
             dragStrip.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             dragStrip.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            dragStrip.heightAnchor.constraint(equalToConstant: agentDragStripHeight),
+            dragStrip.heightAnchor.constraint(equalToConstant: Chrome.dragStripHeight),
 
-            frame.topAnchor.constraint(equalTo: dragStrip.bottomAnchor, constant: agentGapBelowDrag),
-            frame.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: agentFrameMargin),
-            frame.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -agentFrameMargin),
-            frame.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -agentFrameMargin),
+            frame.topAnchor.constraint(equalTo: dragStrip.bottomAnchor, constant: Chrome.gapBelowDrag),
+            frame.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: Chrome.frameMargin),
+            frame.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -Chrome.frameMargin),
+            frame.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -Chrome.frameMargin),
 
             web.topAnchor.constraint(equalTo: frame.topAnchor),
             web.leadingAnchor.constraint(equalTo: frame.leadingAnchor),
@@ -171,7 +134,7 @@ final class AgentWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         win.alphaValue = 0
         win.makeKeyAndOrderFront(nil)
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = agentShowAnimDuration
+            ctx.duration = Chrome.showAnimDuration
             win.animator().alphaValue = 1
         }
     }

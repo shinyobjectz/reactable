@@ -1,29 +1,9 @@
 import AppKit
 import WebKit
 
-// Stage preview shell — chromeless window, drag strip on top, rounded preview frame.
-// Visibility toggled from the bar Stage button; closing the bar hides the stage.
-
-private let dragStripHeight: CGFloat = 28
-private let gapBelowDrag: CGFloat = 8
-private let frameMargin: CGFloat = 12
-private let previewCornerRadius: CGFloat = 12
-private let showAnimDuration: TimeInterval = 0.18
-
-@MainActor
-private final class StageDragStripView: NSView {
-    override func mouseDown(with event: NSEvent) {
-        WindowDrag.begin(in: self)
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        NSColor(white: 0.12, alpha: 0.92).setFill()
-        dirtyRect.fill()
-        let grip = NSBezierPath(roundedRect: NSRect(x: bounds.midX - 18, y: bounds.midY - 2, width: 36, height: 4), xRadius: 2, yRadius: 2)
-        NSColor(white: 1, alpha: 0.22).setFill()
-        grip.fill()
-    }
-}
+// Stage preview shell — chromeless window using the shared Chrome (drag strip +
+// rounded frame). Visibility toggled from the bar Stage button; closing the bar
+// hides the stage.
 
 @MainActor
 final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHandler {
@@ -102,15 +82,8 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
 
     // MARK: - Window lifecycle
 
-    private func shellSize(for content: NSSize) -> NSSize {
-        NSSize(
-            width: content.width + frameMargin * 2,
-            height: dragStripHeight + gapBelowDrag + content.height + frameMargin
-        )
-    }
-
     private func createWindow() {
-        let shell = shellSize(for: defaultContent)
+        let shell = Chrome.shellSize(for: defaultContent)
 
         let win = KeyableWindow(
             contentRect: NSRect(x: 0, y: 0, width: shell.width, height: shell.height),
@@ -120,7 +93,7 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         )
         win.delegate = self
         win.isReleasedWhenClosed = false
-        win.minSize = shellSize(for: NSSize(width: 640, height: 400))
+        win.minSize = Chrome.shellSize(for: NSSize(width: 640, height: 400))
         win.title = "Reactable Stage"
         win.backgroundColor = .clear
         win.isOpaque = false
@@ -132,18 +105,12 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         root.translatesAutoresizingMaskIntoConstraints = false
         win.contentView = root
 
-        let dragStrip = StageDragStripView()
+        let dragStrip = DragStripView()
         dragStrip.translatesAutoresizingMaskIntoConstraints = false
         dragStrip.toolTip = "Drag to move stage"
 
-        let preview = NSView()
+        let preview = ContentFrameView()
         preview.translatesAutoresizingMaskIntoConstraints = false
-        preview.wantsLayer = true
-        preview.layer?.cornerRadius = previewCornerRadius
-        preview.layer?.masksToBounds = true
-        preview.layer?.backgroundColor = NSColor.black.cgColor
-        preview.layer?.borderColor = NSColor(white: 1, alpha: 0.14).cgColor
-        preview.layer?.borderWidth = 1
         previewFrame = preview
 
         let config = WKWebViewConfiguration()
@@ -165,12 +132,12 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
             dragStrip.topAnchor.constraint(equalTo: root.topAnchor),
             dragStrip.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             dragStrip.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            dragStrip.heightAnchor.constraint(equalToConstant: dragStripHeight),
+            dragStrip.heightAnchor.constraint(equalToConstant: Chrome.dragStripHeight),
 
-            preview.topAnchor.constraint(equalTo: dragStrip.bottomAnchor, constant: gapBelowDrag),
-            preview.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: frameMargin),
-            preview.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -frameMargin),
-            preview.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -frameMargin),
+            preview.topAnchor.constraint(equalTo: dragStrip.bottomAnchor, constant: Chrome.gapBelowDrag),
+            preview.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: Chrome.frameMargin),
+            preview.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -Chrome.frameMargin),
+            preview.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -Chrome.frameMargin),
 
             web.topAnchor.constraint(equalTo: preview.topAnchor),
             web.leadingAnchor.constraint(equalTo: preview.leadingAnchor),
@@ -199,7 +166,7 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         win.alphaValue = 0
         win.makeKeyAndOrderFront(nil)
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = showAnimDuration
+            ctx.duration = Chrome.showAnimDuration
             win.animator().alphaValue = 1
         }
     }
