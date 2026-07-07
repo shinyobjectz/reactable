@@ -89,7 +89,9 @@ pub fn models() -> i32 {
     let ram = agent_llm::detect_ram_gb();
     let chip = agent_llm::detect_chip();
     let recommended = agent_llm::recommended_tier();
-    let current = agent_llm::current_tier();
+    // The tier that actually runs (a downloaded one), not just the preference.
+    let active_repo = agent_llm::default_model();
+    let current = agent_llm::tier_for_repo(&active_repo).map(|t| t.tier).unwrap_or("");
 
     let tiers: Vec<_> = agent_llm::TIERS
         .iter()

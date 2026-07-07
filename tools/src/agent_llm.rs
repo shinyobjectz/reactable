@@ -76,13 +76,16 @@ fn sysctl(key: &str) -> Option<String> {
     String::from_utf8(out.stdout).ok()
 }
 
-/// Recommend a tier from available unified memory. A model needs headroom for
-/// the KV cache + the OS, so we gate on total RAM well above the weight size.
+/// Recommend a tier from unified memory. The model competes with macOS *and*
+/// this multi-webview app for RAM — an idle mlx server already holds ~4 GB for
+/// the medium model — so we leave generous headroom to avoid swapping (which
+/// shows up as UI freezes). Measured resident: low ~2.5 GB, medium ~4.3 GB,
+/// high ~7 GB.
 pub fn recommended_tier() -> &'static str {
     let ram = detect_ram_gb();
     if ram >= 32 {
         "high"
-    } else if ram >= 16 {
+    } else if ram >= 24 {
         "medium"
     } else {
         "low"
@@ -130,12 +133,21 @@ pub struct ChatResponse {
 }
 
 pub fn default_model() -> String {
-    // Explicit override wins; otherwise the persisted/recommended tier's repo.
-    std::env::var("REACTABLE_AGENT_MODEL").unwrap_or_else(|_| {
-        tier_by_name(current_tier())
-            .map(|t| t.repo.to_string())
-            .unwrap_or_else(|| "mlx-community/gemma-4-e4b-it-4bit".into())
-    })
+    if let Ok(m) = std::env::var("REACTABLE_AGENT_MODEL") {
+        return m;
+    }
+    let preferred = tier_by_name(current_tier())
+        .map(|t| t.repo.to_string())
+        .unwrap_or_else(|| "mlx-community/gemma-4-e4b-it-4bit".into());
+    // Run the preferred tier if it's downloaded; otherwise fall back to any
+    // downloaded tier so the agent stays usable while the preferred one pulls.
+    if model_cached(&preferred) {
+        return preferred;
+    }
+    if let Some(t) = TIERS.iter().find(|t| model_cached(t.repo)) {
+        return t.repo.to_string();
+    }
+    preferred
 }
 
 pub fn server_port() -> u16 {
