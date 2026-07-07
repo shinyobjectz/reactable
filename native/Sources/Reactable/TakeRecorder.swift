@@ -44,7 +44,11 @@ final class TakeRecorder {
             stageWindow: stageWindow
         )
 
-        stageRecorder = Aperture.Recorder()
+        // Keep a prewarmed recorder (its SCK stream is already flowing —
+        // start() just attaches the writer); replace anything else.
+        if !stageRecorder.isPrewarmed {
+            stageRecorder = Aperture.Recorder()
+        }
         let id = Self.makeTakeId()
         let dir = projectRoot.appending(path: "takes/\(id)", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -175,6 +179,51 @@ final class TakeRecorder {
         var p = payload
         p["t"] = max(0, absolute - eventLog.startTime)
         eventLog.stamp(type, payload: p)
+    }
+
+    /// Spin up the SCK stream for the expected capture target ahead of the
+    /// record press — frames flow and drop until start() attaches the writer,
+    /// cutting press-to-first-frame from ~1s to near-instant.
+    func prewarm(
+        sourceKind: String,
+        captureTargetId: String?,
+        areaRect: CGRect?,
+        stageWindow: NSWindow?,
+        systemAudioOn: Bool
+    ) async {
+        guard takeDir == nil else { return }
+        guard let target = try? await CaptureTarget.resolve(
+            sourceKind: sourceKind,
+            captureTargetId: captureTargetId,
+            areaRect: areaRect,
+            stageWindow: stageWindow
+        ) else { return }
+        let apertureTarget: Aperture.Target = switch target.kind {
+        case "device": .externalDevice
+        case "display", "area": .screen
+        default: .window
+        }
+        let options = Aperture.RecordingOptions(
+            destination: FileManager.default.temporaryDirectory
+                .appending(path: "reactable-prewarm.mov"),
+            targetID: target.targetID,
+            framesPerSecond: 30,
+            cropRect: target.cropRect,
+            showCursor: true,
+            highlightClicks: true,
+            videoCodec: .h264,
+            recordSystemAudio: systemAudioOn,
+            microphoneDeviceID: nil
+        )
+        nonisolated(unsafe) let recorder = stageRecorder
+        do {
+            try await Self.race(seconds: 15, label: "capture prewarm") {
+                try await recorder.prewarm(target: apertureTarget, options: options)
+            }
+            fputs("reactable: capture prewarmed (\(target.kind) \(target.targetID))\n", stderr)
+        } catch {
+            fputs("reactable: capture prewarm failed (\(error)) — will cold-start\n", stderr)
+        }
     }
 
     nonisolated private static func startStageCapture(

@@ -362,6 +362,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             if state.hideDesktopIcons { setDesktopIconsVisible(true) }
             if state.hideDockWhileRecording { NSApp.setActivationPolicy(.regular) }
             syncBar()
+            prewarmCapture()  // warm the stream for the next take
             if state.quickShareAfter, let savedDir {
                 quickShare(takeDir: savedDir)
             }
@@ -573,6 +574,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         if kind != "area" { state.areaRect = nil }
         fputs("reactable: capture target \(kind) \(id ?? "—")\n", stderr)
         syncBar()
+        prewarmCapture()
     }
 
     func bridgeCamToggle(on: Bool) {
@@ -644,6 +646,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         state.systemAudioOn = on
         UserDefaults.standard.set(on, forKey: "reactable.systemAudioOn")
         syncBar()
+        prewarmCapture()  // stream audio flag changed — warm stream is stale
     }
 
     func bridgeMicSourceSet(uid: String?) {
@@ -1014,6 +1017,29 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         stage?.open()
         syncBar()
         NSApp.activate(ignoringOtherApps: true)
+        prewarmCapture()
+    }
+
+    /// Spin up the capture stream for the current source so the record press
+    /// only attaches a writer. Safe to call repeatedly; failures cold-start.
+    private func prewarmCapture() {
+        guard let takeRecorder, !state.recording else { return }
+        let sourceKind = state.sourceKind
+        let targetId = state.captureTargetId
+        let areaRect = state.areaRect
+        let stageWindow = stage?.captureWindow
+        let systemAudioOn = state.systemAudioOn
+        Task {
+            // Let a freshly opened stage settle before resolving its window.
+            try? await Task.sleep(for: .milliseconds(500))
+            await takeRecorder.prewarm(
+                sourceKind: sourceKind,
+                captureTargetId: targetId,
+                areaRect: areaRect,
+                stageWindow: stageWindow,
+                systemAudioOn: systemAudioOn
+            )
+        }
     }
 
     @objc private func hideStage() {

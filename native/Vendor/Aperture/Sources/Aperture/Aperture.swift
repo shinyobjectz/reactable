@@ -16,7 +16,7 @@ public enum Aperture {
 	/**
 	Represents options for starting a recording.
 	*/
-	public struct RecordingOptions {
+	public struct RecordingOptions: @unchecked Sendable {
 		/**
 		Initializes recording options.
 		 
@@ -70,7 +70,7 @@ public enum Aperture {
 	/**
 	Represents the target type for a recording.
 	*/
-	public enum Target {
+	public enum Target: Sendable {
 		case screen
 		case window
 		case externalDevice
@@ -195,11 +195,64 @@ extension Aperture {
 				throw Error.recorderAlreadyStarted
 			}
 
+			// Reactable patch: attach to a matching prewarmed stream (frames
+			// already flowing) so recording starts near-instantly.
+			if let warm = prewarmedSession, prewarmKey == Self.prewarmMatchKey(target: target, options: options) {
+				prewarmedSession = nil
+				warm.onError = onError
+				try await warm.startAttached(options: options)
+				self.recordingSession = warm
+				onStart?()
+				return
+			}
+			if let stale = prewarmedSession {
+				prewarmedSession = nil
+				await stale.abortPrewarm()
+			}
+
 			let recordingSession = RecordingSession()
 			recordingSession.onError = onError
 			try await recordingSession.start(target: target, options: options)
 			self.recordingSession = recordingSession
 			onStart?()
+		}
+
+		// Reactable patch: prewarm — spin up the SCK stream ahead of time.
+		private var prewarmedSession: RecordingSession?
+		private var prewarmKey: String?
+
+		private static func prewarmMatchKey(target: Target, options: RecordingOptions) -> String {
+			"\(target)|\(options.targetID ?? "")|\(options.recordSystemAudio)|\(options.microphoneDeviceID ?? "")|\(options.videoCodec)|\(options.cropRect.map { "\($0)" } ?? "")"
+		}
+
+		public var isPrewarmed: Bool {
+			prewarmedSession?.isPrewarmed == true
+		}
+
+		/// Start capturing (and dropping) frames for the given target so a
+		/// later `start()` with matching options only has to attach a writer.
+		public func prewarm(
+			target: Target,
+			options: RecordingOptions
+		) async throws {
+			guard recordingSession == nil else { return }
+			if let old = prewarmedSession {
+				prewarmedSession = nil
+				await old.abortPrewarm()
+			}
+			let session = RecordingSession()
+			session.onError = onError
+			try await session.prewarm(target: target, options: options)
+			prewarmedSession = session
+			prewarmKey = Self.prewarmMatchKey(target: target, options: options)
+		}
+
+		/// Stop a prewarmed stream that will not be recorded.
+		public func cancelPrewarm() async {
+			if let old = prewarmedSession {
+				prewarmedSession = nil
+				await old.abortPrewarm()
+			}
 		}
 
 		/**
@@ -301,6 +354,67 @@ extension Aperture {
 		var onError: ((Error) -> Void)?
 
 		func start(
+			target: Target,
+			options: RecordingOptions
+		) async throws {
+			try await setupStream(target: target, options: options)
+			try await finishStart(startStream: true)
+		}
+
+		// Reactable patch: prewarm support. setupStream builds the filter,
+		// stream, and outputs; frames flow (and are dropped) until a writer
+		// is attached. startAttached creates the writer against an
+		// already-capturing stream so first frame is near-instant.
+		private var storedStreamConfig: SCStreamConfiguration?
+		private(set) var isPrewarmed = false
+
+		func prewarm(
+			target: Target,
+			options: RecordingOptions
+		) async throws {
+			try await setupStream(target: target, options: options)
+			try await stream?.startCapture()
+			isStreamRecording = true
+			isPrewarmed = true
+		}
+
+		func startAttached(options: RecordingOptions) async throws {
+			guard isPrewarmed else {
+				throw Error.recorderNotStarted
+			}
+			isPrewarmed = false
+			self.options = options
+			try await finishStart(startStream: false)
+		}
+
+		/// Abort a prewarmed-but-never-recorded session (stops the stream).
+		func abortPrewarm() async {
+			guard isPrewarmed else { return }
+			isPrewarmed = false
+			try? await cleanUp()
+		}
+
+		private func finishStart(startStream: Bool) async throws {
+			guard let target, let options, let streamConfig = storedStreamConfig else {
+				throw Error.recorderNotStarted
+			}
+			do {
+				try await initOutput(target: target, options: options, streamConfig: streamConfig, startStream: startStream)
+			} catch {
+				let finalError: Error = if let error = error as? Error {
+					error
+				} else {
+					.couldNotStartStream(error)
+				}
+
+				try? await cleanUp()
+				onError?(finalError)
+
+				throw finalError
+			}
+		}
+
+		private func setupStream(
 			target: Target,
 			options: RecordingOptions
 		) async throws {
@@ -450,20 +564,7 @@ extension Aperture {
 				}
 			}
 
-			do {
-				try await initOutput(target: target, options: options, streamConfig: streamConfig)
-			} catch {
-				let finalError: Error = if let error = error as? Error {
-					error
-				} else {
-					.couldNotStartStream(error)
-				}
-
-				try? await cleanUp()
-				onError?(finalError)
-
-				throw finalError
-			}
+			storedStreamConfig = streamConfig
 		}
 
 		func stop() async throws {
@@ -575,7 +676,7 @@ extension Aperture.RecordingSession {
 		return try AVAssetWriter(outputURL: options.destination, fileType: fileType)
 	}
 
-	private func initOutput(target: Aperture.Target, options: Aperture.RecordingOptions, streamConfig: SCStreamConfiguration) async throws {
+	private func initOutput(target: Aperture.Target, options: Aperture.RecordingOptions, streamConfig: SCStreamConfiguration, startStream: Bool = true) async throws {
 		let assetWriter = try getAssetWriter(target: target, options: options)
 
 		var audioSettings: [String: Any] = [
@@ -712,8 +813,10 @@ extension Aperture.RecordingSession {
 		microphoneCaptureSession?.startRunning()
 		externalDeviceCaptureSession?.startRunning()
 
-		try await stream?.startCapture()
-		isStreamRecording = true
+		if startStream {
+			try await stream?.startCapture()
+			isStreamRecording = true
+		}
 		try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Swift.Error>) in
 			self.continuation = continuation
 		}
