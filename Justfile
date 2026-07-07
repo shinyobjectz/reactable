@@ -65,6 +65,25 @@ app: build
     if [ -x "$ROOT/dist/reactable-tools" ]; then
       cp "$ROOT/dist/reactable-tools" "$APP/Contents/MacOS/"
     fi
+    # Codesign with entitlements — REQUIRED for Screen Recording / Camera / Mic.
+    # Without this the app is only linker-adhoc-signed, its Info.plist isn't bound
+    # to the signature, camera/mic entitlements don't apply, and TCC prompts never
+    # fire → the record button silently fails. Developer ID keeps grants across
+    # rebuilds (TCC keys off the team identity, not the per-build cdhash).
+    ENT="{{native}}/Resources/Reactable.entitlements"
+    IDENTITY="${CODESIGN_IDENTITY:-Developer ID Application: Shane Murphy (BJJZ79J5NL)}"
+    TEAM="$(printf '%s' "$IDENTITY" | sed -n 's/.*(\(.*\)).*/\1/p')"
+    if [ -n "$TEAM" ] && security find-identity -v -p codesigning 2>/dev/null | grep -q "$TEAM"; then
+      SIGN="$IDENTITY"; echo "→ signing with Developer ID ($TEAM)"
+    else
+      SIGN="-"; echo "→ Developer ID not found — signing ad-hoc with entitlements (TCC grants reset each rebuild)"
+    fi
+    sign() { codesign --force --options runtime --entitlements "$ENT" --sign "$SIGN" "$1"; }
+    [ -x "$APP/Contents/MacOS/reactable-nexus" ] && sign "$APP/Contents/MacOS/reactable-nexus"
+    [ -x "$APP/Contents/MacOS/reactable-tools" ] && sign "$APP/Contents/MacOS/reactable-tools"
+    sign "$APP/Contents/MacOS/reactable"
+    sign "$APP"
+    codesign --verify --strict "$APP" && echo "→ signed + verified"
     # Replace installed copy (quit running instance first so binary can swap)
     if pgrep -x reactable >/dev/null 2>&1; then
       echo "→ quitting running Reactable…"

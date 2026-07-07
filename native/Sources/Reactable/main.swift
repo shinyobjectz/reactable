@@ -1,5 +1,6 @@
 import AppKit
 import Aperture
+import AVFoundation
 
 @MainActor
 final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDelegate, StageCommandDelegate {
@@ -658,20 +659,51 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     }
 
     private func beginRecording() {
-        guard let takeRecorder else { return }
+        guard let takeRecorder else {
+            presentRecordError("Recorder not ready", "No active project. Open or create a project, then try again.")
+            return
+        }
         Task {
             do {
+                // Preflight source selection — tell the user instead of failing silently.
                 if state.sourceKind == "stage" {
                     if stage == nil || stage?.isVisible != true { openStage() }
                     try await Task.sleep(for: .milliseconds(400))
                 } else if state.sourceKind == "window", state.captureTargetId == nil {
-                    fputs("reactable: pick a window before recording\n", stderr)
+                    presentRecordError("Pick a window first", "Choose the window to record from the bar, then press record.")
                     return
                 } else if state.sourceKind == "area", state.areaRect == nil {
-                    fputs("reactable: select an area before recording\n", stderr)
+                    presentRecordError("Select an area first", "Drag to select the screen area to record, then press record.")
                     return
                 } else if state.sourceKind == "device", state.captureTargetId == nil {
-                    fputs("reactable: pick a device before recording\n", stderr)
+                    presentRecordError("Pick a device first", "Choose the capture device from the bar, then press record.")
+                    return
+                }
+
+                // Preflight TCC permissions — prompt (or send to Settings) BEFORE
+                // starting capture, so a missing grant is actionable, not a dead button.
+                if !ScreenCaptureAccess.requestIfNeeded() {
+                    presentPermissionError(
+                        "Screen Recording permission needed",
+                        "Enable Reactable under Screen & System Audio Recording, then press record again.",
+                        pane: "Privacy_ScreenCapture"
+                    )
+                    return
+                }
+                if state.camOn, !(await requestCaptureAccess(.video)) {
+                    presentPermissionError(
+                        "Camera permission needed",
+                        "Enable Reactable under Camera, or turn the camera off in the bar.",
+                        pane: "Privacy_Camera"
+                    )
+                    return
+                }
+                if state.micOn, !(await requestCaptureAccess(.audio)) {
+                    presentPermissionError(
+                        "Microphone permission needed",
+                        "Enable Reactable under Microphone, or turn the mic off in the bar.",
+                        pane: "Privacy_Microphone"
+                    )
                     return
                 }
 
@@ -713,9 +745,51 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                 inputMonitor = nil
                 state.recording = false
                 state.paused = false
+                if state.hideDockWhileRecording { NSApp.setActivationPolicy(.regular) }
                 syncBar()
                 fputs("reactable: record start failed: \(error)\n", stderr)
+                presentRecordError("Recording failed to start", "\(error)")
             }
+        }
+    }
+
+    private func requestCaptureAccess(_ mediaType: AVMediaType) async -> Bool {
+        switch AVCaptureDevice.authorizationStatus(for: mediaType) {
+        case .authorized: return true
+        case .notDetermined:
+            return await AVCaptureDevice.requestAccess(for: mediaType)
+        default:
+            return false
+        }
+    }
+
+    private func presentRecordError(_ title: String, _ info: String) {
+        state.recording = false
+        state.paused = false
+        syncBar()
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = title
+        alert.informativeText = info
+        alert.addButton(withTitle: "OK")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
+    private func presentPermissionError(_ title: String, _ info: String, pane: String) {
+        state.recording = false
+        state.paused = false
+        syncBar()
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = title
+        alert.informativeText = info
+        alert.addButton(withTitle: "Open Settings")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)")!
+            NSWorkspace.shared.open(url)
         }
     }
 
