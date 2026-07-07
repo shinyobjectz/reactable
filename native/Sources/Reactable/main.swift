@@ -214,7 +214,6 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                 await self.refreshDeckSlides()
                 self.loadStageLineup()
             }
-            arrangeDefaultLayout()
             installHotkeys()
             // Stage resizes invalidate the (fixed-dimension) warm capture
             // stream; while recording the size is locked, so this only fires
@@ -259,6 +258,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             board.onNew = { [weak self] in self?.createProject() }
             projectsBoard = board
             syncBar()
+            arrangeDefaultLayout()
         } catch {
             fputs("reactable boot failed: \(error)\n", stderr)
             let alert = NSAlert()
@@ -759,20 +759,28 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         }
     }
 
-    /// Default layout: bar top-center, stage below, projects left, chat right.
+    /// Default layout: bar top-center, then one row that always fits the
+    /// screen — projects | stage | agent, centered below the bar.
     private func arrangeDefaultLayout() {
         guard let screen = NSScreen.main else { return }
         let f = screen.visibleFrame
         openStage()
         projectsBoard?.open()
-        openAgent()
-        let stageW: CGFloat = 1000, stageH: CGFloat = 640
+        if agent?.isVisible != true { bridgeOpenAgent() }
+
         let gap: CGFloat = 14
-        let stageX = f.midX - stageW / 2
-        let stageY = f.maxY - 56 - gap - stageH - 40
-        stage?.place(frame: NSRect(x: stageX, y: stageY, width: stageW, height: stageH))
-        projectsBoard?.place(frame: NSRect(x: stageX - gap - 300, y: stageY, width: 300, height: stageH))
-        agent?.place(frame: NSRect(x: stageX + stageW + gap, y: stageY, width: 460, height: stageH))
+        let margin: CGFloat = 12
+        let projW: CGFloat = 270
+        let agentW: CGFloat = 420
+        let stageH = min(f.height - 120, 720)
+        let stageW = min(920, f.width - projW - agentW - gap * 2 - margin * 2)
+        let total = projW + gap + stageW + gap + agentW
+        let startX = f.midX - total / 2
+        let y = f.maxY - 66 - gap - stageH
+
+        projectsBoard?.place(frame: NSRect(x: startX, y: y, width: projW, height: stageH))
+        stage?.place(frame: NSRect(x: startX + projW + gap, y: y, width: stageW, height: stageH))
+        agent?.place(frame: NSRect(x: startX + projW + gap + stageW + gap, y: y, width: agentW, height: stageH))
     }
 
     private func setProjectStage(id: String, stage: String) {

@@ -12,6 +12,8 @@ client :projects do
     .shell { display: flex; flex-direction: column; height: 100%; background: rgba(14,14,14,.97); border: 1px solid #262626; border-radius: 14px; overflow: hidden; backdrop-filter: blur(24px); }
     .top { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid #1f1f1f; cursor: grab; }
     .top:active { cursor: grabbing; }
+    .top .pill { position: absolute; left: 50%; top: 7px; transform: translateX(-50%); width: 44px; height: 4px; border-radius: 4px; background: #333; }
+    .top { position: relative; }
     .top h2 { font: 600 13px ui-sans-serif, system-ui; flex: 1; color: #fafafa; }
     .top #close { width: 28px; height: 28px; border: 0; border-radius: 8px; background: #161616; color: #8a8a8a; cursor: pointer; font: inherit; }
     .top #close:hover { color: #fff; background: #222; }
@@ -31,7 +33,7 @@ client :projects do
     .hint { color: #565656; font-size: 10.5px; padding: 8px 12px 2px; }
   </style>
   <div class="shell">
-    <div class="top"><h2>Projects</h2><button id="close" title="Close">✕</button></div>
+    <div class="top"><span class="pill"></span><h2>Projects</h2><button id="close" title="Close">✕</button></div>
     <div class="hint">Click to switch · chip cycles the pipeline stage</div>
     <div class="list" id="list"></div>
     <div class="foot"><button class="new" id="new">＋ New project</button></div>
