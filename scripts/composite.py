@@ -103,13 +103,15 @@ def zoom_exprs(clicks: list[tuple[float, float, float]], vw: int, vh: int, scale
     z_cases, x_cases, y_cases = [], [], []
     for t, cx, cy in clicks:
         start = int(t * fps)
-        ramp = max(4, int(0.2 * fps))
+        ramp = max(6, int(0.35 * fps))
         hold = max(8, int(dur * fps))
         end = start + ramp + hold + ramp
         cond = f"between(in,{start},{end})"
-        z_cases.append((cond, str(scale)))
-        x_cases.append((cond, f"{cx}-(iw/zoom/2)"))
-        y_cases.append((cond, f"{cy}-(ih/zoom/2)"))
+        # Eased blend 0→1→0: ramp in, hold, ramp out — no hard cuts.
+        f = f"min(1,min((in-{start})/{ramp},({end}-in)/{ramp}))"
+        z_cases.append((cond, f"1+{scale - 1:.4f}*{f}"))
+        x_cases.append((cond, f"(iw/2+({cx}-iw/2)*{f})-(iw/zoom/2)"))
+        y_cases.append((cond, f"(ih/2+({cy}-ih/2)*{f})-(ih/zoom/2)"))
 
     return (
         nest(z_cases, "1"),
@@ -161,6 +163,38 @@ def write_word_captions(transcript: Path, out: Path) -> None:
             continue
         lines += [str(i + 1), f"{fmt_vtt(start)} --> {fmt_vtt(end)}", text, ""]
     out.write_text("\n".join(lines))
+
+
+
+
+def write_cursor_cmd(
+    events: list[dict], out: Path, vw: int, vh: int,
+    win: dict | None, t_stage: float, half: int,
+) -> Path | None:
+    """Cursor track as an ffmpeg sendcmd file: timed x/y updates for an
+    overlay\'d synthetic dot (libass-free; works in every ffmpeg build)."""
+    samples = []
+    for ev in events:
+        if ev.get("type") not in ("cursor", "click"):
+            continue
+        t = float(ev.get("t", 0)) - t_stage
+        if t < 0:
+            continue
+        x, y = norm_click(ev, vw, vh, win)
+        samples.append((t, x, y))
+    if not samples:
+        return None
+    thinned = []
+    for smp in samples:
+        if not thinned or smp[0] - thinned[-1][0] >= 0.05:
+            thinned.append(smp)
+    lines = []
+    for t, x, y in thinned:
+        lines.append(
+            f"{t:.3f} overlay@cur x {x - half:.0f}, overlay@cur y {y - half:.0f};"
+        )
+    out.write_text("\n".join(lines) + "\n")
+    return out
 
 
 def render_take(take_dir: Path, aspects: list[str] | None = None) -> dict:
@@ -231,9 +265,7 @@ def render_take(take_dir: Path, aspects: list[str] | None = None) -> dict:
         inputs = ["-i", str(stage)]
         has_cam = cam.exists() and cam_cfg.get("pip", True)
         if has_cam:
-            # -itsoffset shifts cam frames so its first frame lands at the
-            # moment it actually started relative to the stage track.
-            inputs += ["-itsoffset", f"{cam_delay:.3f}", "-i", str(cam)]
+            inputs += ["-i", str(cam)]
 
         # Voice sidecar: mic-clean.wav (denoised) or mic.wav.
         mic = take_dir / "mic-clean.wav"
@@ -247,6 +279,23 @@ def render_take(take_dir: Path, aspects: list[str] | None = None) -> dict:
             mic_idx = 2 if has_cam else 1
 
         chain = "[0:v]"
+        cursor_node = ""
+        dot = max(28, vw // 46)
+        half = dot // 2
+        cursor_cmd = write_cursor_cmd(
+            events, out_dir / "cursor.cmd", vw, vh, capture_window, t_stage, half
+        )
+        if cursor_cmd:
+            r1, r2 = int(dot * 0.30), int(dot * 0.42)
+            cursor_node = (
+                f"color=c=black@0:s={dot}x{dot}:r=30:d={info['duration'] + 2:.1f},format=rgba,"
+                f"geq=lum=255:cb=128:cr=128:"
+                f"a='if(lte(hypot(X-{half},Y-{half}),{r1}),190,"
+                f"if(lte(hypot(X-{half},Y-{half}),{r2}),255,0))'[dot];"
+                f"{chain}sendcmd=f={cursor_cmd}[sc];"
+                f"[sc][dot]overlay@cur=x=-{dot * 2}:y=-{dot * 2}:eval=frame:eof_action=pass[cursored]"
+            )
+            chain = "[cursored]"
         if trim_in > 0 or trim_out is not None:
             t = f"{chain}trim=start={trim_in}"
             if trim_out is not None:
@@ -270,7 +319,7 @@ def render_take(take_dir: Path, aspects: list[str] | None = None) -> dict:
             f"[bg][fitted]overlay={pad}:{pad}[padded]"
         )
 
-        parts = [p for p in [trim_node, spd, zoom] if p]
+        parts = [p for p in [cursor_node, trim_node, spd, zoom] if p]
         last = "[padded]"
 
         if has_cam:
@@ -288,7 +337,8 @@ def render_take(take_dir: Path, aspects: list[str] | None = None) -> dict:
             parts.append(
                 f"[1:v]{flip}scale={size}:{size}:force_original_aspect_ratio=increase,"
                 f"crop={size}:{size},format=rgba,"
-                f"geq=lum='p(X,Y)':cb='p(X,Y)':cr='p(X,Y)':{mask}[cam];"
+                f"geq=lum='p(X,Y)':cb='p(X,Y)':cr='p(X,Y)':{mask}[camm];"
+                f"[camm]tpad=start_duration={cam_delay:.3f}:color=black@0[cam];"
                 f"{last}[cam]overlay={ox}:{oy}:format=auto[outv]"
             )
             last = "[outv]"
