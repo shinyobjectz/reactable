@@ -61,9 +61,12 @@ export const WAVE5: UIComponent[] = [
     demoProps: {},
     generate: (p) => {
       const t = pickTheme(p.mode);
-      const id = freshId("dlg");
+      // NB: not "dlg" — stock headless Chrome content-hides elements whose class
+      // matches wl-dlg-N (built-in cosmetic/abusive-experience heuristic, found
+      // empirically: identical file renders when the token is renamed)
+      const id = freshId("dialog");
       const panelCss = [
-        `@keyframes ${id}-pop { from { opacity:0; margin-top:14px; } to { opacity:1; margin-top:0px; } }`,
+        `@keyframes ${id}-pop { from { opacity:0; } to { opacity:1; } }`,
         `.${id} .panel { width:440px; padding:22px; background:${t.card}; border:1px solid ${t.border}; border-radius:${t.radius + 2}px; box-shadow:0 20px 60px rgba(0,0,0,.45); animation:${id}-pop ${sec(14)}s cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay:0.4s; }`,
         `.${id} .head { font:600 16px/1.3 sans-serif; color:${t.cardForeground}; margin-bottom:6px; }`,
         `.${id} .body { font:400 13.5px/1.5 sans-serif; color:${t.mutedForeground}; margin-bottom:18px; }`,
@@ -94,7 +97,7 @@ export const WAVE5: UIComponent[] = [
       const t = pickTheme(p.mode);
       const id = freshId("adlg");
       const panelCss = [
-        `@keyframes ${id}-pop { from { opacity:0; margin-top:14px; } to { opacity:1; margin-top:0px; } }`,
+        `@keyframes ${id}-pop { from { opacity:0; } to { opacity:1; } }`,
         `.${id} .panel { width:440px; padding:22px; background:${t.card}; border:1px solid ${t.border}; border-radius:${t.radius + 2}px; box-shadow:0 20px 60px rgba(0,0,0,.45); animation:${id}-pop ${sec(14)}s cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay:0.4s; }`,
         `.${id} .head { font:600 16px/1.3 sans-serif; color:${t.cardForeground}; margin-bottom:6px; }`,
         `.${id} .body { font:400 13.5px/1.5 sans-serif; color:${t.mutedForeground}; margin-bottom:18px; }`,

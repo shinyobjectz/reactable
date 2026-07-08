@@ -47,6 +47,7 @@ jobs:
         env:
           CHROME_BIN: /usr/bin/google-chrome
           PERF_BUDGET_MS: "6000"
+          REACTABLE_FONT_CHAIN: bundled
         run: bun scripts/fidelity-gate.ts
       - name: Upload report + diffs
         if: always()
@@ -55,4 +56,4 @@ jobs:
           name: fidelity-gate
           path: |
             tests/fidelity/REPORT.md
-            tests/fidelity/.gate/*.chrome.png
+            tests/fidelity/.gate/

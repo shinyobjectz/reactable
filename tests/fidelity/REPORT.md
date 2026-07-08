@@ -16,13 +16,13 @@ Generated 2026-07-08 · viewport 1280×800 · fonts normalized to bundled Geist 
 | known-gap-multicol | 0.9423 | 0.95 | yes | pass |
 | github-stars | 0.9741 | 0.95 | yes | pass |
 | scale-down-fade | 0.9897 | 0.95 | yes | pass |
-| shader-mesh-gradient | 0.9732 | 0.95 | yes | pass |
-| terminal-simulator | 0.9875 | 0.95 | yes | pass |
+| shader-mesh-gradient | 0.9731 | 0.95 | yes | pass |
+| terminal-simulator | 0.9911 | 0.95 | yes | pass |
 | top-down-letters | 0.9775 | 0.95 | yes | pass |
 | select | 0.9943 | 0.95 | yes | pass |
 | short-slide-down | 0.9911 | 0.95 | yes | pass |
 | dither-dissolve | 0.9949 | 0.95 | yes | pass |
-| ai-prompt-flow | 0.9942 | 0.95 | yes | pass |
+| ai-prompt-flow | 0.9973 | 0.95 | yes | pass |
 | shader-god-rays | 0.9638 | 0.95 | yes | pass |
 | rgb-glitch-text | 0.9888 | 0.95 | yes | pass |
 | toggle-group | 0.9996 | 0.95 | yes | pass |
@@ -37,7 +37,7 @@ Generated 2026-07-08 · viewport 1280×800 · fonts normalized to bundled Geist 
 | shader-perlin-noise | 0.9612 | 0.95 | yes | pass |
 | combobox | 0.9990 | 0.95 | yes | pass |
 | shader-voronoi | 0.9136 | 0.88 | yes | pass |
-| soft-blur-in | 0.9869 | 0.95 | yes | pass |
+| soft-blur-in | 0.9875 | 0.95 | yes | pass |
 | popover | 0.9915 | 0.95 | yes | pass |
 | progress | 0.9960 | 0.95 | yes | pass |
 | animated-bar-chart | 1.0000 | 0.95 | yes | pass |
@@ -55,7 +55,7 @@ Generated 2026-07-08 · viewport 1280×800 · fonts normalized to bundled Geist 
 | per-word-crossfade | 0.9945 | 0.95 | yes | pass |
 | shader-grain-gradient | 0.9898 | 0.95 | yes | pass |
 | strikethrough-replace | 0.9968 | 0.95 | yes | pass |
-| onboarding-stepper-flow | 0.9980 | 0.95 | yes | pass |
+| onboarding-stepper-flow | 0.9978 | 0.95 | yes | pass |
 | ripple-zoom | 0.9970 | 0.95 | yes | pass |
 | button | 0.9997 | 0.95 | yes | pass |
 | shader-dot-orbit | 0.9889 | 0.95 | yes | pass |
@@ -73,10 +73,10 @@ Generated 2026-07-08 · viewport 1280×800 · fonts normalized to bundled Geist 
 | short-slide-right | 0.9914 | 0.95 | yes | pass |
 | dialog | 0.9964 | 0.95 | yes | pass |
 | checkbox | 0.9998 | 0.95 | yes | pass |
-| shader-dithering | 0.9929 | 0.95 | yes | pass |
+| shader-dithering | 0.9932 | 0.95 | yes | pass |
 | checkout-flow | 0.9972 | 0.95 | yes | pass |
-| shader-warp | 0.8575 | 0.82 | yes | pass |
-| blur-out-up | 0.9927 | 0.95 | yes | pass |
+| shader-warp | 0.8573 | 0.82 | yes | pass |
+| blur-out-up | 0.9924 | 0.95 | yes | pass |
 | animated-line-chart | 1.0000 | 0.95 | yes | pass |
 | perspective-marquee | 0.8592 | 0.95 | yes | pass |
 | typewriter | 0.9961 | 0.95 | yes | pass |
@@ -87,22 +87,22 @@ Generated 2026-07-08 · viewport 1280×800 · fonts normalized to bundled Geist 
 | terminal-cursor-zoom | 0.9928 | 0.95 | yes | pass |
 | dropdown-menu | 0.9991 | 0.95 | yes | pass |
 | swirl-dissolve | 0.9949 | 0.95 | yes | pass |
-| tracking-in | 0.9554 | 0.95 | yes | pass |
+| tracking-in | 0.9544 | 0.95 | yes | pass |
 | logo-enter | 0.9966 | 0.95 | yes | pass |
 | mask-reveal-up | 0.9830 | 0.95 | yes | pass |
 | backdrop | 0.9995 | 0.95 | yes | pass |
-| telegram-chat-flow | 0.9792 | 0.95 | yes | pass |
+| telegram-chat-flow | 0.9917 | 0.95 | yes | pass |
 | slot-machine-roll | 0.9944 | 0.95 | yes | pass |
 | caret | 0.9991 | 0.95 | yes | pass |
-| shader-smoke-ring | 0.9265 | 0.9 | yes | pass |
-| shader-simplex-noise | 0.9789 | 0.95 | yes | pass |
+| shader-smoke-ring | 0.9267 | 0.9 | yes | pass |
+| shader-simplex-noise | 0.9788 | 0.95 | yes | pass |
 | data-flow-pipes | 0.9964 | 0.95 | yes | pass |
-| whip-pan | 0.9903 | 0.95 | yes | pass |
+| whip-pan | 0.9900 | 0.95 | yes | pass |
 | kinetic-center-build | 0.9732 | 0.95 | yes | pass |
-| input | 0.9997 | 0.95 | yes | pass |
-| shader-metaballs | 0.9864 | 0.95 | yes | pass |
+| input | 0.9976 | 0.95 | yes | pass |
+| shader-metaballs | 0.9865 | 0.95 | yes | pass |
 | infinite-marquee | 0.9586 | 0.95 | yes | pass |
-| slider | 1.0000 | 0.95 | yes | pass |
+| slider | 0.9968 | 0.95 | yes | pass |
 | infinite-bento-pan | 0.9436 | 0.93 | yes | pass |
 | spinner | 0.9967 | 0.95 | yes | pass |
 | x-follow-card | 0.9851 | 0.95 | yes | pass |
@@ -143,7 +143,7 @@ Generated 2026-07-08 · viewport 1280×800 · fonts normalized to bundled Geist 
 | settings-toggle-flow | 0.9980 | 0.95 | yes | pass |
 | focus-pull | 0.9914 | 0.95 | yes | pass |
 | github-sponsors | 0.9959 | 0.95 | yes | pass |
-| perf 72f@1080p30 | 282ms | ≤1500ms | — | pass |
+| perf 72f@1080p30 | 288ms | ≤1500ms | — | pass |
 
 Overall: **PASS**
 

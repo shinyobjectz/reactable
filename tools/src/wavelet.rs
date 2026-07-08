@@ -26,6 +26,9 @@ pub fn render(
     // outside Geist, e.g. U+FF0B) → bundled Geist floor. Chain order = metrics
     // priority; later fonts only fill missing glyphs.
     let mut font_bytes: Vec<Vec<u8>> = Vec::new();
+    // REACTABLE_FONT_CHAIN=bundled — skip discovery (deterministic across
+    // machines: CI has no ~/.reactable/fonts or system rescue font)
+    let discovery = std::env::var("REACTABLE_FONT_CHAIN").map(|v| v != "bundled").unwrap_or(true);
     for p in fonts {
         match std::fs::read(p) {
             Ok(b) => font_bytes.push(b),
@@ -35,7 +38,7 @@ pub fn render(
             }
         }
     }
-    if let Some(home) = std::env::var_os("HOME") {
+    if discovery { if let Some(home) = std::env::var_os("HOME") {
         let dir = Path::new(&home).join(".reactable/fonts");
         if let Ok(entries) = std::fs::read_dir(&dir) {
             let mut paths: Vec<_> = entries
@@ -56,7 +59,7 @@ pub fn render(
             font_bytes.push(b);
             break;
         }
-    }
+    } }
     let comp_path = Path::new(comp);
     if !comp_path.exists() {
         eprintln!("wavelet: comp not found: {comp}");
