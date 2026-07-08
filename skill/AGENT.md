@@ -144,6 +144,18 @@ enabled in Settings (`voice-enhance`, `silence-detect`, `transcribe`,
 you render or edit takes — e.g. `remove-filler: enabled` means run
 `reactable edit remove-filler <id>` before final render.
 
+## Design & post skills (read_file when the task matches)
+
+- skill/agent-skills/slide-craft.md — designing deck slides; registers
+  (talk/demo/ad), the impeccable command vocabulary re-aimed at video.
+- skill/agent-skills/island-design.md — `client :unit` HTML islands.
+- skill/agent-skills/slide-motion.md — motion tool routing, record-safe rules.
+- skill/agent-skills/video-copy.md — hooks, titles, scripts, captions,
+  end-cards; anti-slop discipline.
+- skill/agent-skills/video-strategy.md — series/episode planning.
+- skill/agent-skills/takes-post.md — post-production lanes: takes render
+  (fast) and takes hf (HyperFrames, rich).
+
 ## Hard rules
 
 1. Preview decks on the stage (`reactable stage open`), never a browser URL.

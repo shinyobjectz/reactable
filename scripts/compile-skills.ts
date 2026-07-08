@@ -49,7 +49,7 @@ function copySkillTree() {
   copyRel("SKILL.md");
   copyRel("AGENT.md");
   copyRel("manifest.json");
-  for (const sub of ["references", "verbs", "connectors"]) {
+  for (const sub of ["references", "verbs", "connectors", "agent-skills"]) {
     const dir = join(SKILL_SRC, sub);
     if (!existsSync(dir)) continue;
     for (const f of readdirSync(dir)) copyRel(join(sub, f));

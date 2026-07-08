@@ -2007,7 +2007,20 @@ server :reactable_api do
 
   defp safe_read(rel) do
     path = safe_path(rel)
-    if path && File.exists?(path), do: {:ok, File.read!(path)}, else: {:error, "missing or outside sandbox"}
+
+    cond do
+      path && File.exists?(path) ->
+        {:ok, File.read!(path)}
+
+      String.starts_with?(rel, "skill/") ->
+        case read_skill_file("bundle/" <> String.replace_prefix(rel, "skill/", "")) do
+          nil -> {:error, "missing or outside sandbox"}
+          body -> {:ok, body}
+        end
+
+      true ->
+        {:error, "missing or outside sandbox"}
+    end
   end
 
   defp safe_write(rel, content) do
