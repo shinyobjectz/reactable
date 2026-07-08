@@ -25,6 +25,7 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
     var onAddLink: ((String) -> Void)?
     var onDropData: ((String, Data) -> Void)?
     var onReveal: ((String) -> Void)?
+    var onDelete: ((String) -> Void)?
 
     init(port: Int) {
         self.port = port
@@ -134,6 +135,8 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
             }
         case "projects.addlink":
             if let u = parsed.payload["url"] as? String { onAddLink?(u) }
+        case "projects.delete":
+            if let p = parsed.payload["path"] as? String { onDelete?(p) }
         case "projects.reveal":
             if let p = parsed.payload["path"] as? String { onReveal?(p) }
         case "projects.note":

@@ -267,6 +267,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                 fputs("reactable: dropped \(name) (\(data.count) bytes) into assets\n", stderr)
                 self.projectsBoard?.pushData()
             }
+            board.onDelete = { [weak self] p in self?.deleteProjectItem(p) }
             board.onReveal = { [weak self] p in
                 guard let self else { return }
                 NSWorkspace.shared.activateFileViewerSelecting([self.activeProjectURL.appending(path: p)])
@@ -908,6 +909,20 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             try? FileManager.default.copyItem(at: url, to: to)
         }
         fputs("reactable: imported \(urls.count) asset(s)\n", stderr)
+        projectsBoard?.pushData()
+    }
+
+    /// Trash (not hard-delete) a take dir or asset; links leave links.json.
+    private func deleteProjectItem(_ path: String) {
+        if path.hasPrefix("http") {
+            var links = (try? JSONSerialization.jsonObject(with: Data(contentsOf: linksURL))) as? [String] ?? []
+            links.removeAll { $0 == path }
+            if let d = try? JSONSerialization.data(withJSONObject: links) { try? d.write(to: linksURL) }
+        } else {
+            let url = activeProjectURL.appending(path: path)
+            try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
+        }
+        fputs("reactable: deleted \(path)\n", stderr)
         projectsBoard?.pushData()
     }
 

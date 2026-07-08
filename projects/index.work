@@ -136,6 +136,7 @@ client :projects do
       <button data-act="reveal">Reveal in Finder</button>
       <button data-act="note">Add context note</button>
       <button data-act="copy">Copy path</button>
+      <button data-act="delete" style="color:#f87171">Delete</button>
     </div>
   </div>
   <script>
@@ -200,16 +201,10 @@ client :projects do
       const box = document.getElementById('files');
       box.innerHTML = '';
       const items = (data.files || []).filter((f) => !q || f.name.toLowerCase().includes(q));
-      const groups = {};
-      for (const f of items) (groups[f.group] = groups[f.group] || []).push(f);
-      for (const [group, files] of Object.entries(groups)) {
-        const h = document.createElement('div');
-        h.className = 'group';
-        h.textContent = group;
-        box.appendChild(h);
+      {
         const grid = document.createElement('div');
         grid.className = 'grid';
-        for (const f of files) {
+        for (const f of items) {
           const card = document.createElement('div');
           card.className = 'card';
           const thumb = f.thumb
@@ -240,7 +235,7 @@ client :projects do
           grid.appendChild(note);
           note.style.gridColumn = '1 / -1';
         }
-        box.appendChild(grid);
+        if (items.length) box.appendChild(grid);
       }
       if (!box.children.length) {
         const e = document.createElement('div');
@@ -277,6 +272,7 @@ client :projects do
       if (act === 'reveal') send('projects.reveal', { path: m.dataset.path });
       if (act === 'note') m._note?.classList.add('open');
       if (act === 'copy') navigator.clipboard?.writeText(m.dataset.path);
+      if (act === 'delete' && confirm('Delete ' + m.dataset.path + '?')) send('projects.delete', { path: m.dataset.path });
       m.classList.remove('open');
     };
     document.addEventListener('pointerdown', (e) => {
