@@ -40,29 +40,86 @@
   @keyframes drop { from { opacity:0; transform:translateY(-30px) rotate(-18deg); } to { opacity:1; } }
   /* real app components, recreated in the app's own chrome */
   .stage { margin-top:120px; }
-  .appwin { background:#141414; border:1px solid #2a2a28; border-radius:14px; box-shadow:0 30px 80px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.05); overflow:hidden; }
-  .strip { display:flex; align-items:center; justify-content:center; gap:3px; height:26px; position:relative; }
-  .strip i { width:3px; height:3px; border-radius:50%; background:rgba(255,255,255,.18); }
-  .strip .t { position:absolute; left:14px; font-size:10.5px; color:#8f8d88; }
-  .strip .x { position:absolute; right:12px; color:#5a5a58; font-size:11px; }
-  .dock { display:flex; align-items:center; gap:14px; padding:12px 18px 16px; justify-content:center; }
-  .rec { width:34px; height:34px; border-radius:50%; border:2px solid #3a3a38; display:flex; align-items:center; justify-content:center; }
-  .rec i { width:14px; height:14px; border-radius:50%; background:#e25555; box-shadow:0 0 14px rgba(226,85,85,.5); animation:pulse 2.2s ease-in-out infinite; }
-  @keyframes pulse { 50% { transform:scale(.82); opacity:.75; } }
-  .tgl { display:flex; align-items:center; gap:7px; color:#8f8d88; font-size:11px; border:1px solid #232220; border-radius:999px; padding:7px 13px; }
-  .lvl { display:flex; gap:2px; align-items:flex-end; height:12px; }
-  .lvl i { width:3px; border-radius:2px; background:#7dd08b; animation:eq 1s ease-in-out infinite; }
-  .lvl i:nth-child(1) { height:5px; } .lvl i:nth-child(2) { height:11px; animation-delay:.15s; } .lvl i:nth-child(3) { height:7px; animation-delay:.3s; }
-  @keyframes eq { 50% { transform:scaleY(.45); } }
-  .duo { display:grid; grid-template-columns:1.15fr .85fr; gap:22px; margin-top:22px; }
-  .pane { padding:16px 18px 20px; font-size:12px; }
-  .amsg { background:#1b1b1a; border-radius:10px; padding:10px 12px; margin:9px 0; max-width:90%; color:#c9c7c2; }
-  .amsg.u { margin-left:auto; background:#20201e; }
-  .achip { display:inline-flex; gap:6px; align-items:center; border:1px solid #232220; border-radius:999px; padding:4px 10px; margin:2px 4px 2px 0; color:#7dd08b; font-size:10.5px; }
-  .prow { display:flex; align-items:center; gap:9px; padding:9px 8px; border-radius:8px; color:#a8a6a1; }
-  .prow:hover { color:#fff; }
-  .thumb { width:44px; height:28px; border-radius:6px; background:linear-gradient(120deg,#e25555,#67d1e0 55%,#d76fd0); flex-shrink:0; }
-  .thumb.b { background:linear-gradient(120deg,#2a2a3a,#4a6a8a); }
+  /* window chrome (PanelChrome): 28px drag strip — title left, 3×2 six-dot grip
+     centered, ✕ right; root surface #141414, radius 14, hairline */
+  .rt-win { min-width:0; background:#141414; border:1px solid rgba(255,255,255,.08); border-radius:14px; box-shadow:0 30px 80px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.05); overflow:hidden; }
+  .rt-strip { position:relative; height:28px; }
+  .rt-strip .ttl { position:absolute; left:16px; top:50%; transform:translateY(-45%); font:600 11px/1 ui-sans-serif,system-ui,sans-serif; color:rgba(255,255,255,.55); letter-spacing:.01em; }
+  .rt-grip { position:absolute; left:50%; top:50%; transform:translate(-50%,-42%); display:block; width:20px; height:11px; }
+  .rt-grip circle { fill:rgba(255,255,255,.26); }
+  .rt-x { position:absolute; right:15px; top:50%; transform:translateY(-45%); font:600 11px/1 ui-sans-serif,system-ui,sans-serif; color:rgba(255,255,255,.45); }
+  .rt-frame { margin:0 7px 7px; border:1px solid rgba(255,255,255,.06); border-radius:10px; background:#141414; overflow:hidden; }
+  /* the floating bar (dock) — its own pill chrome, 2×3 grip, level-colored meter.
+     single nowrap row (like the real bar); narrow viewports scroll it, not the page */
+  .rt-dockrow { text-align:center; overflow-x:auto; scrollbar-width:none; padding:2px 0; }
+  .rt-dockrow::-webkit-scrollbar { display:none; }
+  .rt-bar { position:relative; display:inline-flex; flex-wrap:nowrap; align-items:center; justify-content:center; gap:4px; vertical-align:top; height:56px; padding:0 8px 8px 4px; background:rgba(22,22,24,.9); border:1px solid rgba(255,255,255,.08); border-radius:14px; box-shadow:0 22px 55px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.05); color:#f2f2f2; font:12px/1 ui-sans-serif,system-ui,sans-serif; text-align:left; }
+  .rt-bargrip { display:flex; align-items:center; justify-content:center; width:20px; height:32px; color:#666; flex-shrink:0; }
+  .rt-bargrip svg { width:16px; height:16px; }
+  .rt-bargrip circle { fill:currentColor; }
+  .rt-btn { display:inline-flex; align-items:center; justify-content:center; gap:5px; height:32px; padding:0 10px; border-radius:8px; background:rgba(255,255,255,.06); color:#ccc; white-space:nowrap; flex-shrink:0; }
+  .rt-btn svg { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.75; stroke-linecap:round; stroke-linejoin:round; }
+  .rt-btn svg.sm { width:14px; height:14px; }
+  .rt-btn.icon { width:32px; padding:0; }
+  .rt-btn.on { background:rgba(255,255,255,.16); color:#fff; }
+  .rt-btn.picker { max-width:150px; padding:0 8px; gap:5px; }
+  .rt-btn .lbl { font-size:11px; color:#bbb; overflow:hidden; text-overflow:ellipsis; }
+  .rt-btn.mode { justify-content:flex-start; gap:6px; padding:0 11px; }
+  .rt-btn.chev { width:15px; min-width:15px; padding:0; margin-left:-3px; border-top-left-radius:0; border-bottom-left-radius:0; color:#8a8a92; }
+  .rt-btn.chev svg { width:9px; height:9px; }
+  .rt-btn.has-chev { border-top-right-radius:0; border-bottom-right-radius:0; }
+  .rt-btn.tog:not(.on) { position:relative; color:#6f6f74; }
+  .rt-btn.tog:not(.on)::after { content:''; position:absolute; left:50%; top:50%; width:22px; height:2px; border-radius:2px; background:#9a9aa2; box-shadow:0 1px 0 rgba(0,0,0,.7),0 -1px 0 rgba(0,0,0,.5); transform:translate(-50%,-50%) rotate(-45deg); }
+  .rt-btn.rec { min-width:36px; background:#e11; color:#fff; box-shadow:0 0 14px rgba(238,17,17,.45); }
+  .rt-btn.rec svg { fill:currentColor; stroke:none; }
+  .rt-sep { width:1px; height:22px; background:rgba(255,255,255,.1); margin:0 2px; flex-shrink:0; }
+  .rt-timer { font:11px/1 ui-monospace,monospace; color:#888; min-width:42px; text-align:center; flex-shrink:0; }
+  .rt-meter { position:absolute; left:12px; right:12px; bottom:4px; height:4px; border-radius:4px; background:linear-gradient(90deg,#8b5cf6,#3b82f6,#34d399,#fb923c,#ef4444,#fb923c,#34d399,#3b82f6,#8b5cf6); background-size:200% 100%; box-shadow:0 0 9px rgba(120,180,120,.5); animation:rtMeter 3.4s linear infinite; }
+  @keyframes rtMeter { to { background-position:200% 0; } }
+  .duo { display:grid; grid-template-columns:1.15fr .85fr; gap:22px; margin-top:22px; align-items:start; }
+  /* agent — monochrome, headerless (title lives in the chrome strip) */
+  .rt-log { display:flex; flex-direction:column; gap:10px; padding:14px; }
+  .rt-sys { align-self:center; max-width:100%; text-align:center; font-size:11px; line-height:1.5; color:#71717a; padding:2px 8px; }
+  .rt-msg { max-width:88%; padding:10px 13px; border-radius:14px; font-size:12.5px; line-height:1.5; }
+  .rt-msg.u { align-self:flex-end; background:#242424; color:#fff; border-bottom-right-radius:4px; }
+  .rt-msg.a { align-self:flex-start; background:#191919; color:#e0e0e0; border-bottom-left-radius:4px; }
+  .rt-msg.a b { color:#fafafa; }
+  .rt-chips { align-self:flex-start; display:flex; flex-wrap:wrap; gap:6px; max-width:100%; }
+  .rt-chip { font:10px/1.4 ui-monospace,monospace; color:#9a9a9a; background:#1d1d1d; padding:4px 8px; border-radius:999px; white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+  .rt-chip.run { animation:rtChip 1.2s ease-in-out infinite; }
+  @keyframes rtChip { 0%,100% { opacity:.5; } 50% { opacity:1; } }
+  .rt-tsum { color:#6f6f6f; }
+  .rt-tail { height:3px; margin:2px 14px 4px; border-radius:3px; background:linear-gradient(90deg,#1a1a1a 0%,#1a1a1a 38%,#c9c9c9 50%,#1a1a1a 62%,#1a1a1a 100%); background-size:220% 100%; animation:rtTail 1.6s linear infinite; }
+  @keyframes rtTail { to { background-position:200% 0; } }
+  .rt-composer { margin:6px 8px 10px; background:#1d1d1d; border-radius:14px; overflow:hidden; }
+  .rt-ta { padding:11px 13px 6px; color:#7c7c7c; font-size:12.5px; }
+  .rt-cbar { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 8px 8px; }
+  .rt-hint { font-size:10px; color:#52525b; padding-left:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .rt-send { width:34px; height:30px; border-radius:8px; background:#ededed; color:#0a0a0a; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .rt-send svg { width:15px; height:15px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  /* projects — responsive card grid of thumbnails */
+  .rt-switch { padding:8px 8px 4px; }
+  .rt-current { display:flex; align-items:center; gap:8px; padding:7px 7px 7px 11px; border-radius:10px; background:#1b1b1b; }
+  .rt-current > svg { width:15px; height:15px; stroke:#c9c9c9; fill:none; stroke-width:1.6; opacity:.7; flex-shrink:0; }
+  .rt-cur-name { flex:1; min-width:0; font-weight:600; color:#e7e7e7; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .rt-status { display:inline-flex; align-items:center; gap:6px; padding:5px 9px; border-radius:999px; background:#262626; color:#c9c9c9; font:600 10.5px/1 ui-sans-serif,system-ui,sans-serif; flex-shrink:0; }
+  .rt-status .rt-dot { width:8px; height:8px; border-radius:50%; background:#fbbf24; }
+  .rt-cvv { color:#6f6f6f; font-size:11px; flex-shrink:0; }
+  .rt-search { display:flex; gap:6px; padding:2px 8px 8px; }
+  .rt-box { flex:1; min-width:0; display:flex; align-items:center; gap:7px; padding:0 10px; border-radius:10px; background:#1b1b1b; }
+  .rt-box svg { width:13px; height:13px; stroke:#6f6f6f; fill:none; stroke-width:1.8; flex-shrink:0; }
+  .rt-ph { flex:1; min-width:0; padding:9px 0; color:#6a6a6a; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .rt-add { width:34px; border-radius:10px; background:#1b1b1b; color:#9a9a9a; font-size:16px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .rt-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(132px,1fr)); gap:8px; padding:0 8px 10px; }
+  .rt-card { min-width:0; border-radius:10px; overflow:hidden; background:#1b1b1b; }
+  .rt-thumb { aspect-ratio:16/10; background:#202020; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .rt-thumb svg { width:22px; height:22px; stroke:#4a4a4a; fill:none; stroke-width:1.5; }
+  .rt-meta { display:flex; align-items:center; gap:6px; padding:7px 8px; min-width:0; }
+  .rt-fname { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:11.5px; color:#c9c9c9; }
+  .rt-more { color:#565656; font-size:13px; flex-shrink:0; }
+  .rt-fb { flex-shrink:0; font:9px/1 ui-monospace,monospace; padding:2px 6px; border-radius:999px; letter-spacing:.02em; }
+  .rt-fb.on { background:#1e1b4b; color:#a5b4fc; }
+  .rt-fb.edit { background:#134e2e; color:#86efac; }
   .cap { text-align:center; color:var(--faint); font-size:11.5px; margin-top:16px; }
   .tm { width:12px; height:12px; fill:currentColor; vertical-align:-2px; margin-right:6px; }
   @media (max-width:760px) { .duo { grid-template-columns:1fr; } }
@@ -91,7 +148,7 @@
     .btn { justify-content:center; padding:15px 24px; }
     .player { margin-top:38px; }
     .stage { margin-top:78px; }
-    .dock { flex-wrap:wrap; gap:10px; }
+    .rt-dockrow { margin:0 -20px; padding:2px 20px; }
     .cap { margin-top:14px; }
     .cell { padding:38px 26px 42px; }
     .ticker { margin-top:78px; }
@@ -154,30 +211,78 @@
   </div>
 
   <div class="stage">
-    <div class="appwin">
-      <div class="strip"><span class="t">Reactable</span><i></i><i></i><i></i><i></i><i></i><i></i><span class="x">&#10005;</span></div>
-      <div class="dock">
-        <div class="rec"><i></i></div>
-        <span class="tgl"><span class="lvl"><i></i><i></i><i></i></span> MacBook Pro Microphone</span>
-        <span class="tgl">&#9673; FaceTime HD</span>
-        <span class="tgl">&#9654; showcase &middot; slide 3/7</span>
+    <!-- dock: the real floating control bar -->
+    <div class="rt-dockrow">
+    <div class="rt-bar">
+      <span class="rt-bargrip"><svg viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.25"/><circle cx="15" cy="6" r="1.25"/><circle cx="9" cy="12" r="1.25"/><circle cx="15" cy="12" r="1.25"/><circle cx="9" cy="18" r="1.25"/><circle cx="15" cy="18" r="1.25"/></svg></span>
+      <span class="rt-btn picker"><svg class="sm" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg><span class="lbl">demo</span></span>
+      <span class="rt-sep"></span>
+      <span class="rt-btn mode"><svg class="sm" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="m9 8 2 2 4-4"/></svg><span class="lbl">Stage</span></span>
+      <span class="rt-sep"></span>
+      <span class="rt-btn icon tog has-chev"><svg viewBox="0 0 24 24"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg></span>
+      <span class="rt-btn chev"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>
+      <span class="rt-btn icon tog on has-chev"><svg viewBox="0 0 24 24"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></svg></span>
+      <span class="rt-btn chev"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>
+      <span class="rt-btn icon tog on"><svg viewBox="0 0 24 24"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 5.636a9 9 0 0 1 0 12.728"/></svg></span>
+      <span class="rt-sep"></span>
+      <span class="rt-timer">0:00</span>
+      <span class="rt-btn rec icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/></svg></span>
+      <span class="rt-sep"></span>
+      <span class="rt-btn icon on"><svg viewBox="0 0 24 24"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M9 13v2"/><path d="M15 13v2"/></svg></span>
+      <span class="rt-btn icon"><svg viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.015 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.015 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.015 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.015"/><circle cx="12" cy="12" r="3"/></svg></span>
+      <span class="rt-meter"></span>
+    </div>
+    </div>
+
+    <div class="duo">
+      <!-- agent chat -->
+      <div class="rt-win">
+        <div class="rt-strip"><span class="ttl">Agent</span><svg class="rt-grip" viewBox="0 0 24 12"><circle cx="6" cy="4" r="1.3"/><circle cx="12" cy="4" r="1.3"/><circle cx="18" cy="4" r="1.3"/><circle cx="6" cy="8" r="1.3"/><circle cx="12" cy="8" r="1.3"/><circle cx="18" cy="8" r="1.3"/></svg><span class="rt-x">&#10005;</span></div>
+        <div class="rt-frame">
+          <div class="rt-log">
+            <div class="rt-sys">Plans decks, runs the reactable CLI, edits files in your project sandbox.</div>
+            <div class="rt-msg u">clean the voice and post yesterday&rsquo;s take, unlisted</div>
+            <div class="rt-chips">
+              <span class="rt-chip">&#10003; takes edit --clean-voice<span class="rt-tsum"> &mdash; take-0707</span></span>
+              <span class="rt-chip">&#10003; takes render --aspect 16:9<span class="rt-tsum"> &mdash; 2:41</span></span>
+              <span class="rt-chip">&#10003; youtube.upload --unlisted<span class="rt-tsum"> &mdash; ready</span></span>
+            </div>
+            <div class="rt-msg a">Up for review &mdash; <b>2:41</b>, unlisted. Want the 9:16 cut for Reels too?</div>
+          </div>
+          <div class="rt-tail"></div>
+          <div class="rt-composer">
+            <div class="rt-ta">Plan a deck, run the CLI, or describe a video&hellip;</div>
+            <div class="rt-cbar"><span class="rt-hint">&#8629; send &middot; &#8679;&#8629; newline</span><span class="rt-send"><svg viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- projects: card grid -->
+      <div class="rt-win">
+        <div class="rt-strip"><span class="ttl">Projects</span><svg class="rt-grip" viewBox="0 0 24 12"><circle cx="6" cy="4" r="1.3"/><circle cx="12" cy="4" r="1.3"/><circle cx="18" cy="4" r="1.3"/><circle cx="6" cy="8" r="1.3"/><circle cx="12" cy="8" r="1.3"/><circle cx="18" cy="8" r="1.3"/></svg><span class="rt-x">&#10005;</span></div>
+        <div class="rt-frame">
+          <div class="rt-switch">
+            <div class="rt-current">
+              <svg viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+              <span class="rt-cur-name">demo</span>
+              <span class="rt-status"><span class="rt-dot"></span>editing</span>
+              <span class="rt-cvv">&#9662;</span>
+            </div>
+          </div>
+          <div class="rt-search">
+            <div class="rt-box"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><span class="rt-ph">Search takes and assets&hellip;</span></div>
+            <span class="rt-add">&#65291;</span>
+          </div>
+          <div class="rt-grid">
+            <div class="rt-card"><div class="rt-thumb"><div style="width:100%;height:100%;background:linear-gradient(135deg,#3a2f28,#5a4a3c 55%,#211d1a)"></div></div><div class="rt-meta"><span class="rt-fname">take-0707</span><span class="rt-fb edit">&#9654; 3</span><span class="rt-more">&#8943;</span></div></div>
+            <div class="rt-card"><div class="rt-thumb"><div style="width:100%;height:100%;background:linear-gradient(135deg,#1f2a36,#33485e 55%,#161b22)"></div></div><div class="rt-meta"><span class="rt-fname">b-roll-warehouse.mp4</span><span class="rt-fb on">&#9670; product</span><span class="rt-more">&#8943;</span></div></div>
+            <div class="rt-card"><div class="rt-thumb"><div style="width:100%;height:100%;background:linear-gradient(135deg,#33302a,#4a463d 55%,#1e1c19)"></div></div><div class="rt-meta"><span class="rt-fname">intro-cam.mp4</span><span class="rt-fb on">&#9679; indexed</span><span class="rt-more">&#8943;</span></div></div>
+            <div class="rt-card"><div class="rt-thumb"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div><div class="rt-meta"><span class="rt-fname">vo-intro.mp3</span><span class="rt-more">&#8943;</span></div></div>
+          </div>
+        </div>
       </div>
     </div>
-    <div class="duo">
-      <div class="appwin"><div class="strip"><span class="t">Agent</span><i></i><i></i><i></i><i></i><i></i><i></i><span class="x">&#10005;</span></div>
-        <div class="pane">
-          <div class="amsg u">clean the voice and post yesterday's take, unlisted</div>
-          <div><span class="achip">&#10003; edit clean-voice take-0707</span><span class="achip">&#10003; takes render &middot; 16:9</span><span class="achip">&#10003; youtube.upload</span></div>
-          <div class="amsg">Up for review — <b style="color:#e9e7e2">2:41</b>, unlisted. Want the 9:16 cut for Reels too?</div>
-        </div></div>
-      <div class="appwin"><div class="strip"><span class="t">Projects</span><i></i><i></i><i></i><i></i><i></i><i></i><span class="x">&#10005;</span></div>
-        <div class="pane">
-          <div class="prow"><span class="thumb"></span>take-0707 &middot; 2:41</div>
-          <div class="prow"><span class="thumb b"></span>b-roll-warehouse.mp4</div>
-          <div class="prow"><span class="thumb" style="background:linear-gradient(120deg,#3a3a38,#6a5a3a)"></span>vo-intro.mp3</div>
-        </div></div>
-    </div>
-    <p class="cap">The actual studio: the dock, the agent, your assets — recorded on a real stage, shipped by asking.</p>
+    <p class="cap">The real app &mdash; the dock, the built-in agent, and your project&rsquo;s assets. You direct it in a sentence; it does the rest.</p>
   </div>
 
   <div class="ticker"><div class="track">
