@@ -26,6 +26,7 @@ server :reactable_api do
   route "GET /reactable/har/:id", :har_get, auth: :public
   route "POST /reactable/blitz/replay", :blitz_replay, auth: :public
   route "POST /reactable/agent/chat", :agent_chat, auth: :public
+  route "POST /reactable/agent/approve", :agent_approve, auth: :public
   route "GET /reactable/agent/status", :agent_status, auth: :public
   route "POST /reactable/agent/prewarm", :agent_prewarm, auth: :public
   route "GET /reactable/agent/models", :agent_models, auth: :public
@@ -1215,6 +1216,14 @@ server :reactable_api do
     end
   end
 
+  def agent_approve(req) do
+    body = body_map(req)
+    id = to_string(body["id"] || "")
+    decision = if body["decision"] == "accept", do: :accept, else: :skip
+    if id != "", do: :persistent_term.put({:agent_approval, id}, decision)
+    %{ok: true}
+  end
+
   def agent_chat(req) do
     body = body_map(req)
     message = to_string(body["message"] || "")
@@ -1565,10 +1574,28 @@ server :reactable_api do
           tools ->
             results =
               Enum.map(tools, fn tool ->
-                emit.(%{type: "tool.start", tool: tool})
-                out = run_agent_tool(tool)
-                emit.(%{type: "tool.result", tool: tool, ok: out[:ok] == true, summary: tool_summary(out)})
-                %{tool: tool, result: out}
+                if needs_approval?(tool) do
+                  approval_id = Base.url_encode64(:crypto.strong_rand_bytes(8))
+                  emit.(%{type: "tool.approval", tool: tool, id: approval_id})
+
+                  case await_approval(approval_id, 240) do
+                    :accept ->
+                      emit.(%{type: "tool.start", tool: tool})
+                      out = run_agent_tool(tool)
+                      emit.(%{type: "tool.result", tool: tool, ok: out[:ok] == true, summary: tool_summary(out)})
+                      %{tool: tool, result: out}
+
+                    _ ->
+                      out = %{ok: false, skipped: true, error: "user declined this generation — do not retry it"}
+                      emit.(%{type: "tool.result", tool: tool, ok: false, summary: "skipped by user"})
+                      %{tool: tool, result: out}
+                  end
+                else
+                  emit.(%{type: "tool.start", tool: tool})
+                  out = run_agent_tool(tool)
+                  emit.(%{type: "tool.result", tool: tool, ok: out[:ok] == true, summary: tool_summary(out)})
+                  %{tool: tool, result: out}
+                end
               end)
 
             followup =
@@ -1590,6 +1617,24 @@ server :reactable_api do
 
       {:error, e} ->
         {:error, e}
+    end
+  end
+
+  # Spends that need a human: video generation (hundreds–thousands of credits).
+  defp needs_approval?(%{"name" => "connector", "args" => %{"provider" => "videogen"}}), do: true
+  defp needs_approval?(_), do: false
+
+  defp await_approval(_id, 0), do: :skip
+
+  defp await_approval(id, ticks) do
+    case :persistent_term.get({:agent_approval, id}, nil) do
+      nil ->
+        Process.sleep(500)
+        await_approval(id, ticks - 1)
+
+      decision ->
+        :persistent_term.erase({:agent_approval, id})
+        decision
     end
   end
 

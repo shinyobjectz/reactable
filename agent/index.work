@@ -306,6 +306,19 @@ client :agent do
     #tail.on { opacity: 1; animation: tailFlow 1.4s linear infinite; }
     @keyframes tailFlow { to { background-position: 200% 0; } }
     .tool-chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-start; }
+    .approve { background: #1a1a19; border: 1px solid #2c2b28; border-radius: 12px; padding: 12px 14px; }
+    .ap-t { font-weight: 600; font-size: 12.5px; }
+    .ap-p { color: #8f8d88; font-size: 11.5px; margin: 6px 0 10px; }
+    .ap-row { display: flex; gap: 8px; align-items: center; position: relative; }
+    .ap-row button { border: 0; border-radius: 8px; padding: 7px 14px; font: 600 12px inherit; cursor: pointer; }
+    .ap-ok { background: #e9e7e2; color: #101010; }
+    .ap-skip { background: #262624; color: #c9c7c2; }
+    .ap-more { margin-left: auto; color: #6f6d68; cursor: pointer; position: relative; padding: 4px 8px; }
+    .ap-more .ap-menu { display: none; position: absolute; right: 0; bottom: 130%; background: #222; border-radius: 9px; padding: 4px; width: 210px; box-shadow: 0 12px 30px rgba(0,0,0,.5); }
+    .ap-more.open .ap-menu { display: block; }
+    .ap-menu button { width: 100%; background: none; color: #d4d4d4; text-align: left; }
+    .ap-menu button:hover { color: #fff; background: #2b2b2b; }
+    .ap-done { color: #7dd08b; font-size: 12px; }
     .tchip.run { animation: chipPulse 1.2s ease-in-out infinite; }
     .tsum { color: #6f6f6f; }
     @keyframes chipPulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
@@ -625,6 +638,33 @@ client :agent do
           } else if (e.type === 'turn.start' && e.turn > 1) {
             // New turn: the previous bubble was a tool call — start fresh.
             el = null;
+          } else if (e.type === 'tool.approval') {
+            const args = e.tool?.args || {};
+            const rates = { 'omni-flash': 100, 'veo-3': 400, 'veo-3-fast': 150 };
+            const secs = args.seconds || 8;
+            const est = (rates[args.model] || 100) * secs;
+            const decide = (d) => fetch('/reactable/agent/approve', {
+              method: 'POST', headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ id: e.id, decision: d }),
+            });
+            if (localStorage.getItem('always-accept-gen') === '1') { decide('accept'); return; }
+            const w = document.createElement('div');
+            w.className = 'msg system approve';
+            w.innerHTML = `<div class="ap-t">Generation request — ${escapeHtml(args.model || 'video')} · ${secs}s · ~${est.toLocaleString()} credits</div>
+              <div class="ap-p">${escapeHtml(String(args.prompt || '').slice(0, 140))}</div>
+              <div class="ap-row"><button class="ap-ok">Accept</button><button class="ap-skip">Skip</button>
+              <div class="ap-more">⋯<div class="ap-menu"><button class="ap-always">Always accept generations</button></div></div></div>`;
+            const done = (label) => { w.querySelector('.ap-row').innerHTML = `<span class="ap-done">${label}</span>`; };
+            w.querySelector('.ap-ok').onclick = () => { decide('accept'); done('✓ accepted'); };
+            w.querySelector('.ap-skip').onclick = () => { decide('skip'); done('skipped'); };
+            w.querySelector('.ap-more').onclick = (ev) => { ev.currentTarget.classList.toggle('open'); };
+            w.querySelector('.ap-always').onclick = (ev) => {
+              ev.stopPropagation();
+              localStorage.setItem('always-accept-gen', '1');
+              decide('accept'); done('✓ accepted — always on');
+            };
+            log.appendChild(w);
+            log.scrollTop = log.scrollHeight;
           } else if (e.type === 'tool.start') {
             const chip = document.createElement('div');
             chip.className = 'msg system tool-chips';
