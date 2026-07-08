@@ -1,0 +1,100 @@
+# Goals — production auth, secrets, payments
+
+What "production ready" means for the account layer, graded like
+[[docs/GOALS.local-agent]]: each goal has a definition of done you can test.
+
+Current substrate (already live):
+- Worker (reactable.app, CF + KV + R2): Google OAuth (`/api/auth/login|callback`),
+  HMAC-sealed sessions, `/api/auth/me`, **CLI device flow** (`/api/auth/cli/start|poll`),
+  YouTube OAuth connect/callback, DMG + model downloads.
+- CLI: `reactable auth login|status|logout` → `~/.reactable/credentials.json`.
+- App: Settings sign-in is a bare link; panel reads `~/.reactable/auth.json`
+  (plan gates the Pro strip). **File mismatch: CLI writes credentials.json,
+  panel reads auth.json.**
+- Secrets: BYO connector keys + MiniMax key local, plaintext, injected
+  server-side by the local nexus (never enter the model transcript).
+- Payments: nothing. Design doc: [[docs/explorations/MINIMAX-GATEWAY]].
+  `auth.ts` header names Polar as the intended processor.
+
+## G1 — One identity spine
+Settings "Sign in" runs the EXISTING device flow (worker `cli/start` +
+`cli/poll`, driven by the native panel), lands one canonical credential file
+(`~/.reactable/auth.json`; `credentials.json` becomes a symlink or dies), and
+pushes account state into the panel live. CLI and app read the same file;
+`/api/auth/me` is the single truth for `{email, plan, credits}`.
+**DoD:** sign in from Settings → coin/plan state updates without relaunch;
+`reactable auth status` and the panel agree; logout clears both.
+
+## G2 — Session security
+Sessions get expiry + sliding refresh; device-flow codes are single-use,
+TTL'd, rate-limited; OAuth `state` verified; cookies HttpOnly/Secure/SameSite;
+`AUTH_SECRET` + OAuth client secrets live only in `wrangler secret` (audit the
+repo/history); revocation = KV delete honored everywhere.
+**DoD:** replayed device code fails; stolen expired cookie fails; secret scan
+of repo+history clean.
+
+## G3 — Secret boundaries (the rule of two vaults)
+Local vault: BYO keys (Pexels/Unsplash/ElevenLabs/FAL, MiniMax) stay
+local-only — move to 0600 (or Keychain later), never sync, never transcript.
+Cloud vault: Pro-integration OAuth tokens (YouTube/Meta/Drive) live ONLY in
+worker KV, AES-GCM envelope-encrypted per user; the app gets short-lived
+scoped calls through the gateway, never the refresh token. The Scrape
+Creators key exists ONLY as a worker secret — it has no local existence and
+no customer-visible name.
+**DoD:** grep of `~/.reactable` shows zero third-party OAuth refresh tokens;
+worker responses never echo tokens; connectors.json chmod 0600.
+
+## G4 — Payments + plan state (Polar)
+Polar (merchant of record — handles VAT/tax for a solo op) with two products:
+**Pro $20/mo** subscription; **credit packs** for the model gateway. Webhooks
+(signature-verified, idempotent) write plan/credits to KV keyed by user;
+`/api/auth/me` carries them; the app refreshes auth.json on launch + daily.
+Customer portal link in Settings for manage/cancel.
+**DoD:** test-mode subscribe → PRO coin in app ≤1 min; cancel → downgrade on
+next refresh; webhook replay does not double-credit.
+
+## G5 — Credits gateway (MiniMax metering)
+Per [[docs/explorations/MINIMAX-GATEWAY]]: worker endpoint proxying chat
+completions with SSE passthrough, per-user ledger (D1 or a Durable Object for
+atomicity), surcharge on top of MiniMax cost, fail-closed at zero balance.
+Signed-in users without a BYO key route through it; BYO keys bypass free.
+**DoD:** two concurrent streams can't overspend the ledger; charge ≈ usage
+reconciles per stream; balance-exhausted mid-stream ends cleanly with a
+clear in-panel message.
+
+## G6 — Pro integrations (YouTube · Meta · Drive)
+Worker OAuth per provider (YouTube exists — regate it), tokens per G3, all
+gated on plan=pro. The nexus `connector` tool grows gateway-backed providers:
+auth = user session token, worker swaps in the integration token server-side.
+First verbs: YouTube upload (unlisted), Drive file import → assets/, Meta
+campaign read. Scrape-creators-backed research is surfaced only as "brand
+intelligence / consumer research".
+**DoD:** connect YouTube from Settings → agent posts an unlisted test video;
+non-pro account gets a clean upsell error naming the plan, not the vendor.
+
+## G7 — Client trust
+Notarize the DMG (signing already done); update check against
+`/api/download` with version + hash; worker API versioning (`/api/v1/…`) so
+old clients degrade politely.
+**DoD:** fresh Mac: download → open with no Gatekeeper override; old client
+against new worker gets JSON "upgrade" not a 500.
+
+## G8 — Ops + compliance floor
+Rate limits per IP+user on auth/gateway routes; structured worker logs with
+error alerting; KV/D1 export cron; privacy policy + ToS pages; account-delete
+endpoint that purges sessions, tokens, ledger.
+**DoD:** delete-account leaves zero KV keys for the user; a synthetic 5xx
+spike alerts.
+
+## Order
+G1 → G4 → G3 → G6 → G5, with G2 continuous and G7/G8 before public launch.
+Rationale: identity unification unblocks everything; payments make the plan
+real; boundaries before integrations carry real tokens; the credits gateway
+is the deepest build and shouldn't block Pro launch.
+
+## Immediate hygiene (this week, independent of goals)
+- Rotate the MiniMax key (transited a chat session).
+- `chmod 600 ~/.reactable/connectors.json` + write files 0600 going forward.
+- Verify AUTH_SECRET/GOOGLE_* are wrangler secrets, not in git history.
+- Fix the credentials.json / auth.json split (it's a bug today: CLI sign-in
+  is invisible to the panel).
