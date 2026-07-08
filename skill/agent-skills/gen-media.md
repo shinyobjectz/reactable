@@ -5,6 +5,25 @@ veo-3-fast) and image generation (FAL connector today; nano-banana routing
 planned). Generation is the EXPENSIVE last resort — the studio's
 deterministic pipeline does most jobs free, exactly, and re-renderable.
 
+## Your media toolbox (route only to these)
+
+Everything you can create or source, explicitly:
+
+| Need | Tool you have |
+|------|---------------|
+| Net-new video (b-roll, hero, establishing) | `videogen` connector — omni-flash / veo-3 / veo-3-fast |
+| Alter real footage (remove/add object, background, weather, relight) | `videogen` omni-flash EDIT |
+| Stills & graphics | FAL connector (image gen, if the user has keyed it) |
+| Reference images / stock photos | Pexels & Unsplash connectors (BYO key) |
+| Captions, zoom, cursor, trims, title cards, composites | the deterministic pipeline: `reactable takes …`, `reactable edit …`, client islands, HyperFrames |
+| Voiceover | local `reactable tts speak` (Kokoro), or ElevenLabs if keyed |
+| Existing footage | whatever the user has in `assets/` |
+
+Plan every task using only the tools above. When the best fit for a job isn't
+in this table, say what you'd need and offer the closest available path (e.g.
+"drop a clip into assets/ and I'll composite it", "connect FAL for image
+gen") — build the plan from what you have.
+
 ## The decision tree (walk it in order)
 
 1. **Is it text, timing, zoom, layout, or emphasis on real footage?**

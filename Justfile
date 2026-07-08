@@ -272,3 +272,8 @@ cli-publish:
 eval-intel:
     bun scripts/test-intel.ts
     bun scripts/eval-intel.ts
+
+# Video-decision eval: routes each real production ask to the right lane,
+# graded live against the agent (needs the app running on :4020).
+eval-video *args:
+    python3 scripts/eval/video.py {{args}}

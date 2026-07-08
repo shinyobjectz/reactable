@@ -32,3 +32,8 @@ scripts/eval/last-run.json
 
 # Bun
 node_modules/
+
+# eval run artifacts (harness is committed; outputs are not)
+scripts/eval/video-debug.json
+scripts/eval/video-last-run.json
+scripts/eval/video-run-2trial.txt
