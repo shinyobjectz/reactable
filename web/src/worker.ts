@@ -1,6 +1,7 @@
 import type { Env, CliChallenge, Session } from "./types";
 import { billingCheckout, billingPortal, polarWebhook, userRecord } from "./billing";
 import { gatewayBalance, gatewayChat, gatewayUsage } from "./gateway";
+import { researchRaw } from "./research";
 import { driveCallback, driveConnect, driveDisconnect, driveFile, driveList, driveStatus } from "./drive";
 import { metaCallback, metaConnect, metaDisconnect, metaGraph, metaStatus } from "./meta";
 import { ledgerBalance } from "./ledger";
@@ -337,6 +338,15 @@ async function handle(req: Request, env: Env, ctx: ExecutionContext): Promise<Re
     const { ledgerApply } = await import("./ledger");
     const balance = await ledgerApply(env.LEDGER, body.email, "grant", body.credits, "admin-grant");
     return json({ ok: true, balance });
+  }
+  if (path === "/api/research/raw" && req.method === "GET") {
+    const session = await openSession(env, req);
+    if (!session) return json({ ok: false, error: "sign in first" }, { status: 401 });
+    const record = await userRecord(env, session.email);
+    if (record.plan !== "pro") {
+      return json({ ok: false, error: "Research is part of Pro", upgrade: "/pro" }, { status: 402 });
+    }
+    return researchRaw(session.email, req, env, ctx);
   }
   if (path === "/api/gateway/chat" && req.method === "POST") {
     const session = await openSession(env, req);
