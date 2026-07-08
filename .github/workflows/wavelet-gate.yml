@@ -36,8 +36,8 @@ jobs:
             "$HOME/workbooks-wasmvideo/nexus/wasm-video"
       - uses: dtolnay/rust-toolchain@stable
       - uses: oven-sh/setup-bun@v2
-      - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg pkg-config libfontconfig1-dev
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: tools
