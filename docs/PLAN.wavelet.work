@@ -1,0 +1,55 @@
+# Wavelet render lane — plan (v2, all-Rust)
+
+Rewritten 2026-07-07 after the P0 spike. Supersedes the "all inside nexus sandbox" v1 pipeline.
+
+## Core move (unchanged)
+
+Capture **structured events + DOM snapshots, not pixels**. Render pixels later, deterministically, at any resolution/aspect. Screen capture becomes the fallback for hostile content (iframe/youtube/canvas), not the foundation.
+
+## Runtime decision (the pivot)
+
+**Native Rust, in reactable-tools.** `wavelet-render-core` (Blitz + Stylo + vello_cpu; the clean WASM-able slice of `Apps/workbooks/nexus/wasm-video`) as a library dep; ffmpeg (already a reactable dep) for encode. Forget Elixir/nexus for execution — the P0 spike proved the nexus-sandbox lane is blocked on substrate physics, not design:
+
+- tiny-lasers transpile lane OOMs on the 12MB rasterizer module (>2.5GB, silent beam death)
+- tiny-lasers interp lane is correct but 89.6s per 160×90 frame (~3 orders of magnitude off)
+- wasmtime does 72×1080p30 frames in 2.3s; native is faster still
+
+Determinism is architecture (`resolve(frame/fps)` CSS clock), not runtime — byte-identical re-renders confirmed. Cross-platform-ness is pure-Rust vello/blitz, not WASM — Windows needs no Metal, no SCK.
+
+**WASM stays as a CI build target only** (same crate builds wasm32-wasip1 clean, proven) — zero-cost insurance so the nexus/cloud door stays open. `Nexus.Video.Wavelet` (committed on workbooks branch `explore/wasm-video-nexus`) is parked and inherits whichever substrate ruling lands later.
+
+## Phases
+
+**P0 — DONE (2026-07-07).** Chain proven under wasmtime: reactable showcase slides (verbatim stage CSS) → render_seq.wasm → 72×1080p PNG (1.6–2.3s) → wb_encode.wasm → playable mp4 (6.3s). Byte-identical re-renders. Fidelity vs Chrome: structurally identical; deltas = bundled-font metrics + repro'd `ui-*` generic-family bug (zero glyphs when `ui-monospace` is the only family). Full record: workbooks worktree `experiments/wasm-video-p0/FINDINGS.md`.
+
+**P1′ — native render verb (reactable-tools).**
+- `reactable-tools wavelet render <comp.html> <out.mp4|frames-dir> --w --h --fps --duration [--lossless]`
+- Path dep on wavelet-render-core (cross-repo path dep, same pattern as the nexus sidecar); frames → ffmpeg encode via existing `ffmpeg_util`
+- Port the frame-loop from the monolith (reuse parsed document across `resolve(t)` calls instead of re-parse-per-frame)
+- Fix `ui-sans-serif`/`ui-monospace`/`ui-*` generic aliasing in the font ctx; feed real deck fonts via `build_single_font_ctx` host bytes (kills the P0 wrap deltas; pick redistributable deck fonts — Geist works)
+- Parity check: native frames vs wasmtime frames (float drift acceptable, layout must match)
+- Do NOT touch the root `wavelet` monolith (missing vendor/{blitz-paint,stylo} — rabbit hole); render-core only
+
+**P2 — take compiler.**
+`take → comp.html`: deck slides JSON + events.jsonl → one CSS-keyframe comp (sketch: workbooks worktree `experiments/wasm-video-p0/P2-TAKE-COMPILER.md`).
+- Slide track: hard-cut visibility keyframes per `slide` event; prose/client/html slides inline stage HTML+CSS verbatim
+- Cursor path (20Hz events → translate keyframes, decimated), click ripples, auto-zoom = port composite.py smoothstep math to keyframes — all data-driven, fits the CSS-only deterministic clock
+- Stage track re-rendered lossless at ANY res/aspect (9:16 = comp swap, not re-capture)
+- Cam/mic stay real; `capture.*.start` anchors stay essential; audio mux via ffmpeg
+- Wire as `reactable takes render <id> --engine wavelet` beside the ffmpeg/HyperFrames lanes
+- Pixel fallback stays for iframe/dev/youtube/video slides (until P3 snapshots)
+
+**P3 — agent walkthrough recorder (the showcase).**
+Agent drives a dev server/browser (chrome-devtools MCP / agent-browser) → logs step events + per-step DOM snapshot (extend the existing HAR capture + `/reactable/blitz/replay` seam; rrweb-style mutation log later) → take compiler → video tutorial. No screen recorder anywhere. Demo: "agent records a narrated tutorial of your app." All local Rust + Bun CLI — no nexus dependency.
+
+**P4 — lossless + delivery.**
+Native ffmpeg makes this trivial (the wb_encode yuv420p limitation is gone): `--lossless` = libx264 `-qp 0` yuv444p or FFV1/ProRes master + crf18 delivery proxy. PNG/WebP frame dir remains the archival master when wanted.
+
+**P5 — parked: nexus/cloud lane.**
+Revisit when either (a) render-core is accepted as a trusted host tool (wasmtime subprocess — it's first-party code; tiny-lasers' job is *untrusted* code), or (b) tiny-lasers grows persisted/pre-built transpile cache for big modules. wasip1 CI target keeps the artifact ready. HyperFrames lane unaffected throughout (stays the rich-JS/GSAP finish lane).
+
+## Where things live
+
+- **This worktree** (`projects/reactable-wasmvideo`, branch `explore/wavelet-render`): P1′–P3 build site
+- **Workbooks worktree** (`Apps/workbooks-wasmvideo`, branch `explore/wasm-video-nexus`): P0 spike artifacts, FINDINGS.md, P2 sketch, parked Nexus.Video.Wavelet
+- Voice/MLX/capture stay native-mac as before; this lane changes nothing there
