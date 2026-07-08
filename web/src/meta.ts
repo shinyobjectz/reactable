@@ -73,7 +73,15 @@ export async function metaCallback(req: Request, env: Env): Promise<Response> {
     ).json()) as any;
     if (accts?.data?.[0]?.name) label = `${label} · ${accts.data[0].name}`;
   } catch {}
-  await addConnection(env, email, "meta", label, tokens);
+  let scopes = SCOPES.split(",");
+  try {
+    const perms = (await (
+      await fetch(`${GRAPH}/me/permissions?access_token=${token}`)
+    ).json()) as any;
+    const granted = (perms?.data || []).filter((p: any) => p.status === "granted").map((p: any) => p.permission);
+    if (granted.length) scopes = granted;
+  } catch {}
+  await addConnection(env, email, "meta", label, tokens, scopes);
   return new Response(null, { status: 302, headers: { location: "/connected?service=meta" } });
 }
 

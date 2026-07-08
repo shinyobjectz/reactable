@@ -62,6 +62,7 @@ export async function driveCallback(req: Request, env: Env): Promise<Response> {
     access_token?: string;
     refresh_token?: string;
     expires_in?: number;
+    scope?: string;
     error?: string;
   };
   if (!res.ok || !body.access_token) {
@@ -82,7 +83,8 @@ export async function driveCallback(req: Request, env: Env): Promise<Response> {
     ).json()) as any;
     label = about?.user?.emailAddress || about?.user?.displayName || label;
   } catch {}
-  await addConnection(env, email, "drive", label, tokens);
+  const scopes = (body.scope || SCOPE).split(" ").map((x) => x.split("/").pop() || x);
+  await addConnection(env, email, "drive", label, tokens, scopes);
   return new Response(null, { status: 302, headers: { location: "/connected?service=drive" } });
 }
 

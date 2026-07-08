@@ -10,6 +10,7 @@ export interface Connection {
   label: string;
   sealed: string;
   addedAt: string;
+  scopes?: string[];
 }
 
 const key = (email: string, provider: string) => `conns:${email.toLowerCase()}:${provider}`;
@@ -60,6 +61,7 @@ export async function addConnection(
   provider: string,
   label: string,
   tokens: unknown,
+  scopes: string[] = [],
 ): Promise<Connection> {
   const conns = await listConnections(env, email, provider);
   const conn: Connection = {
@@ -67,6 +69,7 @@ export async function addConnection(
     label,
     sealed: await sealTokens(env, provider, tokens),
     addedAt: new Date().toISOString(),
+    scopes,
   };
   const existing = conns.findIndex((c) => c.label === label);
   if (existing >= 0) {
@@ -116,7 +119,7 @@ export async function updateConnectionTokens(
 export async function connectionStatus(env: Env, email: string, provider: string): Promise<Response> {
   const conns = await listConnections(env, email, provider);
   return new Response(
-    JSON.stringify({ ok: true, connections: conns.map((c) => ({ id: c.id, label: c.label, addedAt: c.addedAt })) }),
+    JSON.stringify({ ok: true, connections: conns.map((c) => ({ id: c.id, label: c.label, addedAt: c.addedAt, scopes: c.scopes || [] })) }),
     { headers: { "content-type": "application/json" } },
   );
 }
