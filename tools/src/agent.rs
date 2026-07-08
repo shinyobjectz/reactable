@@ -24,6 +24,74 @@ fn minimax_key() -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+// Signed-in account (Settings sign-in / `reactable auth login`) — lets the
+// keyless free tier reach MiniMax through the credits gateway.
+fn gateway_auth() -> Option<(String, String)> {
+    let raw = fs::read_to_string(reactable_dir().join("auth.json")).ok()?;
+    let auth: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let token = auth["access_token"].as_str()?.trim().to_string();
+    if token.is_empty() {
+        return None;
+    }
+    let base = auth["api_base"].as_str().unwrap_or("https://reactable.app").trim_end_matches('/').to_string();
+    Some((base, token))
+}
+
+fn gateway_request(req: &ChatRequest, base: &str, token: &str, stream: bool) -> Result<ureq::Response, String> {
+    let body = serde_json::json!({
+        "system": req.system,
+        "messages": req.messages.iter().map(|m| serde_json::json!({"role": m.role, "content": m.content})).collect::<Vec<_>>(),
+        "max_tokens": req.max_tokens.unwrap_or(4096),
+        "stream": stream,
+    });
+    let resp = ureq::post(&format!("{base}/api/gateway/chat"))
+        .set("cookie", &format!("reactable_session={token}"))
+        .set("content-type", "application/json")
+        .timeout(std::time::Duration::from_secs(300))
+        .send_json(body)
+        .map_err(|e| match e {
+            ureq::Error::Status(402, _) => "out of credits — top up at reactable.app/pro".to_string(),
+            ureq::Error::Status(401, _) => "session expired — sign in again from Settings".to_string(),
+            other => other.to_string(),
+        })?;
+    Ok(resp)
+}
+
+fn gateway_complete(req: &ChatRequest, base: &str, token: &str) -> Result<ChatResponse, String> {
+    let data: serde_json::Value = gateway_request(req, base, token, false)?
+        .into_json()
+        .map_err(|e| e.to_string())?;
+    let text = data["choices"][0]["message"]["content"].as_str().unwrap_or_default().to_string();
+    if text.is_empty() {
+        return Err("empty gateway completion".to_string());
+    }
+    Ok(ChatResponse { ok: true, text, engine: "gateway/MiniMax-M3".to_string(), error: None })
+}
+
+fn gateway_stream(req: &ChatRequest, base: &str, token: &str) -> Result<ChatResponse, String> {
+    use std::io::{BufRead, BufReader};
+    let resp = gateway_request(req, base, token, true)?;
+    let reader = BufReader::new(resp.into_reader());
+    let mut full = String::new();
+    for line in reader.lines() {
+        let line = line.map_err(|e| e.to_string())?;
+        let Some(payload) = line.strip_prefix("data:").map(str::trim) else { continue };
+        if payload == "[DONE]" {
+            break;
+        }
+        let Ok(chunk) = serde_json::from_str::<serde_json::Value>(payload) else { continue };
+        let delta = chunk["choices"][0]["delta"]["content"].as_str().unwrap_or("");
+        if !delta.is_empty() {
+            full.push_str(delta);
+            emit_stream_line(serde_json::json!({"t": "tok", "v": delta}));
+        }
+    }
+    if full.is_empty() {
+        return Err("empty gateway stream".to_string());
+    }
+    Ok(ChatResponse { ok: true, text: full, engine: "gateway/MiniMax-M3".to_string(), error: None })
+}
+
 fn provider_forced_local() -> bool {
     fs::read_to_string(reactable_dir().join("agent-provider"))
         .map(|s| s.trim() == "gemma")
@@ -184,6 +252,20 @@ pub fn chat(input: &str, output: Option<&str>, model: Option<&str>, stream: bool
                 }
                 Err(e) => {
                     eprintln!("minimax failed ({e}) — falling back to local model");
+                    agent_llm::complete(&req, &model_id)
+                }
+            }
+        }
+        None if !provider_forced_local() && gateway_auth().is_some() => {
+            let (base, token) = gateway_auth().unwrap();
+            let attempt = if stream { gateway_stream(&req, &base, &token) } else { gateway_complete(&req, &base, &token) };
+            match attempt {
+                Ok(r) => {
+                    streamed_live = stream;
+                    r
+                }
+                Err(e) => {
+                    eprintln!("gateway failed ({e}) — falling back to local model");
                     agent_llm::complete(&req, &model_id)
                 }
             }
