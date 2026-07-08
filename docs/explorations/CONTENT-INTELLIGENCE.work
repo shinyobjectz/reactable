@@ -1,0 +1,129 @@
+# Content Intelligence — definition, architecture, phasing
+
+What "next-generation content intelligence" concretely means for Reactable,
+grounded in what BuzzSumo and Exploding Topics actually sell, what our data
+plane can actually reach, and where each computation should run.
+
+## Research findings (2026-07-08)
+
+**Scrape Creators (our unnamed engine)** is far bigger than assumed: 35+
+platforms, 110+ endpoints. The ones that matter here:
+- Platform data: TikTok, Instagram, YouTube, Reddit, X, Threads, Bluesky,
+  LinkedIn, Facebook, Pinterest, Twitch, Spotify, Rumble, Google Search.
+- **Trend primitives already exist upstream**: TikTok Trending Feed, popular
+  creators, popular hashtags, Top Search; Instagram Trending Reels and
+  reels-by-audio-id (audio trend tracking); YouTube Trending Shorts; GitHub
+  trending; song→videos.
+- **Transcripts on nearly everything** (TikTok, IG, YT, FB, Rumble, X,
+  Reddit video, LinkedIn) — with an AI fallback for short videos.
+- **Ad libraries: Facebook, TikTok, Google, LinkedIn** — competitor paid
+  creative, searchable by company. The strongest "what converts" signal
+  that exists; BuzzSumo doesn't have this.
+- Audience demographics (TikTok), age/gender inference, comments at depth.
+- Ops: credit balance/usage endpoints, no rate limits (~500 concurrent),
+  OpenAPI + llms.txt + an official Agent Skill we can vendor.
+
+**BuzzSumo's pillars** (parity targets): most-engaged content by
+topic/keyword across platforms; evergreen vs spike; influencer/creator
+discovery; brand & keyword alerts; question mining (Reddit/Quora/forums).
+
+**Exploding Topics' method** (parity target): track topic search/mention
+series → proprietary growth scoring → lifecycle grades (regular / exploding
+/ peaked), discovery of not-yet-mainstream topics from "millions of
+unstructured data points," a browsable graded trends database.
+
+## Definition — the five pillars
+
+Content intelligence in Reactable = the agent (and the user) can answer:
+
+1. **Trends** — "what is rising in MY niche right now?" Tracked topics per
+   brand, multi-source time series, velocity-graded: `watching → rising →
+   exploding → peaked → evergreen`. Personal by construction: seeded from a
+   brand brief, the user's own channels, and their Meta account.
+2. **Content radar** — "what's the best-performing content on X?"
+   Engagement-normalized top content by topic across platforms; evergreen
+   vs spike classification; question mining for episode ideas.
+3. **Creator & competitor intelligence** — tracked creators/channels:
+   outlier detection (views vs that channel's own baseline = breakout),
+   cadence and format analysis, audience demographics, and their PAID
+   creative from the ad libraries.
+4. **Deconstruction** — the model's understanding of a specific piece of
+   content: transcript → hook (first 3s) → structure beats → format
+   taxonomy → title/thumbnail pattern → a REMIX BRIEF that feeds
+   [[video-strategy]], [[video-copy]], and a deck scaffold.
+5. **Briefs & alerts** — the above compiled into a recurring brand brief
+   landing where work happens: `research/*.md` in the project (digest picks
+   it up), a dashboard page, optional alert pings.
+
+## Scoring model (ET-parity, honest v1)
+
+Per tracked topic, a normalized series from N sources (platform search
+volumes proxied by result velocity, hashtag counts, trending-feed
+appearances, Reddit post velocity, SERP presence). Compute 7/30/90-day
+slopes + acceleration + cross-platform breadth + saturation. Grade:
+- watching (flat), rising (positive slope), exploding (accel > threshold on
+  ≥2 platforms), peaked (high volume, negative accel), evergreen (high
+  stable volume + old first-seen).
+Store series per topic; grade transitions are the alert events.
+
+## Architecture — three planes (who runs what)
+
+**Edge (CF worker — exists):** auth, pro gate, credit metering (DO ledger),
+and `/api/research/*` — a scoped proxy to Scrape Creators with OUR key.
+The vendor is never named client-side. KV/D1 stores topic series +
+briefs. CF **cron triggers** run the daily snapshot loop — P1 needs NO new
+hosting.
+
+**Hosted intelligence nexus (workbooks nexus, P2):** the 3w substrate
+(search/read/browse/crawl/harvest → .work context repository) for what the
+edge can't do: open-web crawl (blogs/news/newsletters), long-running deep
+briefs, discovery beyond tracked topics ("unstructured data points" à la
+ET). Deploys like brandnana's worker lineage; output = .work context repos
+the app agent reads. This is where BuzzSumo-grade breadth comes from.
+
+**Local (the app — binary/media stays here, per policy):** media
+deconstruction. Download candidate video (SC returns direct URLs) →
+chunked Moonshine transcription (already built) → frame sampling (ffmpeg,
+already shipped) → LLM structure pass through the gateway → remix brief.
+Later: mlx-vlm vision for thumbnail/visual-pattern analysis, local
+embeddings for similarity. Nothing binary transits the cloud.
+
+## Agent surface
+
+- Nexus connector gains provider `research` → worker `/api/research/*`
+  (same session-cookie pattern as drive/meta). Credit-metered per call.
+- New agent skill `skill/agent-skills/content-intel.md`: when to pull
+  trends vs radar vs deconstruct; how a remix brief feeds decks. Vendor
+  Scrape Creators' official Agent Skill as the deep reference
+  (skill/vendored/), adapted to our connector so the key never appears.
+- Dashboard gains `/dashboard/research`: tracked topics with grade chips +
+  sparklines, tracked competitors with breakout flags, latest brief.
+
+## Metering
+
+SC charges credits per call (transcripts ~1, audience 26, AI fallback 10).
+Map to gateway credits with margin (e.g. 2–5 credits per research call,
+heavier for audience/deep pulls) — charged through the existing DO ledger.
+Pro includes the suite; research burns the same credit pool as inference.
+
+## Phasing
+
+- **P0 (days):** worker `/api/research/*` proxy + metering; `research`
+  connector; content-intel skill + vendored SC skill; agent can already do
+  competitor pulls, topic radar, transcripts, ad-library lookups on demand.
+- **P1 (week):** brand brief (`research/brand.md` conversation → stored);
+  tracked topics/competitors in KV; CF cron daily snapshots (bounded call
+  budget); scoring + grades; `/dashboard/research` page; weekly brief into
+  `research/`.
+- **P2:** hosted workbooks nexus (3w) for open-web breadth + deep briefs;
+  local deconstruction pipeline (download → transcribe → structure → remix
+  brief feeding a deck scaffold).
+- **P3:** ET-grade discovery (find topics we're NOT tracking), longer
+  series + forecasting, alerts (push/email), question mining productized.
+
+## Open questions
+
+- D1 vs KV for series (D1 wins once series > a few hundred points; start KV).
+- SC call budget per Pro user per day for cron snapshots (cost model needs
+  their per-endpoint credit table — pull /v1/... pricing from the dashboard).
+- Hosted nexus platform (Fly like meOS worker, vs Hetzner) — decide at P2.
