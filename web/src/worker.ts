@@ -2,6 +2,8 @@ import type { Env, CliChallenge, Session } from "./types";
 import { billingCheckout, billingPortal, polarWebhook, userRecord } from "./billing";
 import { gatewayBalance, gatewayChat, gatewayUsage } from "./gateway";
 import { researchRaw } from "./research";
+import { commonsSnapshot, commonsTrends } from "./commons";
+import { econReport } from "./econ";
 import { driveCallback, driveConnect, driveDisconnect, driveFile, driveList, driveStatus } from "./drive";
 import { metaCallback, metaConnect, metaDisconnect, metaGraph, metaStatus } from "./meta";
 import { ledgerBalance } from "./ledger";
@@ -148,6 +150,8 @@ async function authMe(req: Request, env: Env): Promise<Response> {
     if (!(await env.KV.get(flag))) {
       await env.KV.put(flag, "1", { expirationTtl: 40 * 86400 });
       const { ledgerApply } = await import("./ledger");
+      const { econAdd } = await import("./econ");
+      await econAdd(env, "granted", 2000);
       await ledgerApply(env.LEDGER, session.email, "grant", 2000, `allowance:${month}`);
     }
   }
@@ -274,6 +278,9 @@ export default {
       return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
     }
   },
+  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(commonsSnapshot(env));
+  },
 };
 
 async function handle(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -337,6 +344,25 @@ async function handle(req: Request, env: Env, ctx: ExecutionContext): Promise<Re
       `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} — Reactable</title><body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#141414;color:#e7e7e7;font:15px/1.5 ui-sans-serif,system-ui"><div style="text-align:center;max-width:420px;padding:24px"><div style="font-size:34px;margin-bottom:10px">✦</div><h1 style="font-size:20px;margin:0 0 8px">${title}</h1><p style="color:#9a9a9a;margin:0">${sub}</p></div></body>`,
       { headers: { "content-type": "text/html; charset=utf-8" } },
     );
+  }
+  if (path === "/api/commons/trends" && req.method === "GET") {
+    const session = await openSession(env, req);
+    if (!session) return json({ ok: false, error: "sign in first" }, { status: 401 });
+    const record = await userRecord(env, session.email);
+    if (record.plan !== "pro") return json({ ok: false, error: "the commons is part of Pro", upgrade: "/pro" }, { status: 402 });
+    return commonsTrends(env);
+  }
+  if (path === "/api/admin/econ" && req.method === "GET") {
+    const auth = req.headers.get("authorization") || "";
+    if (!env.ADMIN_KEY || auth !== `Bearer ${env.ADMIN_KEY}`) return json({ ok: false, error: "forbidden" }, { status: 403 });
+    return json(await econReport(env));
+  }
+  if (path === "/api/admin/commons-run" && req.method === "POST") {
+    const auth = req.headers.get("authorization") || "";
+    if (!env.ADMIN_KEY || auth !== `Bearer ${env.ADMIN_KEY}`) return json({ ok: false, error: "forbidden" }, { status: 403 });
+    // Chunked + resumable: 8 topics per call (same-day topics skip), so
+    // repeated POSTs walk the whole taxonomy. The daily cron does it in one.
+    return json(await commonsSnapshot(env, 8));
   }
   // Ops: credit grants, keyed by ADMIN_KEY (wrangler secret) — no UI.
   if (path === "/api/admin/grant" && req.method === "POST") {

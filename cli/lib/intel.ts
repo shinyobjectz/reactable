@@ -236,6 +236,33 @@ export async function snapshot(budget = 40, force = false): Promise<string> {
   return [`snapshot ${today}: ${calls} calls`, ...lines].join("\n");
 }
 
+export async function commonsTrends(): Promise<any[]> {
+  if (process.env.REACTABLE_INTEL_STUB === "1") return [];
+  try {
+    const creds = loadCredentials();
+    if (!creds?.access_token) return [];
+    const base = creds.api_base || "https://reactable.app";
+    const res = await fetch(`${base}/api/commons/trends`, {
+      headers: { cookie: `reactable_session=${creds.access_token}` },
+    });
+    if (!res.ok) return [];
+    const d = (await res.json()) as any;
+    return d.topics || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function trendsMerged() {
+  const local = trends().topics;
+  const commons = await commonsTrends();
+  const localQs = new Set(local.map((t) => t.q));
+  return {
+    topics: local.map((t) => ({ ...t, source: "tracked" })),
+    commons: commons.filter((c: any) => !localQs.has(c.q)).map((c: any) => ({ ...c, source: "commons" })),
+  };
+}
+
 export function trends(): { topics: (Omit<Topic, "series"> & { volume: number; spark: number[] })[] } {
   return {
     topics: topics().map((t) => ({

@@ -1,0 +1,30 @@
+# Pricing validation — how we know the strategy holds
+
+Everything in [[docs/UNIT-ECONOMICS]] is now INSTANTIATED and self-checking.
+The claim → the probe:
+
+| claim | probe | state (2026-07-08) |
+|---|---|---|
+| Pro $20 exists, webhook-verified | real subscription processed, polarCustomerId stamped | ✓ live |
+| 2,000cr/mo allowance, idempotent | /api/auth/me grants once per month (allowance:YYYY-MM) | ✓ observed +2,000 |
+| packs grant credits automatically | order.paid → ledger grant, econ sold_credits counter | ✓ (webhook fixed) |
+| every sink metered | ledger refs: chat-stream / research:* / allowance / order | ✓ |
+| loss-makers repriced | audience 60cr, AI-fallback transcript 15cr | ✓ deployed |
+| commons ≤ budget (official fixed cost) | econ.checks.commons_under_budget vs 1,500/day cap | ✓ 21 calls day 1 |
+| commons is real & alive | /api/commons/trends: 36 topics, real volumes, daily cron 06:17 UTC | ✓ index live |
+| margins match the model | /api/admin/econ computes ACTUAL margin per class vs floors (inference ≥1.8×, research ≥2.0×) | accruing from today |
+| SC runway visible | econ:sc_remaining auto-captured from responses | ✓ 15,772 |
+| token-drift alarm | checks.tokens_per_message_sane (<30k tok/msg) | armed |
+
+## The standing ritual
+
+`curl -H "authorization: Bearer $(cat ~/.reactable/admin.key)" https://reactable.app/api/admin/econ`
+→ verdict is either **PRICING MODEL HOLDS** or **DRIFT** with the failing
+check named. Run monthly (or wire to a cron alert later). When MODEL
+constants change, update econ.ts MODEL + UNIT-ECONOMICS together.
+
+## What time must still prove
+
+- Real margin numbers converge to model (needs a month of mixed usage).
+- Commons grades become meaningful at 7+ daily points (cron is armed).
+- Median allowance consumption ~40% (watch granted vs spent per user).

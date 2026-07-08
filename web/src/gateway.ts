@@ -6,6 +6,7 @@
  */
 import type { Env } from "./types";
 import { ledgerApply, ledgerBalance } from "./ledger";
+import { econAdd } from "./econ";
 
 const CREDITS_PER_1K_TOKENS = 1;
 
@@ -59,8 +60,10 @@ export async function gatewayChat(email: string, req: Request, env: Env, ctx: Ex
     return json({ ok: false, error: `upstream ${upstream.status}` }, { status: 502 });
   }
 
-  const charge = (tokens: number, ref: string) => {
+  const charge = async (tokens: number, ref: string) => {
     const credits = Math.max(1, Math.ceil((tokens * CREDITS_PER_1K_TOKENS) / 1000));
+    await econAdd(env, "spent:inference", credits);
+    await econAdd(env, "tokens:inference", Math.round(tokens));
     return ledgerApply(env.LEDGER, email, "charge", credits, ref);
   };
 

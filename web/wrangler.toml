@@ -38,3 +38,6 @@ class_name = "CreditLedger"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["CreditLedger"]
+
+[triggers]
+crons = ["17 6 * * *"]

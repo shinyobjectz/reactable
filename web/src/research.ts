@@ -6,6 +6,7 @@
  */
 import type { Env } from "./types";
 import { ledgerApply, ledgerBalance } from "./ledger";
+import { econAdd } from "./econ";
 
 const UPSTREAM = "https://api.scrapecreators.com";
 
@@ -68,7 +69,19 @@ export async function researchRaw(email: string, req: Request, env: Env, ctx: Ex
 
   // Charge only successful pulls; a 4xx/5xx upstream shouldn't cost the user.
   if (upstream.ok) {
-    ctx.waitUntil(ledgerApply(env.LEDGER, email, "charge", cost, `research:${path.split("/").slice(1, 4).join("/")}`));
+    ctx.waitUntil(
+      (async () => {
+        await econAdd(env, "spent:research", cost);
+        await econAdd(env, "calls:research", 1);
+        try {
+          const parsed = JSON.parse(body);
+          if (typeof parsed.credits_remaining === "number") {
+            await env.KV.put("econ:sc_remaining", String(parsed.credits_remaining));
+          }
+        } catch {}
+        await ledgerApply(env.LEDGER, email, "charge", cost, `research:${path.split("/").slice(1, 4).join("/")}`);
+      })(),
+    );
   }
 
   return new Response(body, {

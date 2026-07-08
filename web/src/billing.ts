@@ -149,7 +149,12 @@ export async function polarWebhook(req: Request, env: Env): Promise<Response> {
         // Credit packs carry their grant in product metadata; the Durable
         // Object ledger is the atomic truth, the KV record just mirrors it.
         const grant = Number(event.data?.product?.metadata?.credits || 0);
-        if (grant > 0) record.credits = await ledgerApply(env.LEDGER, email, "grant", grant, `order:${eventId}`);
+        if (grant > 0) {
+          const { econAdd } = await import("./econ");
+          await econAdd(env, "sold_credits", grant);
+          await econAdd(env, "revenue_cents", Number(event.data?.amount || event.data?.net_amount || 0));
+          record.credits = await ledgerApply(env.LEDGER, email, "grant", grant, `order:${eventId}`);
+        }
         break;
       }
       default:

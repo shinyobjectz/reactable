@@ -62,6 +62,7 @@ import { agentChat, agentStatus, agentLlmProbe, createProject } from "../lib/age
 import { minimaxChat, minimaxKey } from "../lib/minimax.ts";
 import { CONNECTORS, connectorStatus, setConnector } from "../lib/connectors.ts";
 import * as intel from "../lib/intel.ts";
+import * as video from "../lib/video.ts";
 import { getProject, listSurfaces, listResearch, addResearch } from "../lib/surface.ts";
 import { authLogin, authStatus, clearCredentials } from "../lib/auth.ts";
 import {
@@ -148,6 +149,13 @@ Usage: reactable <command> [args]
   decks slide move <slug> <id> --to <index>
   decks script add <slug> --on <trigger> --run "<cmd>" [--slide <id>] [--at <sec>] [--detach]
   decks script run <slug> --on <trigger> [--slide <id>]
+
+  video index <take-id|path> [--tier t0|t1]   build <asset>.intel/ sidecar
+  video find "<query>" --in <ref> [--json]    text → timecodes (transcript·ocr·captions·tracks)
+  video at <ref> <ms|mm:ss> [--json]          everything known at that moment
+  video tracks <ref> [--concept "…"] [--json] tracklets from concept passes
+  video pass <ref> <sam31|depth|matte> [--concept "…"]  queue a GPU pass
+  video sweep [--json]                        index everything un-indexed (takes/ + assets/)
 
   takes list [--json]
   takes get <id> [--json]
@@ -706,7 +714,7 @@ try {
     if (sub === "untrack") { out(intel.untrack(String(third || ""))); process.exit(0); }
     if (sub === "list") { out({ topics: intel.topics().map(({series, ...t}) => t), competitors: intel.competitors() }); process.exit(0); }
     if (sub === "snapshot") { out(await intel.snapshot(Number(flags.budget || 40), flags.force === true)); process.exit(0); }
-    if (sub === "trends") { out(intel.trends()); process.exit(0); }
+    if (sub === "trends") { out(flags.commons === true ? await intel.trendsMerged() : intel.trends()); process.exit(0); }
     if (sub === "breakouts") { out(intel.breakouts()); process.exit(0); }
     if (sub === "radar") {
       const q = rest.slice(2).filter((x) => !x.startsWith("-")).join(" ");
@@ -728,6 +736,70 @@ try {
     }
     if (sub === "brief") { out(intel.brief()); process.exit(0); }
     console.error("intel verbs: track · untrack · list · snapshot · trends · breakouts · radar · ads · deconstruct · brief");
+    process.exit(1);
+  }
+
+  if (cmd === "video") {
+    const j = flags.json === true;
+    const out = (v: unknown) => console.log(j ? JSON.stringify(v) : JSON.stringify(v, null, 2));
+    const parseMs = (s: string): number => {
+      if (/^\d+$/.test(s)) return Number(s);
+      const parts = s.split(":").map(Number);
+      if (parts.some(Number.isNaN)) throw new Error(`bad time "${s}" — ms or [hh:]mm:ss[.ms]`);
+      let sec = 0;
+      for (const p of parts) sec = sec * 60 + p;
+      return Math.round(sec * 1000);
+    };
+    if (sub === "index") {
+      const ref = video.resolveRef(String(third || ""));
+      const tier = String(flags.tier || "t0");
+      const idx = video.indexT0(ref);
+      let t1: any = null;
+      if (tier === "t1") t1 = video.indexT1(ref);
+      out({
+        ...(t1 ? { t1 } : {}),
+        sidecar: video.sidecarDir(ref.media),
+        duration_ms: idx.probe.duration_ms,
+        shots: idx.shots.length,
+        transcript: idx.transcript ? `${idx.transcript.model} (${idx.transcript.words.length} words, ${idx.transcript.timing})` : null,
+        ocr_frames: idx.ocr.length,
+        events: idx.events?.source ?? null,
+      });
+      process.exit(0);
+    }
+    if (sub === "find") {
+      const q = rest.slice(2).filter((x) => !x.startsWith("-")).join(" ");
+      const inRef = String(flags.in || "");
+      if (!q || !inRef) { console.error('usage: reactable video find "<query>" --in <take-id|path>'); process.exit(1); }
+      out(video.find(video.resolveRef(inRef), q));
+      process.exit(0);
+    }
+    if (sub === "at") {
+      if (!third || !fourth) { console.error("usage: reactable video at <ref> <ms|mm:ss>"); process.exit(1); }
+      out(video.at(video.resolveRef(String(third)), parseMs(String(fourth))));
+      process.exit(0);
+    }
+    if (sub === "tracks") {
+      if (!third) { console.error("usage: reactable video tracks <ref> [--concept \"…\"]"); process.exit(1); }
+      const ref = video.resolveRef(String(third));
+      video.readIndex(ref);
+      const concept = String(flags.concept || "").toLowerCase();
+      const tracks = video.readTracks(ref).filter((t) => !concept || t.concept?.toLowerCase().includes(concept));
+      out({ tracks, note: tracks.length ? undefined : "no tracklets — queue one: reactable video pass <ref> sam31 --concept \"…\"" });
+      process.exit(0);
+    }
+    if (sub === "sweep") {
+      out(video.sweep());
+      process.exit(0);
+    }
+    if (sub === "pass") {
+      if (!third || !fourth) { console.error("usage: reactable video pass <ref> <sam31|depth|matte> [--concept \"…\"]"); process.exit(1); }
+      const params: Record<string, unknown> = {};
+      if (flags.concept) params.concept = String(flags.concept);
+      out(video.requestPass(video.resolveRef(String(third)), String(fourth), params));
+      process.exit(0);
+    }
+    console.error("video verbs: index · find · at · tracks · pass   (footage intel — docs/PLAN.footage-intel.work)");
     process.exit(1);
   }
 
