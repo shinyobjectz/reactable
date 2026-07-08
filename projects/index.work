@@ -8,57 +8,74 @@ client :projects do
   <style>
     * { box-sizing: border-box; margin: 0; }
     html, body { height: 100%; background: #141414; color: #e7e7e7; font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; user-select: none; }
-    .wrap { display: flex; flex-direction: column; height: 100vh; }
-    .switcher { padding: 8px 10px 6px; }
-    .switch-row { display: flex; gap: 8px; }
-    .current { flex: 1 1 0; min-width: 0; overflow: hidden; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px; background: #1d1d1d; cursor: pointer; }
-    .current:hover { background: #222; }
-    .status { position: relative; }
-    .status { flex-shrink: 0; }
-    .status > button { display: flex; align-items: center; gap: 6px; height: 100%; padding: 0 12px; border: 0; border-radius: 10px; background: #1d1d1d; color: #d4d4d4; font: 600 11px inherit; cursor: pointer; text-transform: capitalize; }
-    .status .dot { width: 8px; height: 8px; border-radius: 50%; }
-    .status .menu { display: none; position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; background: #202020; border-radius: 10px; padding: 4px; min-width: 130px; box-shadow: 0 12px 30px rgba(0,0,0,.5); }
+    .wrap { display: flex; flex-direction: column; height: 100vh; min-width: 0; }
+
+    /* header: project selector + status, wraps instead of clipping */
+    .switcher { padding: 6px 8px 4px; }
+    .switch-row { display: flex; gap: 6px; flex-wrap: wrap; min-width: 0; }
+    .current { flex: 1 1 120px; min-width: 0; display: flex; align-items: center; gap: 7px; padding: 9px 10px; border-radius: 10px; background: #1b1b1b; cursor: pointer; }
+    .current .name { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .current .chev { color: #6f6f6f; flex-shrink: 0; transition: transform .15s; }
+    .current.open .chev { transform: rotate(180deg); }
+    .current:hover .name { color: #fff; }
+
+    .status { position: relative; flex-shrink: 0; }
+    .status > button { display: flex; align-items: center; gap: 6px; height: 100%; min-height: 34px; padding: 0 10px; border: 0; border-radius: 10px; background: #1b1b1b; color: #c9c9c9; font: 600 11px inherit; cursor: pointer; text-transform: capitalize; }
+    .status > button:hover { color: #fff; }
+    .status .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .status .menu { display: none; position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; background: #212121; border-radius: 10px; padding: 4px; min-width: 124px; box-shadow: 0 12px 30px rgba(0,0,0,.5); }
     .status .menu.open { display: block; }
     .status .menu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border: 0; border-radius: 7px; background: none; color: #d4d4d4; font: 12px inherit; cursor: pointer; text-transform: capitalize; }
-    .status .menu button:hover { background: #2a2a2a; }
-    .current .name { flex: 1; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .current .chev { color: #6f6f6f; transition: transform .15s; }
-    .current.open .chev { transform: rotate(180deg); }
-    .stagebar { padding: 6px 2px 0; }
+    .status .menu button:hover { color: #fff; }
+
+    /* pick mode: the panel becomes the project list */
     .plist { display: none; }
-    body.pick .plist { display: block; flex: 1; overflow-y: auto; padding: 0 10px 10px; }
-    body.pick .search, body.pick .files, body.pick .drop-hint, body.pick .stagebar { display: none !important; }
-    .prow { border-radius: 9px; }
-    .prow { display: flex; align-items: center; gap: 8px; padding: 9px 12px; cursor: pointer; }
-    .prow:hover { background: #222; }
-    .prow .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .chip { font: 600 9px/1 ui-monospace, monospace; letter-spacing: .06em; text-transform: uppercase; padding: 4px 7px; border-radius: 999px; color: #9a9a9a; background: #242424; cursor: pointer; flex-shrink: 0; }
-    .chip:hover { color: #fff; }
+    body.pick .plist { display: block; flex: 1; overflow-y: auto; padding: 2px 8px 8px; }
+    body.pick .search, body.pick .files, body.pick .drop-hint { display: none !important; }
+    .prow { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 9px; cursor: pointer; min-width: 0; }
+    .prow .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .prow:hover .name { color: #fff; }
     .prow.new { color: #8a8a8a; }
-    .search { display: flex; gap: 8px; padding: 4px 10px 8px; }
-    .searchbox { flex: 1; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 10px; background: #1d1d1d; }
-    .searchbox svg { width: 14px; height: 14px; stroke: #6f6f6f; fill: none; stroke-width: 1.8; flex-shrink: 0; }
-    .searchbox input { flex: 1; padding: 9px 0; border: 0; background: none; color: #fff; font: inherit; outline: none; }
-    .addbtn { flex-shrink: 0; width: 36px; border: 0; border-radius: 10px; background: #1d1d1d; color: #9a9a9a; font-size: 17px; cursor: pointer; }
-    .addbtn:hover { color: #fff; background: #242424; }
-    .files { flex: 1; overflow-y: auto; padding: 0 10px 10px; }
-    .group { font: 600 10px/1 ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; color: #6f6f6f; padding: 12px 4px 6px; }
-    .file { display: flex; align-items: center; gap: 9px; padding: 8px 9px; border-radius: 9px; }
-    .file:hover { background: #1a1a1a; }
-    .empty:hover, .files:hover { background: transparent; }
-    .file svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: .7; flex-shrink: 0; }
-    .file .fname { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; }
-    .file .sub { color: #6b6b6b; font-size: 10.5px; flex-shrink: 0; }
-    .file .more { border: 0; background: none; color: #6f6f6f; cursor: pointer; font-size: 15px; }
+    .prow.new:hover { color: #fff; }
+
+    /* search + add */
+    .search { display: flex; gap: 6px; padding: 2px 8px 6px; min-width: 0; }
+    .searchbox { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; padding: 0 10px; border-radius: 10px; background: #1b1b1b; }
+    .searchbox svg { width: 13px; height: 13px; stroke: #6f6f6f; fill: none; stroke-width: 1.8; flex-shrink: 0; }
+    .searchbox input { flex: 1; min-width: 0; padding: 9px 0; border: 0; background: none; color: #fff; font: inherit; outline: none; }
+    .addbtn { flex-shrink: 0; width: 34px; border: 0; border-radius: 10px; background: #1b1b1b; color: #9a9a9a; font-size: 16px; cursor: pointer; }
+    .addbtn:hover { color: #fff; }
+
+    /* files: text/icon hover only — backgrounds never change */
+    .files { flex: 1; min-height: 0; overflow-y: auto; padding: 0 8px 8px; display: flex; flex-direction: column; }
+    .group { font: 600 10px/1 ui-monospace, monospace; letter-spacing: .1em; text-transform: uppercase; color: #6f6f6f; padding: 10px 4px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .file { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; min-width: 0; }
+    .file svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: .6; flex-shrink: 0; }
+    .file .fname { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; color: #c9c9c9; }
+    .file:hover .fname { color: #fff; }
+    .file .sub { color: #5c5c5c; font-size: 10px; flex-shrink: 0; }
+    .file .more { border: 0; background: none; color: #565656; cursor: pointer; font-size: 14px; flex-shrink: 0; }
     .file .more:hover { color: #fff; }
-    .note { display: none; padding: 2px 9px 8px 33px; }
+    .note { display: none; padding: 2px 8px 8px 30px; }
     .note.open { display: block; }
-    .note textarea { width: 100%; min-height: 40px; background: #1d1d1d; border: 0; border-radius: 8px; color: #ddd; font: 12px/1.4 inherit; padding: 7px 9px; resize: vertical; }
-    .files { display: flex; flex-direction: column; }
-    .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; margin: 8px 2px; color: #565656; font-size: 12px; text-align: center; border: 1.5px dashed #2e2e2e; border-radius: 12px; padding: 24px; }
-    .empty button { border: 0; border-radius: 8px; padding: 8px 16px; background: #242424; color: #d4d4d4; font: 600 12px inherit; cursor: pointer; }
-    .empty button:hover { background: #2e2e2e; color: #fff; }
-    .drop-hint { color: #444; font-size: 11px; text-align: center; padding: 8px; }
+    .note textarea { width: 100%; min-height: 40px; background: #1b1b1b; border: 0; border-radius: 8px; color: #ddd; font: 12px/1.4 inherit; padding: 7px 9px; resize: vertical; }
+
+    .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; margin: 6px 2px; color: #565656; font-size: 12px; text-align: center; border: 1.5px dashed #2b2b2b; border-radius: 12px; padding: 18px 10px; }
+    .empty button { border: 0; border-radius: 8px; padding: 8px 14px; background: #222; color: #d4d4d4; font: 600 12px inherit; cursor: pointer; }
+    .empty button:hover { color: #fff; }
+    .drop-hint { color: #3d3d3d; font-size: 10.5px; text-align: center; padding: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* tiny widths: dot-only status, tighter paddings, hints go */
+    @media (max-width: 250px) {
+      .status > button span:last-child { display: none; }
+      .switcher, .search, .files { padding-left: 5px; padding-right: 5px; }
+      .drop-hint { display: none; }
+      .file .sub { display: none; }
+    }
+    @media (max-width: 190px) {
+      .addbtn { display: none; }
+      .current { padding: 9px 8px; }
+    }
   </style>
   <div class="wrap">
     <div class="switcher">
