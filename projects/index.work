@@ -10,14 +10,14 @@ client :projects do
        max-width — this is an app panel, take the full viewport */
     #index-work, section.file { all: unset; display: block; width: 100%; max-width: none; margin: 0; padding: 0; }
     * { box-sizing: border-box; margin: 0; }
-    html, body { height: 100%; background: #141414; color: #e7e7e7; font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; user-select: none; }
+    html, body { height: 100%; background: var(--rt-bg-root, #141414); color: #e7e7e7; font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; user-select: none; }
     .wrap { display: flex; flex-direction: column; height: 100vh; min-width: 0; }
 
     /* header: project selector + status, wraps instead of clipping */
     .switcher { padding: 6px 8px 4px; }
     .switch-row { display: flex; gap: 6px; flex-wrap: wrap; min-width: 0; }
     .switch-row { }
-    .current { flex: 1 1 100%; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 7px 7px 7px 11px; border-radius: 10px; background: #1b1b1b; cursor: pointer; }
+    .current { flex: 1 1 100%; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 7px 7px 7px 11px; border-radius: var(--rt-radius-inner, 10px); background: #1b1b1b; cursor: pointer; }
     .current .name { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .current .chev { color: #6f6f6f; flex-shrink: 0; transition: transform .15s; }
     .current.open .chev { transform: rotate(180deg); }
@@ -36,7 +36,7 @@ client :projects do
     .plist { display: none; }
     body.pick .plist { display: block; flex: 1; overflow-y: auto; padding: 2px 8px 8px; }
     body.pick .search, body.pick .files, body.pick .drop-hint { display: none !important; }
-    .prow { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 9px; cursor: pointer; min-width: 0; }
+    .prow { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: var(--rt-radius-control, 8px); cursor: pointer; min-width: 0; }
     .prow .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .prow:hover .name { color: #fff; }
     .prow.new { color: #8a8a8a; }
@@ -44,15 +44,15 @@ client :projects do
 
     /* search + add */
     .search { display: flex; gap: 6px; padding: 2px 8px 6px; min-width: 0; }
-    .searchbox { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; padding: 0 10px; border-radius: 10px; background: #1b1b1b; }
+    .searchbox { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; padding: 0 10px; border-radius: var(--rt-radius-inner, 10px); background: #1b1b1b; }
     .searchbox svg { width: 13px; height: 13px; stroke: #6f6f6f; fill: none; stroke-width: 1.8; flex-shrink: 0; }
     .searchbox input { flex: 1; min-width: 0; padding: 9px 0; border: 0; background: none; color: #fff; font: inherit; outline: none; }
-    .addbtn { flex-shrink: 0; width: 34px; border: 0; border-radius: 10px; background: #1b1b1b; color: #9a9a9a; font-size: 16px; cursor: pointer; }
+    .addbtn { flex-shrink: 0; width: 34px; border: 0; border-radius: var(--rt-radius-inner, 10px); background: #1b1b1b; color: #9a9a9a; font-size: 16px; cursor: pointer; }
     .addbtn:hover { color: #fff; }
 
     /* files: GRID of cards; hover brightens text only */
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; padding: 4px 0 8px; }
-    .card { border-radius: 10px; overflow: hidden; background: #1b1b1b; cursor: default; min-width: 0; }
+    .card { border-radius: var(--rt-radius-inner, 10px); overflow: hidden; background: #1b1b1b; cursor: default; min-width: 0; }
     .card .thumb { aspect-ratio: 16/10; background: #202020; display: flex; align-items: center; justify-content: center; overflow: hidden; }
     .card .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .card .thumb svg { width: 22px; height: 22px; stroke: #4a4a4a; fill: none; stroke-width: 1.5; }
@@ -61,24 +61,31 @@ client :projects do
     .card:hover .fname { color: #fff; }
     .card .more { border: 0; background: none; color: #565656; cursor: pointer; font-size: 13px; flex-shrink: 0; }
     .card .more:hover { color: #fff; }
+    /* footage-intel badge (B3) */
+    .card .fb { flex-shrink: 0; font: 9px ui-monospace, monospace; padding: 1px 6px; border-radius: 999px; letter-spacing: .02em; }
+    .card .fb.on { background: #1e1b4b; color: #a5b4fc; }
+    .card .fb.edit { background: #134e2e; color: #86efac; }
+    .card .fb.off { color: #55555a; border: 1px solid #2c2c30; }
+    .ctxmenu .sep { height: 1px; background: #2e2e32; margin: 4px 6px; }
+    .ctxmenu .fx { color: #c7d2fe; }
     .dlg { position: fixed; inset: 0; z-index: 80; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; }
-    .dlg-box { width: min(300px, 86vw); background: #222; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 18px 50px rgba(0,0,0,.6); }
+    .dlg-box { width: min(300px, 86vw); background: #222; border-radius: var(--rt-radius-inner, 10px); padding: 16px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 18px 50px rgba(0,0,0,.6); }
     .dlg-t { font-weight: 600; }
     .dlg-s { color: #8a8a8a; font-size: 12px; }
     .dlg-skip { display: flex; align-items: center; gap: 7px; color: #9a9a9a; font-size: 12px; cursor: pointer; }
     .dlg-row { display: flex; gap: 8px; justify-content: flex-end; }
-    .dlg-row button { border: 0; border-radius: 8px; padding: 8px 14px; font: 600 12px inherit; cursor: pointer; }
+    .dlg-row button { border: 0; border-radius: var(--rt-radius-control, 8px); padding: 8px 14px; font: 600 12px inherit; cursor: pointer; }
     .dlg-row .c { background: #2c2c2c; color: #d4d4d4; }
     .dlg-row .del { background: #dc2626; color: #fff; }
-    .dlg-in { width: 100%; padding: 10px 12px; border: 0; border-radius: 9px; background: #141414; color: #fff; font: 12.5px ui-monospace, monospace; outline: none; }
-    .addmenu, .ctxmenu { position: fixed; z-index: 60; background: #222; border-radius: 10px; padding: 4px; min-width: 150px; box-shadow: 0 14px 34px rgba(0,0,0,.55); display: none; }
+    .dlg-in { width: 100%; padding: 10px 12px; border: 0; border-radius: var(--rt-radius-control, 8px); background: #141414; color: #fff; font: 12.5px ui-monospace, monospace; outline: none; }
+    .addmenu, .ctxmenu { position: fixed; z-index: 60; background: #222; border-radius: var(--rt-radius-inner, 10px); padding: 4px; min-width: 150px; box-shadow: 0 14px 34px rgba(0,0,0,.55); display: none; }
     .addmenu.open, .ctxmenu.open { display: block; }
     .addmenu button, .ctxmenu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: 0; border-radius: 7px; background: none; color: #d4d4d4; font: 12px inherit; cursor: pointer; }
     .addmenu button:hover, .ctxmenu button:hover { color: #fff; background: #2b2b2b; }
     /* files: text/icon hover only — backgrounds never change */
     .files { flex: 1; min-height: 0; overflow-y: auto; padding: 0 8px 8px; display: flex; flex-direction: column; }
     .group { font: 600 10px/1 ui-monospace, monospace; letter-spacing: .1em; text-transform: uppercase; color: #6f6f6f; padding: 10px 4px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .fitem { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; min-width: 0; }
+    .fitem { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: var(--rt-radius-control, 8px); min-width: 0; }
     .fitem svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: .6; flex-shrink: 0; }
     .fitem .fname { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; color: #c9c9c9; }
     .fitem:hover .fname { color: #fff; }
@@ -206,6 +213,40 @@ client :projects do
       list.appendChild(add);
     }
 
+    // footage-intel: which cards are video-like (can be indexed / edited)
+    const isFootage = (f) => f.icon === 'video' || f.icon === 'take';
+
+    function footageBadge(f) {
+      if (!isFootage(f)) return '';
+      const it = f.intel;
+      if (!it) return `<span class="fb off" title="not indexed">○</span>`;
+      const tracks = it.tracks ? Object.keys(it.tracks) : [];
+      if (it.editAssets) return `<span class="fb edit" title="indexed · ${it.editAssets} edit asset(s)">▶ ${it.editAssets}</span>`;
+      if (tracks.length) return `<span class="fb on" title="tracked: ${tracks.join(', ')}">◆ ${tracks[0]}</span>`;
+      return `<span class="fb on" title="indexed">● indexed</span>`;
+    }
+
+    function ctxMenuHtml(f) {
+      let fx = '';
+      if (isFootage(f)) {
+        const it = f.intel;
+        const items = [];
+        if (!it) items.push(`<button class="fx" data-act="fx-index">Index footage</button>`);
+        if (it) {
+          items.push(`<button class="fx" data-act="fx-find">Find in video…</button>`);
+          items.push(`<button class="fx" data-act="fx-track">Track a concept…</button>`);
+          if (f.icon === 'take') items.push(`<button class="fx" data-act="fx-autoedit">Auto-edit take</button>`);
+          items.push(`<button class="fx" data-act="fx-timeline">Open intel timeline</button>`);
+        }
+        fx = items.join('') + `<div class="sep"></div>`;
+      }
+      return fx +
+        `<button data-act="reveal">Reveal in Finder</button>` +
+        `<button data-act="note">Add context note</button>` +
+        `<button data-act="copy">Copy path</button>` +
+        `<button data-act="delete" style="color:#f87171">Delete</button>`;
+    }
+
     function renderFiles() {
       const q = document.getElementById('q').value.trim().toLowerCase();
       const box = document.getElementById('files');
@@ -220,8 +261,9 @@ client :projects do
           const thumb = f.thumb
             ? `<img src="${f.thumb}" draggable="false"/>`
             : (ICONS[f.icon] || ICONS.file);
+          const badge = footageBadge(f);
           card.innerHTML = `<div class="thumb">${thumb}</div>
-            <div class="meta"><span class="fname" title="${f.name}">${f.name}</span><button class="more">⋯</button></div>`;
+            <div class="meta"><span class="fname" title="${f.name}">${f.name}</span>${badge}<button class="more">⋯</button></div>`;
           const note = document.createElement('div');
           note.className = 'note';
           note.innerHTML = `<textarea placeholder="Context note for the agent…">${data.notes[f.path] || ''}</textarea>`;
@@ -232,17 +274,20 @@ client :projects do
           };
           const openCtx = (x, y) => {
             const m = document.getElementById('ctxmenu');
+            m.innerHTML = ctxMenuHtml(f);
             m.classList.add('open');
-            m.style.left = Math.min(x, innerWidth - 160) + 'px';
-            m.style.top = Math.min(y, innerHeight - 120) + 'px';
+            m.style.left = Math.min(x, innerWidth - 170) + 'px';
+            m.style.top = Math.min(y, innerHeight - 190) + 'px';
             m.dataset.path = f.path;
             m._note = note;
+            m._f = f;
           };
           card.querySelector('.more').onclick = (e) => { e.stopPropagation(); openCtx(e.clientX, e.clientY); };
           card.addEventListener('contextmenu', (e) => { e.preventDefault(); openCtx(e.clientX, e.clientY); });
+          // Double-click = preview, for every asset kind. The one preview
+          // window opens it as a tab (notes live in the context menu).
           card.addEventListener('dblclick', () => {
-            if (f.path.startsWith('takes/')) send('projects.preview', { path: f.path });
-            else note.classList.toggle('open');
+            send('projects.preview', { path: f.path, icon: f.icon || '' });
           });
           grid.appendChild(card);
           grid.appendChild(note);
@@ -281,10 +326,17 @@ client :projects do
       const m = e.currentTarget;
       const act = e.target.dataset?.act;
       if (!act) return;
-      if (act === 'reveal') send('projects.reveal', { path: m.dataset.path });
+      const path = m.dataset.path;
+      if (act === 'reveal') send('projects.reveal', { path });
       if (act === 'note') m._note?.classList.add('open');
-      if (act === 'copy') navigator.clipboard?.writeText(m.dataset.path);
-      if (act === 'delete') requestDelete(m.dataset.path);
+      if (act === 'copy') navigator.clipboard?.writeText(path);
+      if (act === 'delete') requestDelete(path);
+      // footage-intel actions → hand off to the agent chat / preview
+      if (act === 'fx-index') send('projects.videoaction', { path, action: 'index' });
+      if (act === 'fx-find') send('projects.videoaction', { path, action: 'find' });
+      if (act === 'fx-track') send('projects.videoaction', { path, action: 'track' });
+      if (act === 'fx-autoedit') send('projects.videoaction', { path, action: 'autoedit' });
+      if (act === 'fx-timeline') send('projects.preview', { path, icon: 'intel' });
       m.classList.remove('open');
     };
     // WKWebView has no native confirm()/prompt() — in-page dialogs instead.

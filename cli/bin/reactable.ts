@@ -63,6 +63,15 @@ import { minimaxChat, minimaxKey } from "../lib/minimax.ts";
 import { CONNECTORS, connectorStatus, setConnector } from "../lib/connectors.ts";
 import * as intel from "../lib/intel.ts";
 import * as video from "../lib/video.ts";
+import { compose, motionPlan, renderMatte } from "../lib/matte.ts";
+import { autoEdit } from "../lib/autoedit.ts";
+import { captureEpisode, editIntelStats } from "../lib/edit-intel.ts";
+import { decompile, writeSkeleton } from "../lib/decompile.ts";
+import { synthBatch } from "../lib/synth.ts";
+import { baselineRun } from "../lib/baseline.ts";
+import { exportDataset } from "../lib/dataset.ts";
+import { analyzeAudio } from "../lib/audio.ts";
+import { procure } from "../lib/procure.ts";
 import { getProject, listSurfaces, listResearch, addResearch } from "../lib/surface.ts";
 import { authLogin, authStatus, clearCredentials } from "../lib/auth.ts";
 import {
@@ -154,7 +163,20 @@ Usage: reactable <command> [args]
   video find "<query>" --in <ref> [--json]    text → timecodes (transcript·ocr·captions·tracks)
   video at <ref> <ms|mm:ss> [--json]          everything known at that moment
   video tracks <ref> [--concept "…"] [--json] tracklets from concept passes
-  video pass <ref> <sam31|depth|matte> [--concept "…"]  queue a GPU pass
+  video pass <ref> <sam31|depth> --concept "…" [--estimate|--run]  GPU pass (Modal L4)
+  video matte <ref> <track-id> [--apply]      luma matte + RGBA cutout from track masks
+  video motion <ref> <track-id> [--style punch-in|follow]  keyframed transform plan
+  video compose <ref> <track-id> [--bg <path|gradient>] [--out <mp4>]  finished render: cutout + bg-swap + fg punch-in
+  video stabilize <ref> [--out <mp4>] [--shakiness 1-10] [--smoothing N]  two-pass vidstab (targets shaky shots from the motion pass)
+  video similar <ref> <shot-id|ms> [--k N]    find clips like this one (V-JEPA 2 temporal similarity — run 'pass <ref> vjepa' first)
+  video autoedit <take-id> [--render]         authored edit from ground-truth events: cursor punch-ins + silence trims
+  video audio <ref>                           audio understanding: kind (speech/silence/sound) · onsets/tempo · turns
+  video decompile <ref> [--verify]            reverse a clip → abstract edit skeleton (structure kept, content stripped)
+  edit-intel [stats]                          the training flywheel: corpus of edits (specs + renders + scores)
+  synth pairs [--n N] [--seed S]              Engine A: synthetic (video↔timeline) pairs + round-trip fidelity
+  baseline <ref> [--k N]                      frozen-base go/no-go: can an off-the-shelf model emit a valid edit-skeleton?
+  dataset export [--val F]                    corpus → SFT jsonl (train: modal run gpu/modal_train.py [--run])
+  procure "<brand>" [--library fb|tiktok] [--n N] | --url <u>   real clips → skeletons → corpus (content-stripped)
   video sweep [--json]                        index everything un-indexed (takes/ + assets/)
 
   takes list [--json]
@@ -792,15 +814,144 @@ try {
       out(video.sweep());
       process.exit(0);
     }
-    if (sub === "pass") {
-      if (!third || !fourth) { console.error("usage: reactable video pass <ref> <sam31|depth|matte> [--concept \"…\"]"); process.exit(1); }
-      const params: Record<string, unknown> = {};
-      if (flags.concept) params.concept = String(flags.concept);
-      out(video.requestPass(video.resolveRef(String(third)), String(fourth), params));
+    if (sub === "matte") {
+      if (!third || !fourth) { console.error("usage: reactable video matte <ref> <track-id> [--apply]"); process.exit(1); }
+      out(renderMatte(video.resolveRef(String(third)), String(fourth), { apply: flags.apply === true }));
       process.exit(0);
     }
-    console.error("video verbs: index · find · at · tracks · pass   (footage intel — docs/PLAN.footage-intel.work)");
+    if (sub === "motion") {
+      if (!third || !fourth) { console.error("usage: reactable video motion <ref> <track-id> [--style punch-in|follow]"); process.exit(1); }
+      out(motionPlan(video.resolveRef(String(third)), String(fourth), { style: flags.style ? String(flags.style) : undefined }));
+      process.exit(0);
+    }
+    if (sub === "similar") {
+      if (!third || !fourth) { console.error("usage: reactable video similar <ref> <shot-id|ms> [--k N]  (needs: video pass <ref> vjepa --run)"); process.exit(1); }
+      out(video.similar(video.resolveRef(String(third)), String(fourth), { k: flags.k ? Number(flags.k) : undefined }));
+      process.exit(0);
+    }
+    if (sub === "stabilize") {
+      if (!third) { console.error("usage: reactable video stabilize <ref> [--out <mp4>] [--shakiness 1-10] [--smoothing N]"); process.exit(1); }
+      out(video.stabilize(video.resolveRef(String(third)), {
+        out: flags.out ? String(flags.out) : undefined,
+        shakiness: flags.shakiness ? Number(flags.shakiness) : undefined,
+        smoothing: flags.smoothing ? Number(flags.smoothing) : undefined,
+      }));
+      process.exit(0);
+    }
+    if (sub === "compose") {
+      if (!third || !fourth) { console.error("usage: reactable video compose <ref> <track-id> [--bg <path|gradient>] [--out <mp4>]"); process.exit(1); }
+      const cref = video.resolveRef(String(third));
+      const composed = compose(cref, String(fourth), {
+        bg: flags.bg ? String(flags.bg) : undefined,
+        out: flags.out ? String(flags.out) : undefined,
+      });
+      captureEpisode({
+        source: "compose",
+        take: cref.take ?? null,
+        media: cref.media,
+        sidecar: join(video.sidecarDir(cref.media), "index.json"),
+        editSpec: composed,
+        render: composed.render ?? null,
+        summary: `compose: track ${composed.track} (${composed.concept}) onto ${composed.background}${composed.foreground_window ? " + fg punch-in" : ""}`,
+        label: "gold",
+      });
+      out(composed);
+      process.exit(0);
+    }
+    if (sub === "autoedit") {
+      if (!third) { console.error("usage: reactable video autoedit <take-id> [--render]"); process.exit(1); }
+      const plan = autoEdit(String(third), { render: flags.render === true });
+      const stage = join(takePath(String(third)), "stage.mov");
+      captureEpisode({
+        source: "autoedit",
+        take: String(third),
+        media: existsSync(stage) ? stage : null,
+        sidecar: join(video.sidecarDir(stage), "index.json"),
+        editSpec: plan,
+        render: (plan as any).render ?? null,
+        summary: `autoedit: ${plan.punches?.length ?? 0} punch-ins, trimmed ${plan.trimmed_ms ?? 0}ms, ${plan.chapters?.length ?? 0} chapters`,
+        label: "gold",
+      });
+      out(plan);
+      process.exit(0);
+    }
+    if (sub === "audio") {
+      if (!third) { console.error("usage: reactable video audio <ref>   (audio-kind · onsets/tempo · speech turns → sidecar)"); process.exit(1); }
+      out(analyzeAudio(video.resolveRef(String(third))));
+      process.exit(0);
+    }
+    if (sub === "decompile") {
+      if (!third) { console.error("usage: reactable video decompile <ref> [--verify]   (→ edit skeleton, structure kept / content stripped)"); process.exit(1); }
+      const dref = video.resolveRef(String(third));
+      const skel = decompile(dref, { verify: flags.verify === true });
+      const p = writeSkeleton(dref, skel);
+      out({ ...skel, skeleton: p });
+      process.exit(0);
+    }
+    if (sub === "pass") {
+      if (!third || !fourth) { console.error("usage: reactable video pass <ref> <sam31|depth|matte> [--box \"x,y,w,h\" --label \"…\"] [--sample-fps N] [--max-frames N] [--run|--estimate]"); process.exit(1); }
+      const ref = video.resolveRef(String(third));
+      if (flags.estimate === true) { out(video.estimatePass(ref, String(fourth))); process.exit(0); }
+      const params: Record<string, unknown> = {};
+      // sam31 tracking = EdgeTAM box-prompt (box the subject on the first frame)
+      if (flags.box) params.box = String(flags.box);
+      if (flags.label) params.label = String(flags.label);
+      if (flags.concept) params.concept = String(flags.concept); // legacy alias → label
+      if (flags["sample-fps"]) params["sample-fps"] = String(flags["sample-fps"]);
+      if (flags["max-frames"]) params["max-frames"] = String(flags["max-frames"]);
+      out(video.requestPass(ref, String(fourth), params, flags.run === true));
+      process.exit(0);
+    }
+    console.error("video verbs: index · find · at · tracks · pass · matte · motion · compose · autoedit · audio · decompile · sweep   (footage intel — docs/PLAN.footage-intel.work)");
     process.exit(1);
+  }
+
+  if (cmd === "edit-intel") {
+    const emit = (v: unknown) => console.log(Boolean(flags.json) ? JSON.stringify(v) : JSON.stringify(v, null, 2));
+    if (!sub || sub === "stats") {
+      emit(editIntelStats());
+      process.exit(0);
+    }
+    console.error("edit-intel verbs: stats   (the training flywheel — docs/PLAN.omni-editing-model.work)");
+    process.exit(1);
+  }
+
+  if (cmd === "synth") {
+    const emit = (v: unknown) => console.log(Boolean(flags.json) ? JSON.stringify(v) : JSON.stringify(v, null, 2));
+    if (!sub || sub === "pairs") {
+      emit(synthBatch(flags.seed ? Number(flags.seed) : 1, flags.n ? Number(flags.n) : 3));
+      process.exit(0);
+    }
+    console.error("synth verbs: pairs [--n N] [--seed S]   (Engine A — synthetic (video↔timeline) training pairs)");
+    process.exit(1);
+  }
+
+  if (cmd === "procure") {
+    const report = await procure({
+      url: flags.url ? String(flags.url) : undefined,
+      query: !flags.url ? (sub ? String(sub) : flags.query ? String(flags.query) : undefined) : undefined,
+      library: flags.library ? String(flags.library) : undefined,
+      n: flags.n ? Number(flags.n) : undefined,
+    });
+    console.log(Boolean(flags.json) ? JSON.stringify(report) : JSON.stringify(report, null, 2));
+    process.exit(0);
+  }
+
+  if (cmd === "dataset") {
+    const emit = (v: unknown) => console.log(Boolean(flags.json) ? JSON.stringify(v) : JSON.stringify(v, null, 2));
+    if (!sub || sub === "export") {
+      emit(exportDataset({ valFrac: flags.val ? Number(flags.val) : undefined }));
+      process.exit(0);
+    }
+    console.error("dataset verbs: export [--val F]   (corpus → SFT jsonl; then train: modal run gpu/modal_train.py)");
+    process.exit(1);
+  }
+
+  if (cmd === "baseline") {
+    if (!sub) { console.error("usage: reactable baseline <ref> [--k N] [--model <id>]   (frozen-base go/no-go — §9-P3)"); process.exit(1); }
+    const report = await baselineRun(video.resolveRef(String(sub)), { k: flags.k ? Number(flags.k) : 3, model: flags.model ? String(flags.model) : undefined });
+    console.log(Boolean(flags.json) ? JSON.stringify(report) : JSON.stringify(report, null, 2));
+    process.exit(0);
   }
 
   if (cmd === "connect") {

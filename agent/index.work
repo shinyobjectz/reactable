@@ -279,7 +279,7 @@ client :agent do
     .menu-btn { width: 30px; height: 30px; margin-left: auto; border: 1px solid #2c2c2c; border-radius: 8px; background: #141414; color: #b3b3b3; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
     .menu-btn:hover { color: #fff; border-color: #3d3d3d; }
     .menu-btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; }
-    #menu { position: absolute; top: 52px; right: 12px; z-index: 40; width: 300px; max-height: 70vh; overflow-y: auto; background: #0f0f0f; border: 1px solid #2a2a2a; border-radius: 12px; box-shadow: 0 18px 50px rgba(0,0,0,.6); padding: 6px; }
+    #menu { position: absolute; top: 52px; right: 12px; z-index: 40; width: 300px; max-height: 70vh; overflow-y: auto; background: #0f0f0f; border: 1px solid #2a2a2a; border-radius: var(--rt-radius-inner, 10px); box-shadow: 0 18px 50px rgba(0,0,0,.6); padding: 6px; }
     .menu-title { font: 600 10px/1 ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; color: #6f6f6f; padding: 10px 10px 6px; }
     .menu-section + .menu-section { border-top: 1px solid #1f1f1f; margin-top: 4px; }
     .menu-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: #d4d4d4; text-decoration: none; font-size: 12.5px; }
@@ -323,6 +323,30 @@ client :agent do
     .tsum { color: #6f6f6f; }
     @keyframes chipPulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
     .tchip { font: 10px ui-monospace, monospace; color: #9a9a9a; background: #1d1d1d; padding: 4px 8px; border-radius: 999px; }
+    /* Footage intel cards (B2) */
+    .fcard { background: #17171a; border: 1px solid #262629; border-radius: 12px; padding: 12px 14px; margin-top: 2px; }
+    .fcard .fc-h { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: #e7e7ea; }
+    .fcard .fc-h .fc-badge { font: 10px ui-monospace, monospace; color: #c7d2fe; background: #1e1b4b; padding: 2px 8px; border-radius: 999px; font-weight: 500; }
+    .fcard .fc-sub { color: #8a8a90; font-size: 11.5px; margin-top: 3px; }
+    .fstrip { display: flex; gap: 6px; overflow-x: auto; margin-top: 10px; }
+    .fstrip img { height: 58px; border-radius: 6px; flex: 0 0 auto; cursor: pointer; background: #0d0d0f; }
+    .fstrip img:hover { outline: 2px solid #6366f1; }
+    .fhits { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+    .fhit { display: flex; gap: 8px; align-items: baseline; font-size: 12px; cursor: pointer; padding: 4px 6px; border-radius: 7px; }
+    .fhit:hover { background: #1f1f23; }
+    .fhit .ftc { font: 11px ui-monospace, monospace; color: #a5b4fc; flex: 0 0 auto; }
+    .fhit .fsrc { font: 9px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .04em; padding: 1px 6px; border-radius: 999px; flex: 0 0 auto; }
+    .fsrc.transcript { background: #14532d; color: #bbf7d0; } .fsrc.ocr { background: #422006; color: #fed7aa; }
+    .fsrc.visual { background: #1e1b4b; color: #c7d2fe; } .fsrc.caption { background: #3b0764; color: #e9d5ff; }
+    .fsrc.track, .fsrc[class*="track"] { background: #4a044e; color: #f5d0fe; }
+    .fhit .fq { color: #c4c4c8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fcard video { width: 100%; border-radius: 8px; margin-top: 10px; background: #000; max-height: 260px; }
+    .fc-row { display: flex; gap: 8px; margin-top: 10px; }
+    .fc-row button { border: 0; border-radius: 8px; padding: 6px 12px; font: 600 11.5px inherit; cursor: pointer; background: #262624; color: #d4d4d4; }
+    .fc-row button.primary { background: #e9e7e2; color: #101010; }
+    .fpills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+    .fpill { background: #1e1b4b; color: #c7d2fe; font-size: 11.5px; padding: 3px 10px; border-radius: 999px; }
+    .ap-cost { font: 11px ui-monospace, monospace; color: #fca5a5; }
     /* de-stroke: one seamless surface, elevation by tone only */
     .composer, .composer:focus-within { border: 0; background: #1d1d1d; box-shadow: none; }
     .composer-bar { border-top: 0; }
@@ -373,7 +397,89 @@ client :agent do
     }
 
     function escapeHtml(s) {
-      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // Ask native to open a preview surface (video path or intel timeline).
+    const nativeOpen = (action, payload) => sendNative(action, payload);
+
+    // Footage intel AI-element cards (B2). Rendered from tool.result .card.
+    function renderFootageCard(card) {
+      const w = document.createElement('div');
+      w.className = 'msg system';
+      const box = document.createElement('div');
+      box.className = 'fcard';
+      const ref = card.ref || '';
+
+      if (card.kind === 'footage.find') {
+        const hits = (card.hits || []).slice(0, 8);
+        box.innerHTML = `<div class="fc-h"><span class="fc-badge">find</span> "${escapeHtml(card.query || '')}" · ${hits.length} hit${hits.length === 1 ? '' : 's'}</div>`;
+        const list = document.createElement('div');
+        list.className = 'fhits';
+        hits.forEach(h => {
+          const row = document.createElement('div');
+          row.className = 'fhit';
+          const src = String(h.source || '').split('/')[0];
+          row.innerHTML = `<span class="ftc">${escapeHtml(h.tc || '')}</span><span class="fsrc ${src}">${escapeHtml(src)}</span><span class="fq">${escapeHtml(h.quote || (h.score != null ? 'match ' + h.score : ''))}</span>`;
+          row.onclick = () => nativeOpen('agent.openPreview', { ref, ms: h.t_ms });
+          list.appendChild(row);
+        });
+        box.appendChild(list);
+
+      } else if (card.kind === 'footage.render') {
+        const label = [card.track, card.window].filter(Boolean).join(' · ');
+        box.innerHTML = `<div class="fc-h"><span class="fc-badge">render</span> ${escapeHtml(card.summary || 'render ready')}</div>` +
+          (label ? `<div class="fc-sub">${escapeHtml(label)}</div>` : '');
+        if (card.preview) {
+          const v = document.createElement('video');
+          v.src = card.preview; v.controls = true; v.preload = 'metadata';
+          if (card.poster) v.poster = card.poster;
+          box.appendChild(v);
+        }
+        const row = document.createElement('div');
+        row.className = 'fc-row';
+        row.innerHTML = `<button class="primary">Open in preview</button><button class="addbtn">Add to assets</button>`;
+        row.querySelector('.primary').onclick = () => nativeOpen('agent.openPreview', { path: card.render });
+        row.querySelector('.addbtn').onclick = () => nativeOpen('agent.addAsset', { path: card.render });
+        box.appendChild(row);
+
+      } else if (card.kind === 'footage.index') {
+        box.innerHTML = `<div class="fc-h"><span class="fc-badge">indexed</span> ${escapeHtml(ref.split('/').pop())}</div>` +
+          `<div class="fc-sub">${card.shots || 0} shots${card.words != null ? ' · ' + card.words + ' words' : ''}</div>`;
+        if ((card.thumbs || []).length) {
+          const strip = document.createElement('div');
+          strip.className = 'fstrip';
+          card.thumbs.forEach((t) => {
+            const img = document.createElement('img');
+            img.src = t; img.loading = 'lazy';
+            img.onclick = () => nativeOpen('agent.openSurface', { kind: 'intel', ref });
+            strip.appendChild(img);
+          });
+          box.appendChild(strip);
+        }
+        const row = document.createElement('div');
+        row.className = 'fc-row';
+        row.innerHTML = `<button class="primary">Open timeline</button>`;
+        row.querySelector('.primary').onclick = () => nativeOpen('agent.openSurface', { kind: 'intel', ref });
+        box.appendChild(row);
+
+      } else if (card.kind === 'footage.tracks') {
+        const c = card.concepts || {};
+        const keys = Object.keys(c);
+        box.innerHTML = `<div class="fc-h"><span class="fc-badge">tracks</span> ${keys.length} concept${keys.length === 1 ? '' : 's'}</div>`;
+        if (keys.length) {
+          const pills = document.createElement('div');
+          pills.className = 'fpills';
+          keys.forEach(k => { const p = document.createElement('span'); p.className = 'fpill'; p.textContent = `${k} ×${c[k]}`; pills.appendChild(p); });
+          box.appendChild(pills);
+        }
+      } else {
+        return; // unknown card kind
+      }
+
+      w.appendChild(box);
+      log.appendChild(w);
+      log.scrollTop = log.scrollHeight;
     }
 
     // Minimal, self-contained markdown → HTML (no external libs; escapes first).
@@ -640,29 +746,43 @@ client :agent do
             el = null;
           } else if (e.type === 'tool.approval') {
             const args = e.tool?.args || {};
-            const rates = { 'omni-flash': 100, 'veo-3': 400, 'veo-3-fast': 150 };
-            const secs = args.seconds || 8;
-            const est = (rates[args.model] || 100) * secs;
+            const meta = e.meta || {};
             const decide = (d) => fetch('/reactable/agent/approve', {
               method: 'POST', headers: { 'content-type': 'application/json' },
               body: JSON.stringify({ id: e.id, decision: d }),
             });
-            if (localStorage.getItem('always-accept-gen') === '1') { decide('accept'); return; }
+            const isFootage = meta.kind === 'footage.pass';
+            if (!isFootage && localStorage.getItem('always-accept-gen') === '1') { decide('accept'); return; }
+            let title, sub;
+            if (isFootage) {
+              const usd = meta.est_usd != null ? `~$${meta.est_usd}` : 'cost tbd';
+              title = `GPU pass — ${escapeHtml(meta.kind_label || (args.cmd || '').match(/pass\s+\S+\s+(\w+)/)?.[1] || 'footage')} · ${meta.gpu || 'L4'} · <span class="ap-cost">${usd}</span>`;
+              sub = `${meta.frames != null ? meta.frames + ' frames · ' : ''}${meta.duration_s != null ? meta.duration_s + 's clip' : ''}`;
+            } else {
+              const rates = { 'omni-flash': 100, 'veo-3': 400, 'veo-3-fast': 150 };
+              const secs = args.seconds || 8;
+              const est = (rates[args.model] || 100) * secs;
+              title = `Generation request — ${escapeHtml(args.model || 'video')} · ${secs}s · ~${est.toLocaleString()} credits`;
+              sub = escapeHtml(String(args.prompt || '').slice(0, 140));
+            }
             const w = document.createElement('div');
             w.className = 'msg system approve';
-            w.innerHTML = `<div class="ap-t">Generation request — ${escapeHtml(args.model || 'video')} · ${secs}s · ~${est.toLocaleString()} credits</div>
-              <div class="ap-p">${escapeHtml(String(args.prompt || '').slice(0, 140))}</div>
-              <div class="ap-row"><button class="ap-ok">Accept</button><button class="ap-skip">Skip</button>
-              <div class="ap-more">⋯<div class="ap-menu"><button class="ap-always">Always accept generations</button></div></div></div>`;
+            w.innerHTML = `<div class="ap-t">${title}</div>
+              <div class="ap-p">${sub}</div>
+              <div class="ap-row"><button class="ap-ok">${isFootage ? 'Run' : 'Accept'}</button><button class="ap-skip">Skip</button>
+              ${isFootage ? '' : '<div class="ap-more">⋯<div class="ap-menu"><button class="ap-always">Always accept generations</button></div></div>'}</div>`;
             const done = (label) => { w.querySelector('.ap-row').innerHTML = `<span class="ap-done">${label}</span>`; };
-            w.querySelector('.ap-ok').onclick = () => { decide('accept'); done('✓ accepted'); };
+            w.querySelector('.ap-ok').onclick = () => { decide('accept'); done(isFootage ? '✓ running' : '✓ accepted'); };
             w.querySelector('.ap-skip').onclick = () => { decide('skip'); done('skipped'); };
-            w.querySelector('.ap-more').onclick = (ev) => { ev.currentTarget.classList.toggle('open'); };
-            w.querySelector('.ap-always').onclick = (ev) => {
-              ev.stopPropagation();
-              localStorage.setItem('always-accept-gen', '1');
-              decide('accept'); done('✓ accepted — always on');
-            };
+            const more = w.querySelector('.ap-more');
+            if (more) {
+              more.onclick = (ev) => { ev.currentTarget.classList.toggle('open'); };
+              w.querySelector('.ap-always').onclick = (ev) => {
+                ev.stopPropagation();
+                localStorage.setItem('always-accept-gen', '1');
+                decide('accept'); done('✓ accepted — always on');
+              };
+            }
             log.appendChild(w);
             log.scrollTop = log.scrollHeight;
           } else if (e.type === 'tool.start') {
@@ -679,6 +799,7 @@ client :agent do
               c.classList.remove('run');
               c.innerHTML = `${e.ok ? '✓' : '✗'} ${c.textContent.replace(/^⚙ /, '')}<span class="tsum"> — ${escapeHtml(String(e.summary || '').slice(0, 90))}</span>`;
             }
+            if (e.ok && e.card) renderFootageCard(e.card);
           } else if (e.type === 'reply.done') {
             es.close();
             typing.remove();
@@ -749,6 +870,15 @@ client :agent do
         sendBtn.click();
       }
     });
+
+    // Native → chat: the assets panel drops a prefilled footage prompt here.
+    window.ReactableAgent = {
+      send(text) {
+        if (!text || busy) { input.value = text || ''; resizeInput(); return; }
+        chat(String(text));
+      },
+      fill(text) { input.value = String(text || ''); resizeInput(); input.focus(); },
+    };
 
 
     // Tool prefs are edited in the Settings panel (shared localStorage).

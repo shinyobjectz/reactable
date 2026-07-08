@@ -22,13 +22,12 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
     private weak var bridge: ReactableBridgeDelegate?
     private var window: NSWindow?
 
-    /// Default-layout placement — set the window frame if it exists.
+    /// Default-layout placement — animate to the frame if the window's onscreen.
     func place(frame: NSRect) {
-        window?.setFrame(frame, display: true)
+        window?.setFrame(frame, display: true, animate: window?.isVisible ?? false)
     }
     private var webView: WKWebView?
     private var previewFrame: NSView?
-    private var tabBar: TabBarView?
     private var stripTitle: NSTextField?
     private var savedFrame: NSRect?
     private var rootView: NSView?
@@ -37,10 +36,9 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
     private let defaultContent = NSSize(width: 1280, height: 720)
     var onEvent: ((String, [String: Any]) -> Void)?
 
-    // Open surfaces (tabs) + the active one.
-    private var surfaces: [StageSurface] = []
-    var openSurfaces: [StageSurface] { surfaces }
-    private var activeIndex = 0
+    // Open surfaces (tabs) + the active one — shared strip machinery.
+    private let tabs = SurfaceTabStrip()
+    var openSurfaces: [StageSurface] { tabs.surfaces }
 
     /// The window that hosts the stage content right now — the panel's own
     /// float OR the dock group it's docked into. Capture binds to this.
@@ -67,37 +65,26 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         self.port = port
         self.deckSlug = deck
         self.bridge = bridge
+        super.init()
+        tabs.onActivate = { [weak self] s in
+            guard let self else { return }
+            if s.kind == "deck" { deckSlug = s.ref }
+            loadActive()
+        }
+        tabs.onEmpty = { [weak self] in self?.hide() }
     }
 
     /// Open (or focus) a surface as a tab and make it active.
     func openSurface(_ s: StageSurface) {
-        if s.kind == "deck" { deckSlug = s.ref }
-        if let idx = surfaces.firstIndex(where: { $0.key == s.key }) {
-            activeIndex = idx
-        } else {
-            surfaces.append(s)
-            activeIndex = surfaces.count - 1
-        }
-        rebuildTabs()
-        loadActive()
+        tabs.open(s)
     }
 
     func activateSurface(key: String) {
-        guard let idx = surfaces.firstIndex(where: { $0.key == key }) else { return }
-        activeIndex = idx
-        if surfaces[idx].kind == "deck" { deckSlug = surfaces[idx].ref }
-        rebuildTabs()
-        loadActive()
+        tabs.activate(key: key)
     }
 
     func closeSurface(key: String) {
-        guard let idx = surfaces.firstIndex(where: { $0.key == key }) else { return }
-        surfaces.remove(at: idx)
-        if surfaces.isEmpty { hide(); return }
-        activeIndex = min(activeIndex, surfaces.count - 1)
-        if let deck = surfaces[safe: activeIndex], deck.kind == "deck" { deckSlug = deck.ref }
-        rebuildTabs()
-        loadActive()
+        tabs.close(key: key)
     }
 
     func loadDeck(_ slug: String) {
@@ -105,7 +92,7 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
     }
 
     private func loadActive() {
-        guard let webView, let s = surfaces[safe: activeIndex] else { return }
+        guard let webView, let s = tabs.active else { return }
         webView.load(URLRequest(url: url(for: s)))
     }
 
@@ -118,13 +105,6 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         default:
             return URL(string: "\(base)/reactable/surface?kind=\(enc(s.kind))&ref=\(enc(s.ref))&project=\(enc(s.project))")!
         }
-    }
-
-    private func rebuildTabs() {
-        // A single deck tab is the plain stage — no tab chrome needed.
-        let showTabs = surfaces.count > 1
-        let tabs = surfaces.map { TabBarView.Tab(key: $0.key, title: $0.title) }
-        tabBar?.setTabs(showTabs ? tabs : [], active: surfaces[safe: activeIndex]?.key)
     }
 
     func open() {
@@ -179,6 +159,37 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         return previewFrame.convert(previewFrame.bounds, to: nil)
     }
 
+    /// Ground-truth layout snapshot for footage intel: visible element rects
+    /// in stage coordinates, stamped into events.jsonl beside slide events
+    /// (docs/PLAN.footage-intel.work). Engine-agnostic — plain DOM query.
+    private static let layoutJS = """
+    (() => {
+      const els = document.querySelectorAll('h1,h2,h3,p,li,img,video,pre,table,button,canvas,svg,blockquote');
+      const vw = innerWidth, vh = innerHeight, out = [];
+      for (const el of els) {
+        const r = el.getBoundingClientRect();
+        if (r.width < 8 || r.height < 8 || r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) continue;
+        const s = getComputedStyle(el);
+        if (s.visibility === 'hidden' || s.opacity === '0') continue;
+        out.push({ tag: el.tagName.toLowerCase(),
+                   text: (el.innerText || el.alt || '').trim().slice(0, 60),
+                   x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) });
+        if (out.length >= 40) break;
+      }
+      return JSON.stringify({ vw, vh, elements: out });
+    })()
+    """
+
+    func captureLayout(_ done: @escaping ([String: Any]) -> Void) {
+        webView?.evaluateJavaScript(Self.layoutJS) { result, _ in
+            guard let s = result as? String,
+                  let data = s.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { return }
+            done(obj)
+        }
+    }
+
     func nextSlide() { webView?.evaluateJavaScript("window.RevealDeck?.next()") }
     func gotoSlide(_ index: Int) { webView?.evaluateJavaScript("window.RevealDeck?.goto(\(index))") }
     func prevSlide() { webView?.evaluateJavaScript("window.RevealDeck?.prev()") }
@@ -213,6 +224,7 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
 
         let root = NSView()
         root.translatesAutoresizingMaskIntoConstraints = false
+        Chrome.styleRoot(root)
         win.contentView = root
         rootView = root
 
@@ -221,12 +233,9 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         dragStrip.toolTip = "Drag to move stage"
         self.dragStrip = dragStrip
 
-        let tabs = TabBarView()
-        tabs.translatesAutoresizingMaskIntoConstraints = false
-        tabs.onSelect = { [weak self] key in self?.activateSurface(key: key) }
-        tabs.onClose = { [weak self] key in self?.closeSurface(key: key) }
-        tabBar = tabs
-        dragStrip.addSubview(tabs)
+        let tabBar = tabs.tabBar
+        tabBar.translatesAutoresizingMaskIntoConstraints = false
+        dragStrip.addSubview(tabBar)
 
         let preview = ContentFrameView()
         preview.translatesAutoresizingMaskIntoConstraints = false
@@ -236,6 +245,7 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         config.userContentController.add(self, name: "reactable")
         config.mediaTypesRequiringUserActionForPlayback = []
         config.preferences.isElementFullscreenEnabled = true
+        Chrome.injectTokens(into: config)
         let web = WKWebView(frame: .zero, configuration: config)
         web.translatesAutoresizingMaskIntoConstraints = false
         web.setValue(false, forKey: "drawsBackground")
@@ -245,7 +255,7 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
 
         root.addSubview(dragStrip)
         root.addSubview(preview)
-        preview.addSubview(web)
+        preview.install(web)
 
         NSLayoutConstraint.activate([
             dragStrip.topAnchor.constraint(equalTo: root.topAnchor),
@@ -253,20 +263,15 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
             dragStrip.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             dragStrip.heightAnchor.constraint(equalToConstant: Chrome.dragStripHeight),
 
-            tabs.leadingAnchor.constraint(equalTo: dragStrip.leadingAnchor),
-            tabs.topAnchor.constraint(equalTo: dragStrip.topAnchor),
-            tabs.bottomAnchor.constraint(equalTo: dragStrip.bottomAnchor),
-            tabs.trailingAnchor.constraint(lessThanOrEqualTo: dragStrip.trailingAnchor, constant: -80),
+            tabBar.leadingAnchor.constraint(equalTo: dragStrip.leadingAnchor),
+            tabBar.topAnchor.constraint(equalTo: dragStrip.topAnchor),
+            tabBar.bottomAnchor.constraint(equalTo: dragStrip.bottomAnchor),
+            tabBar.trailingAnchor.constraint(lessThanOrEqualTo: dragStrip.trailingAnchor, constant: -80),
 
             preview.topAnchor.constraint(equalTo: dragStrip.bottomAnchor, constant: Chrome.gapBelowDrag),
             preview.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: Chrome.frameMargin),
             preview.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -Chrome.frameMargin),
             preview.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -Chrome.frameMargin),
-
-            web.topAnchor.constraint(equalTo: preview.topAnchor),
-            web.leadingAnchor.constraint(equalTo: preview.leadingAnchor),
-            web.trailingAnchor.constraint(equalTo: preview.trailingAnchor),
-            web.bottomAnchor.constraint(equalTo: preview.bottomAnchor),
         ])
 
         stripTitle = PanelChrome.decorate(strip: dragStrip, title: deckSlug) { [weak self] in self?.hide() }
@@ -276,12 +281,12 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         savedFrame = win.frame
 
         // Seed with the active deck surface if none open yet.
-        if surfaces.isEmpty {
-            surfaces = [StageSurface(kind: "deck", ref: deckSlug, title: deckSlug, project: "")]
-            activeIndex = 0
+        if tabs.surfaces.isEmpty {
+            tabs.open(StageSurface(kind: "deck", ref: deckSlug, title: deckSlug, project: ""))
+        } else {
+            tabs.rebuild()
+            loadActive()
         }
-        rebuildTabs()
-        loadActive()
     }
 
     private func showWindow(_ win: NSWindow) {
@@ -350,9 +355,8 @@ extension StageWindowController: DockablePanel {
 
     /// The tab bar rides into the docked header so surfaces stay switchable.
     func detachDockAccessory() -> NSView? {
-        guard let tabBar else { return nil }
-        tabBar.removeFromSuperview()
-        return tabBar
+        tabs.tabBar.removeFromSuperview()
+        return tabs.tabBar
     }
 
     func reattachDockBody(_ body: NSView, accessory: NSView?) {

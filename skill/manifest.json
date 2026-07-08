@@ -187,7 +187,11 @@
         "video at",
         "video tracks",
         "video pass",
-        "video sweep"
+        "video matte",
+        "video motion",
+        "video compose",
+        "video sweep",
+        "video autoedit"
       ],
       "reference": "verbs/video-intel.md",
       "relatedSkills": [

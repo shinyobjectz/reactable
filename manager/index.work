@@ -8,19 +8,19 @@ client :manager do
   <style>
     #index-work, section.file { all: unset; display: block; width: 100%; max-width: none; margin: 0; padding: 0; }
     * { box-sizing: border-box; margin: 0; }
-    html, body { height: 100%; background: #141414; font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; color: #ececf0; -webkit-font-smoothing: antialiased; user-select: none; }
-    .shell { display: flex; flex-direction: column; height: 100%; background: #141414; }
+    html, body { height: 100%; background: var(--rt-bg-root, #141414); font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; color: #ececf0; -webkit-font-smoothing: antialiased; user-select: none; }
+    .shell { display: flex; flex-direction: column; height: 100%; background: var(--rt-bg-root, #141414); }
     .search { display: flex; gap: 8px; align-items: center; padding: 12px; border-bottom: 1px solid rgba(255,255,255,.08); }
-    .search #close { flex-shrink: 0; width: 34px; height: 34px; border: 0; border-radius: 9px; background: rgba(255,255,255,.06); color: #9a9aa2; cursor: pointer; font: inherit; }
+    .search #close { flex-shrink: 0; width: 34px; height: 34px; border: 0; border-radius: var(--rt-radius-control, 8px); background: rgba(255,255,255,.06); color: #9a9aa2; cursor: pointer; font: inherit; }
     .search #close:hover { background: rgba(255,255,255,.13); color: #fff; }
-    .search input { flex: 1; padding: 9px 12px; border-radius: 9px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.06); color: #fff; font: inherit; outline: none; }
+    .search input { flex: 1; padding: 9px 12px; border-radius: var(--rt-radius-control, 8px); border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.06); color: #fff; font: inherit; outline: none; }
     .search input:focus { border-color: rgba(129,140,248,.6); }
     .cols { display: flex; flex: 1; min-height: 0; }
     .col { flex: 1; display: flex; flex-direction: column; min-width: 0; }
     .col + .col { border-left: 1px solid rgba(255,255,255,.08); }
     .col h3 { font: 600 10px/1 ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; color: #8a8a94; padding: 10px 12px 6px; }
     .list { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
-    .item { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 8px; cursor: pointer; }
+    .item { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: var(--rt-radius-control, 8px); cursor: pointer; }
     .item:hover { background: rgba(255,255,255,.07); }
     .item .kind { font: 600 9px/1 ui-monospace, monospace; letter-spacing: .06em; text-transform: uppercase; padding: 3px 6px; border-radius: 5px; flex-shrink: 0; }
     .kind.window { background: rgba(59,130,246,.2); color: #93c5fd; }

@@ -73,6 +73,35 @@ final class NexusSidecar: @unchecked Sendable {
            FileManager.default.fileExists(atPath: skill.path) {
             env["REACTABLE_SKILL_DIST"] = skill.path
         }
+        // Point the CLI at the bundled native tools so footage intel (T0/T1 +
+        // depth) needs no Homebrew/uv/Python on a clean install.
+        if let macOS = Bundle.main.executableURL?.deletingLastPathComponent() {
+            let fm = FileManager.default
+            let vision = macOS.appending(path: "reactable-vision")
+            if fm.fileExists(atPath: vision.path) { env["REACTABLE_VISION_BIN"] = vision.path }
+            let tools = macOS.appending(path: "reactable-tools")
+            if fm.fileExists(atPath: tools.path) { env["REACTABLE_TOOLS"] = tools.path }
+            let ff = macOS.appending(path: "ffmpeg")
+            if fm.fileExists(atPath: ff.path) { env["REACTABLE_FFMPEG"] = ff.path }
+
+            // The bundled CLI is `reactable-cli`; the agent emits `reactable`.
+            // Symlink it into a stable writable bin dir and put that first on
+            // PATH so `reactable <verb>` resolves with no global bun install.
+            let binDir = FileManager.default
+                .homeDirectoryForCurrentUser
+                .appending(path: "Library/Application Support/Reactable/bin")
+            let cli = macOS.appending(path: "reactable-cli")
+            var pathPrefix = macOS.path
+            if fm.fileExists(atPath: cli.path) {
+                try? fm.createDirectory(at: binDir, withIntermediateDirectories: true)
+                let link = binDir.appending(path: "reactable")
+                try? fm.removeItem(at: link)
+                try? fm.createSymbolicLink(at: link, withDestinationURL: cli)
+                env["REACTABLE_BIN_DIR"] = binDir.path
+                pathPrefix = binDir.path + ":" + macOS.path
+            }
+            env["PATH"] = pathPrefix + ":" + (env["PATH"] ?? "")
+        }
         if env["WB_SESSION_SECRET"] == nil || (env["WB_SESSION_SECRET"]?.count ?? 0) < 16 {
             env["WB_SESSION_SECRET"] = try DesktopSecrets.sessionSecret()
         }

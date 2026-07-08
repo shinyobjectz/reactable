@@ -12,9 +12,9 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
     private var shell: PanelShell?
     var dockHost: DockGroupController?
 
-    /// Default-layout placement — set the window frame if it exists.
+    /// Default-layout placement — animate to the frame if the window's onscreen.
     func place(frame: NSRect) {
-        window?.setFrame(frame, display: true)
+        window?.setFrame(frame, display: true, animate: window?.isVisible ?? false)
     }
     private var webView: WKWebView?
 
@@ -28,7 +28,8 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
     var onDropData: ((String, Data) -> Void)?
     var onReveal: ((String) -> Void)?
     var onDelete: ((String) -> Void)?
-    var onPreview: ((String) -> Void)?
+    var onPreview: ((String, String) -> Void)?
+    var onVideoAction: ((String, String) -> Void)?  // (path, action) — footage intel from a card menu
 
     init(port: Int) {
         self.port = port
@@ -101,6 +102,7 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
         FloatingWindow.configure(win)
 
         let config = WKWebViewConfiguration()
+        Chrome.injectTokens(into: config)
         config.userContentController.add(self, name: "reactable")
         let web = WKWebView(frame: NSRect(origin: .zero, size: size), configuration: config)
         web.autoresizingMask = [.width, .height]
@@ -153,7 +155,9 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
         case "projects.addlink":
             if let u = parsed.payload["url"] as? String { onAddLink?(u) }
         case "projects.preview":
-            if let p = parsed.payload["path"] as? String { onPreview?(p) }
+            if let p = parsed.payload["path"] as? String {
+                onPreview?(p, parsed.payload["icon"] as? String ?? "")
+            }
         case "projects.delete":
             if let p = parsed.payload["path"] as? String { onDelete?(p) }
         case "projects.reveal":
@@ -166,6 +170,11 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
             if let id = parsed.payload["id"] as? String,
                let stage = parsed.payload["stage"] as? String {
                 onStage?(id, stage)
+            }
+        case "projects.videoaction":
+            if let p = parsed.payload["path"] as? String,
+               let a = parsed.payload["action"] as? String {
+                onVideoAction?(p, a)
             }
         case "projects.moveBy":
             if let win = window {

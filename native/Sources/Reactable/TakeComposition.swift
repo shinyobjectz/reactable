@@ -1,22 +1,13 @@
-import AppKit
-import AVKit
 import AVFoundation
 
-// Take preview — double-click a take card and watch it as ONE thing: stage
-// video + voice (offset by the recorded anchors) with the cam PIP'd, in an
-// AVKit player with normal controls. Built as an AVMutableComposition so
-// sync is deterministic, not two racing players.
+// A take as ONE playable thing: stage video + voice (offset by the recorded
+// anchors) with the cam PIP'd top-right. Built as an AVMutableComposition so
+// sync is deterministic, not two racing players. Shared by every take preview.
 @MainActor
-final class TakePreviewWindow {
-    private static var open: [String: NSWindow] = [:]
-
-    static func show(takeDir: URL) {
-        let key = takeDir.path
-        if let win = open[key] {
-            win.makeKeyAndOrderFront(nil)
-            return
-        }
-
+enum TakeComposition {
+    /// Compose stage.mov + cam.mov PIP + mic(-clean).wav from `events.jsonl`
+    /// anchors. Returns nil only if the take has no readable stage track.
+    static func build(takeDir: URL) -> (item: AVPlayerItem, renderSize: CGSize)? {
         // Anchors from events.jsonl (take clock; stage = zero of stage.mov).
         var tStage = 0.0, tCam: Double?, tMic: Double?
         if let text = try? String(contentsOf: takeDir.appending(path: "events.jsonl"), encoding: .utf8) {
@@ -37,6 +28,7 @@ final class TakePreviewWindow {
         var layerInstructions: [AVMutableVideoCompositionLayerInstruction] = []
         var renderSize = CGSize(width: 1280, height: 720)
         var duration = CMTime.zero
+        var hasStage = false
 
         func addVideo(_ url: URL, offset: Double, isPIP: Bool) {
             let asset = AVURLAsset(url: url)
@@ -57,6 +49,7 @@ final class TakePreviewWindow {
                     y: renderSize.height - h - 24))
                 li.setTransform(tf, at: .zero)
             } else {
+                hasStage = true
                 renderSize = size
                 let end = CMTimeAdd(at, asset.duration)
                 if end > duration { duration = end }
@@ -66,6 +59,7 @@ final class TakePreviewWindow {
 
         // Stage first (defines render size), cam second (drawn on top).
         addVideo(takeDir.appending(path: "stage.mov"), offset: 0, isPIP: false)
+        guard hasStage else { return nil }
         if let tCam {
             addVideo(takeDir.appending(path: "cam.mov"), offset: tCam - tStage, isPIP: true)
         }
@@ -85,8 +79,7 @@ final class TakePreviewWindow {
         addAudio(FileManager.default.fileExists(atPath: mic.path) ? mic : micRaw,
                  offset: (tMic ?? tStage) - tStage)
 
-        // PIP on top: instructions listed top-most LAST in AVFoundation? No —
-        // layer instructions are composited in ORDER, first = frontmost.
+        // Layer instructions are composited in ORDER, first = frontmost.
         let instruction = AVMutableVideoCompositionInstruction()
         instruction.timeRange = CMTimeRange(start: .zero, duration: duration)
         instruction.layerInstructions = layerInstructions.reversed()
@@ -96,35 +89,6 @@ final class TakePreviewWindow {
 
         let item = AVPlayerItem(asset: comp)
         item.videoComposition = videoComp
-        let player = AVPlayer(playerItem: item)
-
-        let playerView = AVPlayerView()
-        playerView.player = player
-        playerView.controlsStyle = .floating
-
-        let win = KeyableWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 900, height: 900 * renderSize.height / max(renderSize.width, 1) + 30),
-            styleMask: [.borderless, .fullSizeContentView, .resizable],
-            backing: .buffered, defer: false
-        )
-        win.isReleasedWhenClosed = false
-        win.backgroundColor = .clear
-        win.isOpaque = false
-        win.hasShadow = true
-        win.level = .floating
-        FloatingWindow.configure(win)
-        PanelChrome.install(in: win, content: playerView, title: takeDir.lastPathComponent) {
-            player.pause()
-            win.orderOut(nil)
-            open.removeValue(forKey: key)
-        }
-        if let screen = NSScreen.main {
-            let f = screen.visibleFrame
-            win.setFrameOrigin(NSPoint(x: f.midX - 450, y: f.midY - win.frame.height / 2))
-        }
-        open[key] = win
-        NSApp.activate(ignoringOtherApps: true)
-        win.makeKeyAndOrderFront(nil)
-        player.play()
+        return (item, renderSize)
     }
 }

@@ -21,6 +21,15 @@ web/.wrangler/
 .nexus/
 .wb-data/
 takes/
+edit-intel/
+
+# build artifacts, large model binaries, vendored tools, downloaded media — not source
+node_modules/
+.build/
+*.mlpackage
+vendor/ffmpeg
+assets/
+ios/build/
 *.mov
 .env
 

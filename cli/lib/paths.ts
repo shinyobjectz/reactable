@@ -40,7 +40,9 @@ export function apiBase(port = PORT) {
   return `http://127.0.0.1:${port}`;
 }
 
-export function assertProject(root = PROJECT) {
+// Default to DATA_ROOT (the active WB_DATA project), not PROJECT (the repo /
+// install path — which is "/" in a compiled standalone binary).
+export function assertProject(root = DATA_ROOT) {
   if (!existsSync(resolve(root, "index.work"))) {
     throw new Error(`not a reactable project: ${root}`);
   }

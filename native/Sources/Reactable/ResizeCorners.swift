@@ -1,10 +1,39 @@
 import AppKit
 
-// Subtle L-shaped corner marks on resizable chrome — a visual grab target so
-// it's obvious where to drag. Non-interactive (resize itself comes from the
-// window's .resizable edges); draws above WKWebView content.
+// Corner resize affordance on resizable chrome: L-shaped marks that fade in
+// on hover, drawn ON the actual grab zones — press a corner and drag to
+// resize (WindowResize). The rest of the view stays click-through.
 final class ResizeCornersView: NSView {
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    /// Side of the square corner grab zone.
+    private static let zone: CGFloat = 22
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let local = convert(point, from: superview)
+        return corner(at: local) == nil ? nil : self
+    }
+
+    private func corner(at p: NSPoint) -> WindowResize.Corner? {
+        let z = Self.zone
+        guard bounds.contains(p) else { return nil }
+        let left = p.x <= z, right = p.x >= bounds.maxX - z
+        let bottom = p.y <= z, top = p.y >= bounds.maxY - z
+        switch (left, right, bottom, top) {
+        case (true, _, true, _): return isFlipped ? .topLeft : .bottomLeft
+        case (true, _, _, true): return isFlipped ? .bottomLeft : .topLeft
+        case (_, true, true, _): return isFlipped ? .topRight : .bottomRight
+        case (_, true, _, true): return isFlipped ? .bottomRight : .topRight
+        default: return nil
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        guard let corner = corner(at: p), let win = window else {
+            super.mouseDown(with: event)
+            return
+        }
+        WindowResize.begin(window: win, corner: corner)
+    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -37,11 +66,17 @@ final class ResizeCornersView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let inset: CGFloat = 8
+        // Marks sit just inside the window edge — right where the grab zone is.
+        let inset: CGFloat = 4
         let leg: CGFloat = 12
         let r: CGFloat = 4  // rounded bend
-        NSColor(white: 1, alpha: 0.20).setStroke()
         let b = bounds.insetBy(dx: inset, dy: inset)
+        // Bail while the view is still degenerate (first display pass, mid-animation):
+        // an inverted/tiny rect makes the corner arc collapse, clearing the path's
+        // current point so the next lineTo throws. Need room for both legs per side.
+        guard b.width > leg * 2, b.height > leg * 2,
+              b.width.isFinite, b.height.isFinite else { return }
+        NSColor(white: 1, alpha: 0.20).setStroke()
         let p = NSBezierPath()
         p.lineWidth = 2
         p.lineCapStyle = .round

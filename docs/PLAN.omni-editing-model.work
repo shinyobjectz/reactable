@@ -1,0 +1,368 @@
+# PLAN — Omni Editing Model (the "edit intel" lane)
+
+Third lane, sits on top of the two we shipped:
+`footage intel` (perceive the pixels) → **`edit intel` (decide the cut)** →
+render substrate (wavelet / HyperFrames) executes it. Sibling to
+[[docs/PLAN.footage-intel]] and [[docs/PLAN.content-intelligence]].
+
+Source brief: `~/Downloads/Omni Video Editing Model Architecture Roadmap.md`
+(Shane, 2026-07-08), reconciled against the real Reactable stack + the business
+constraint, then hardened with **three parallel mid-2026 research passes**
+(training/RL/data-infra · base-VLM/architecture · CoreML/ANE/16 GB) on
+2026-07-08. Approved end-to-end plan mirror: `~/.claude/plans/vast-strolling-sunset.md`.
+
+**Thesis (settled over discussion):** we are training a **world model of the
+TIMELINE, not the frame.** State = an editable scene-graph / HyperFrames
+timeline (a text-serializable IR). Dynamics = our deterministic renderer
+(exact, ~300 ms — we never *learn* to simulate). Value = taste. The task is
+structurally a **GUI / code-action agent**: perceive a structured scene → emit
+typed actions. Our unfair advantages: a **free, exact verifier** (renderer +
+fidelity gate) and a **data flywheel** nobody else has.
+
+---
+
+## 0. Reframe — two things the research brief gets wrong for us
+
+**(a) It is framed "Mac-native, locally-runnable"; our business is metered.**
+Shane's ruling: *"charge API tokens for it, and it's not a local model."* So
+the revenue path is **Qwen3-VL-8B hosted on Modal**, billed through the existing
+credit gateway (`/api/gateway/chat` → CreditLedger DO). **Resolution (research):**
+we *also* ship a **local Apple-Silicon tier** — a distilled 2–3B model on the
+**ANE (CoreML)** — but as a strategic fast-follow (offline, no per-token cost,
+frees the GPU), not the primary. Same base family both tiers. Local perception
+(ANE Depth-Anything, Gemma/SmolVLM) stays free.
+
+**(b) ~60% of the brief's "phased build plan" is already shipped.** We have the
+perception + rendering layers, better-fit (deterministic, license-clean, on-metal):
+
+| Brief's proposed layer | What we already ship |
+|---|---|
+| L1 Perception — Depth Pro + Video-Depth-Anything | **native ANE** Depth-Anything-V2-Small ([[native/vision]], 48 MB, ~12% CPU) + Modal DA2 fallback |
+| L1 Segmentation/tracking — DINOv3 + Florence-2 | **SAM 3.1** concept tracking on Modal ([[gpu/modal_footage.py]]) → `tracks.jsonl` COCO-RLE |
+| L1 semantic features | **SigLIP-2** embeddings + **SmolVLM-500M** captions ([[scripts/footage-embed.py]]) |
+| OCR / transcript | Apple Vision OCR ([[scripts/ocr-frames.swift]]) + Moonshine/whisper word-ts |
+| L4 Structured output — "teach a VLM HyperFrames HTML" | **wavelet render-core** (native Rust, byte-deterministic, 297 ms/72×1080p30) + **wavelet-ui** (135 Remocn comps) + HyperFrames |
+| L3 Synthesis — diffusion | *parked* — §4/§9-P8, compose-only edits never need it |
+| the edit itself | **`video autoedit` + `video compose`** already emit edits — from GROUND TRUTH, no model |
+
+The brief's Phase 1 (perception) + Phase 3 (renderer integration) are **done**.
+What's missing = the two parts Shane named: **harness intelligence** and
+**editing-substrate intelligence** — plus the moat the brief never mentions:
+**the data flywheel**.
+
+---
+
+## 1. The three-part system, mapped to real components
+
+```
+        ┌─────────────────────────────────────────────┐
+        │  (A) DIRECTOR   — taste, narrative, ambiguity │  MiniMax via
+        │      metered, smartest, we already have it    │  /api/gateway/chat
+        └───────────────────────┬─────────────────────┘  (KEEP; reduce reliance)
+                                 │ delegates well-scoped edit tasks
+        ┌───────────────────────▼─────────────────────┐
+        │  (B) HARNESS    — memory, attention, routing  │  Reactable agent loop
+        │      loop-based test-time compute; AutoPoet   │  + Nexus (memory/attn)
+        │      self-learning; picks director vs editor  │  ← WE DON'T HAVE YET
+        └───────────────────────┬─────────────────────┘
+                                 │ (perception in, actions out)
+        ┌───────────────────────▼─────────────────────┐
+        │  (C) EDITOR     — footage-intel + intent      │  Qwen3-VL LoRA on
+        │      → structured edit actions in OUR DSL     │  Modal (+ local ANE)
+        │      cheap, narrow, deeply fluent in us       │  ← WE DON'T HAVE YET
+        └───────────────────────┬─────────────────────┘
+                                 │ edit spec (video verbs / wavelet comp)
+        ┌───────────────────────▼─────────────────────┐
+        │  SUBSTRATE — footage intel (perceive) +       │  ALREADY SHIPPED
+        │  wavelet/HyperFrames (render, deterministic)  │
+        └───────────────────────────────────────────────┘
+```
+
+- **(A) Director = MiniMax gateway.** Taste, story arc, ambiguous intent,
+  whole-project understanding. Stays. Goal is *reduce reliance / cut cost*.
+- **(B) Harness = agent loop + Nexus.** Where "loop-based thinking" + AutoPoet
+  self-learning live. Orchestration, not a model: routes director↔editor,
+  retrieves similar past edits as attention/context, runs the
+  propose→render→observe→revise loop (§4, §8 cascade).
+- **(C) Editor = the model we train.** The "editing-substrate intelligence" a la
+  Gemini Omni — but narrow, fluent-in-us. Qwen3-VL, metered on Modal.
+
+---
+
+## 2. The editor model, precisely (the thing we train)
+
+**It does not need to be smart, general, or pixel-generative — it needs to be
+fluent in us.** Two constraints collapse the problem:
+
+1. **Pixels are already digested.** The `footage-intel/1` sidecar
+   ([[docs/PLAN.footage-intel]]) turns a clip into structured tokens: shots,
+   transcript w/ word-ts, OCR, tracklets w/ boxes + depth zones, SigLIP
+   embeddings, captions, `events.jsonl` ground truth. The editor reads the
+   **sidecar**, not raw frames (frames only when it must).
+2. **The action space is bounded + deterministic.** Output is a **structured
+   edit spec in our own DSL**: `video` verbs (`autoedit`/`compose`/`matte`/
+   `motion`), a wavelet comp, wavelet-ui component instances (135 typed comps).
+   The renderer executes it byte-deterministically; the gate grades it.
+
+So the editor's job is a **narrow structured translation**:
+`(footage-intel sidecar + project context + intent) → a valid, renderable edit
+spec in OUR action space.`
+
+Design commitments:
+- **Coordinates, not adjectives** — emit normalized points/boxes on the stage
+  rect (the `autoedit.ts::makeMapper` convention), as **discrete location
+  tokens** on a fixed grid, not free floats. The DeepSeek-OCR / Gemini-Omni
+  spatial-grounding property; trainable + checkable.
+- **Base = Qwen3-VL** (§5). LoRA. 8B on Modal, distilled 2–3B on the ANE tier.
+- **Never emit pixels (or prose) when a deterministic composite + coordinate
+  spec suffices.** Generative synthesis is a separate, gated, later lane (§9-P8).
+
+---
+
+## 3. The data flywheel — the moat the brief misses (full strategy in §6)
+
+We manufacture training data the way almost nobody can, owning a **deterministic
+edit substrate + a ground-truth authored corpus + an automatic grader**:
+
+- **`video autoedit` is a free labeling function.** Every authored take gives
+  `(ground-truth events → correct edit plan)` with zero inference — the
+  presenter's cursor/click/slide/layout events *are* the label. Reverse-generate
+  an instruction and you have a verified `(sidecar, instruction, edit-spec)` triple.
+- **The fidelity gate + eval = the reward model.** `just wavelet-gate` (SSIM +
+  byte-determinism) + `scripts/eval` checkers grade a render against ground-truth
+  state — a ready reward signal for BoN/RL and a hard data filter.
+- **wavelet-ui (135 comps) + video verbs = a typed, closed action space** —
+  synthetic data can be generated *and* validated against the schema.
+
+This is where **"our opinions"** become weights: our punch-in timing, silence-trim
+policy, component vocabulary, coordinate convention. The flywheel is the spine;
+the model is downstream of it.
+
+---
+
+## 4. Research threads, placed (assigned a job)
+
+- **DeepSeek-OCR (optical context compression + point grounding)** → (i) encode
+  keyframes/sidecar as few optical tokens so long footage fits the window;
+  (ii) train coordinate output (§2).
+- **Loop-based thinking / test-time compute** → the harness runs
+  **propose → render preview → footage-intel on the model's OWN output → compare
+  → revise.** The 300 ms renderer is the verifier; lives in the harness, not the
+  weights (realized as the §8 cascade).
+- **DSpark (RESOLVED — it's DeepSeek's speculative-decoding serving stack,
+  V4-Flash/Pro; 60–85% faster, distribution-preserving; semi-AR block drafting +
+  confidence-scheduled verification).** Placement: **token-level spec-dec within
+  our OWN self-hosted family** (editor-small drafts for editor-large) → cheaper
+  Modal serving. **NOT against MiniMax** (different tokenizer + API-only, no
+  logits). Shane's "is our model the draft model?" → yes at the **artifact level**
+  (the §8 cascade: editor drafts an edit, renderer verifies), and optionally at
+  the token level within our family. Research spike: semi-AR *block* drafting maps
+  unusually well to our structured DSL (independent components draft in parallel).
+- **AutoPoet self-learning** → harness curates its own corpus; every gate-verified
+  episode appends to the training log; periodic LoRA refresh (§9-P7). Nexus =
+  long-term episodic/style memory served as retrieval.
+- **MiniMax M3** → philosophy only (native multimodal, sparse long-context). Not a
+  base (428B, MSA unsupported by serving stacks).
+- **V-JEPA 2 (Meta)** → confirms the thesis (latent, predict-representations-not-
+  pixels) but not a core role: its world-model capability is *physical* dynamics /
+  robot planning — the thing we deleted (renderer = exact dynamics; recorded
+  footage already has the future). Slot only as a **candidate temporal-embedding
+  producer in footage-intel** (swappable behind the sidecar contract, like
+  EdgeTAM), evaluated vs SigLIP-2 on retrieval; ~1B, likely a cloud pass. NOT the
+  editor backbone (it's an encoder, not a VLM — Qwen3-VL covers that).
+- **BAGEL-7B / Omni-Video-2 (diffusion synthesis)** → deferred generative lane
+  (§9-P8); only for edits needing *new* pixels. Compose-only edits never invoke it.
+
+---
+
+## 5. Architecture decisions (mid-2026 research → chosen)
+
+- **Base = Qwen3-VL, two tiers, same family.** 8B-Instruct (Apache-2.0) on the
+  Modal API tier; 4B → distilled **2–3B** on the local ANE tier. Why: best spatial
+  grounding + native video + timestamp tokens (matches our word-timed transcript);
+  **DeepStack** multi-level feature injection = the graft point for depth/SigLIP;
+  first-class `mlx-vlm` support. Backups: **Molmo 2** (native normalized pointing +
+  video tracking), **InternVL3.5-8B** (clean license, OCR/UI-heavy), **Apple
+  FastVLM** (ships MLX *and* CoreML — the on-device engine / distillation target).
+- **A/B a code-LLM baseline.** Input is already text, output is code (DSL); SFT
+  **Qwen2.5-Coder-7B over the serialized graph** and A/B vs the VLM. VLM earns its
+  keep mainly at coordinate grounding. Decide empirically at §9-P3/P4.
+- **Task framing = GUI/code-action agent.** Mirror **UI-TARS 3-stage**
+  (grounding → CoT SFT → RL-in-sandbox) + **Aguvis** (thoughts-before-action) +
+  **OS-Atlas** (freeze the ~135 verbs as a closed unified action space) +
+  **CodeAct** (emit code actions, not flat JSON). **Our renderer is the RL sandbox.**
+- **Conditioning (feed the sidecar):** (A) serialize the symbolic scene graph
+  (shots/boxes/depth-zones/transcript/OCR/captions) as **structured text** — first,
+  cheap; (B) inject dense features via **depth-as-per-patch positional encoding**
+  (SD-VLM, ~0 extra tokens) + SigLIP/DINO through an **MLP or DeepStack-level**
+  projector, with **zero-init gates** so pretrained weights aren't destabilized.
+  Sample frames **at our shot boundaries**; add timestamp tokens; EVS/3D-resampler
+  compression for long clips.
+- **Output validity:** coordinates = **discrete location tokens** (fixed grid).
+  Enforce the DSL with **xgrammar** — **only on the final DSL block** (constraining
+  the whole output degrades reasoning 10–30%; reason free-form first, then switch
+  the grammar on — CRANE). Grammar buys syntax, not semantics (in-range coords /
+  valid IDs / temporal order come from training + the verifier).
+
+---
+
+## 6. Data strategy (folds in the Scrape-Creators discussion)
+
+**Two engines, inverses, both mint `(video ↔ timeline)` pairs:**
+- **Engine A — Synthesis (forward, EXACT):** procedurally author valid timelines
+  from wavelet-ui (135 comps) + verbs → render → pairs with *zero label noise*,
+  unlimited, 100%-owned. Teaches the IR + grounding.
+- **Engine B — Decompiler-skeletonize (reverse, APPROXIMATE):** real video →
+  sidecar → abstract edit skeleton. **Keep structure** (cut timing, layer types,
+  transitions, motion curves, normalized coords), **STRIP content** (footage,
+  verbatim brand text, logos). Teaches realism.
+
+**Sources & policy:** synthetic + own recorded takes = unrestricted, start here.
+**Scrape Creators** = procurement across organic/paid/YouTube/Shorts (cleaner than
+self-scraping — moves platform download-ToS to SC). **Ads are the best realism
+domain** but train on the *skeleton*, never the ad. Checks before found-content
+training: **SC ToS on ML-training/redistribution** + **IP-counsel sign-off**
+(§11). Default-safe path needing no sign-off: synthetic + own takes.
+
+**Discipline (research-mandated):** **accumulate, never replace** — real takes +
+skeletons stay in every training mix as an anchor (prevents model collapse); track
+real:synthetic ratio. **Diversity-controlled** generation (cover all 135 comps +
+edge cases). **Curriculum:** single verb → single-component overlay →
+multi-component composition → full timeline. Mine real NL intents from takes so
+*prompts* aren't synthetic even when timelines are. Quantize coords to the grid.
+**Scale:** 2–5k clean examples ≈ 80% of value; 10–50k for full coverage.
+
+---
+
+## 7. Training recipe (assembled from research)
+
+1. **SFT (behavior cloning).** Unsloth on Modal; **QLoRA (4-bit NF4) + DoRA**,
+   r=16–32, α=2r, target `all-linear` in the decoder, **vision tower + merger
+   frozen** (perception pre-serialized), LoRA+ on, **PiSSA init** (fewer steps →
+   spot-preemption-friendly), lr~1e-4, 2–3 epochs. Loss on DSL tokens; keep a
+   free-form reasoning prefix.
+2. **Best-of-N self-distillation (the main "RL").** Sample N per prompt →
+   render+SSIM+checker score (free) → SFT on winners → iterate 2–3 rounds. Beats
+   online RL per-unit-compute, stable, reuses SFT infra; our free exact reward
+   removes its only downside.
+3. **Online RLVR (GRPO/GSPO) — only if BoN plateaus / persistent failure modes.**
+   Hierarchical gated reward: **validity gate (grammar+checker) → SSIM fidelity →
+   parsimony**; KL to SFT ref. Adds the negative gradient BoN lacks; gating is the
+   proven anti-reward-hacking structure.
+4. **Taste (thin, late).** **KTO** on binary app telemetry (kept/discarded, thumbs
+   — no pairs needed); DPO/SimPO if we curate ranked pairs. Verifier scores
+   correctness; KTO scores aesthetics.
+5. **(Later) On-policy distillation** once a director/frontier-authored corpus
+   exists (matches RL quality at ~10–30× less compute).
+
+**Tooling:** Unsloth primary (single-GPU VLM GRPO), ms-swift fallback. Training is
+CUDA/Modal; `mlx-vlm` QLoRA on the M4 only for 2–4B prototyping + pipeline debug
+(app closed) — **not** real runs. **Modal cost:** L40S/A100-40 SFT ≈ **$5–30/run**;
+optional light RLVR pass ≈ **$50–300**; spot + Volume adapter checkpoints + PiSSA.
+
+---
+
+## 8. Serving & deployment (two tiers + the draft/cascade)
+
+- **Modal API tier (revenue):** Qwen3-VL-8B, metered through the credit gateway.
+  **xgrammar** on the final block + **serve-time best-of-k reranked by our own
+  renderer** (near-free quality). **DSpark-style speculative decoding within our
+  own family** — editor-small drafts for editor-large, both self-hosted → 60–85%
+  faster serving.
+- **Local ANE tier (Mac-native, strategic):** distilled **2–3B, 4-bit palettized
+  (per-grouped-channel), stateful `MLState` KV cache, Conv2d-1×1 attention,
+  fixed-shape buckets, chunked >1 GB**; FastViT-HD-style encoder → few visual
+  tokens. **Vision encoder → ANE always** (like Depth-Anything). Rationale: the app
+  saturates the GPU with capture + wavelet render, so ANE **frees the GPU and runs
+  cool** (~2–13 W vs 20–25 W); our workload is near best-case for ANE (**prefill-
+  heavy, short DSL output**). MLX-GPU fallback for long outputs when the GPU is free.
+- **The cascade (three-part system, realized):** **editor drafts an edit → renderer
+  verifies (free, exact) → MiniMax director only on taste/ambiguity (rare).**
+  Draft-and-verify at the *artifact* level (works with an API director — we
+  exchange whole edits, not logits). This is where "cut reliance on MiniMax" happens.
+
+---
+
+## 9. Phased build — each ships value AND de-risks the next
+
+Ordering principle: **collect the data you're already generating before training
+anything.** P0–P2 need **no training and no GPU** — useful regardless, and the
+prerequisites the world model hangs on. P3 is the go/no-go before a dollar of GPU.
+
+- **P0 — Flywheel capture + verifier-as-reward.** Log every edit as
+  `(sidecar, intent, edit-spec, render, gate/checker score)` into an `edit-intel/`
+  corpus; wrap gate/checker as a reusable reward fn. Hook `autoedit`, `compose`,
+  agent-authored edits. *De-risks:* the tuple + grader. No training.
+- **P1 — Skeletonizing decompiler (encoder + Engine B).** `video → abstract edit
+  skeleton` (structure kept, content stripped). *De-risks:* the world-model
+  abstraction; it's the data factory.
+- **P2 — Synthetic-pair generator (Engine A).** Procedural author → render → exact
+  pairs, diversity-controlled + curriculum-ordered. *De-risks:* IR coverage.
+- **P3 — Frozen-base baseline, NO training (GO/NO-GO).** Sidecar + action schema +
+  Nexus-retrieved similar edits in-context to MiniMax/Qwen3-VL + best-of-k via
+  renderer; coder-LLM A/B. Measure on authored *and* imported clips. *De-risks:* is
+  the sidecar enough context? where does frozen fail (= the training set)?
+- **P4 — SFT v1 on Modal (editor v1, metered).** QLoRA+DoRA on the corpus; deploy
+  8B behind the gateway. *Ships:* cheaper edits + measured MiniMax-reliance drop.
+- **P5 — Best-of-N self-distillation.** *Ships:* quality jump, no bigger model.
+- **P6 — Local ANE tier.** Distill → 2–3B → CoreML (palettize/stateful/chunk) →
+  ship on-device, GPU-free.
+- **P7 — Taste RL + self-learning.** KTO on telemetry; periodic LoRA refresh from
+  gate-verified episodes; Nexus as long-term style memory.
+- **P8 (optional) — spec-dec serving (small drafts large) + synthesis lane**
+  (BAGEL/Omni-Video-2 for new-pixel edits, gated behind compose-can't-do-it).
+
+---
+
+## 10. What NOT to do
+
+- **Don't** train a general VLM from scratch — M3's lesson; value = narrowness +
+  fluency in our own substrate.
+- **Don't** predict pixels — predict *state* (timeline). The instant you generate
+  frames you've rebuilt Sora badly.
+- **Don't** host the metered model on the laptop — the metered brain is Modal; the
+  laptop runs free perception + the distilled ANE tier.
+- **Don't** let the model emit pixels/prose when a deterministic composite +
+  coordinate spec does the job.
+- **Don't** invent a new edit language — `video` verbs + wavelet-ui + the
+  footage-intel sidecar **are** the I/O contract.
+- **Don't** constrain the whole decode with the grammar (reasoning tax); final
+  block only.
+- **Don't** put phases in front of the flywheel — no training before P0–P2 give a
+  corpus + grader.
+- **Don't** scale synthetic data infinitely — accumulate-with-real-anchor beats volume.
+
+---
+
+## 11. Open rulings
+
+1. **Data/legal:** confirm **Scrape Creators ToS** permits ML-training/derived
+   use of returned data, and get **IP-counsel sign-off** on the data policy before
+   any found-content training. Safe default needing no sign-off = synthetic + own
+   takes. (Decide before P0's corpus fills with anything but those two.)
+2. **VLM vs coder-LLM base:** decided empirically at P3/P4 (don't pre-commit).
+3. **Deployment priority:** recommend **Modal-first** (revenue + you train there
+   anyway), local ANE as P6 fast-follow. Confirm.
+4. **Base + Modal training budget** for P4 (Qwen3-VL-8B assumed; ~$5–30/SFT run).
+5. **P8 synthesis** — in scope now, or parked behind P4 economics?
+6. **Lane/model name** — `edit intel` proposed; product model name TBD.
+
+*(Resolved since the first draft: "D-Spark" = DSpark speculative decoding (§4);
+data policy shape = synthetic + own takes now, SC-skeletons pending §11.1;
+base = Qwen3-VL two-tier (§5). Earlier S0–S7 phasing superseded by P0–P8 (§9).)*
+
+---
+
+## 12. Build log
+
+- **2026-07-08 — P0/P1/P2-v0/P3 + tracklet-merge + P4-pipeline shipped + verified** (reactable repo, `main`, working tree, uncommitted).
+  - **P0 flywheel** — `cli/lib/edit-intel.ts` + capture hooks in `video autoedit`/`compose` + `edit-intel stats`. Every edit → an `edit-intel/episodes.jsonl` tuple (edit-spec stored out-of-line, render fingerprint, `gold`/`model` score with a `gate` slot for P3+). Best-effort; `REACTABLE_EDIT_INTEL=0` disables. Verified on the fixture + a real take (2 punch-ins / 65.7 s trimmed, render sha captured).
+  - **P1 decompiler (Engine B / encoder)** — `cli/lib/decompile.ts` + `video decompile <ref> [--verify]` → `edit-skeleton/1` IR: timeline segments (kind + transition) · text regions (role + normalized bbox + text_shape, string STRIPPED) · subject layers (generic class + depth zone + keyframed motion) · speech/silence timing (word counts, no words). **Strip contract proven** — `--verify` leak check green, source OCR strings absent from output; take (`kind:take`) and imported (`kind:imported`, filename stripped) both work. Producer-agnostic — reads `tracks.jsonl`, so EdgeTAM/SAM/any tracker flows through unchanged.
+  - **P2-v0 synthetic (Engine A)** — `cli/lib/synth.ts` + `synth pairs [--n --seed]`: deterministic ffmpeg clips (dark/light alternating shots) → round-trip (index → decompile → compare vs authored) → **5/5 segment-count match, 9 ms mean boundary MAE** (< 1 frame @30fps). Mints `(sidecar ↔ authored skeleton)` pairs into the corpus.
+  - **P3 frozen-base go/no-go** — `cli/lib/baseline.ts` + `baseline <ref> [--k]`: serialize the sidecar scene-graph → frozen **MiniMax-M3** emits `edit-skeleton/1` (best-of-k) → scored vs the decompiler; best captured as a `model` episode (P0's `model` label now exercised). **VERDICT = GO:** 3/3 valid on synthetic + fixture take, segment-count match, **0 ms boundary MAE**, coords in range/monotonic — and on the take it correctly normalized the OCR bbox, classified role, computed text_shape, and **stripped the literal text**, all with zero training. Confirms the sidecar is sufficient context and the IR is expressible by a frozen model. Caveat: `layer_recall` read 0.03 purely because P1 tracklet-noise inflated ground truth to 67 layers (the model's text layers matched the decompiler) → elevated decompiler tracklet-merge to a training-data prerequisite. **[RESOLVED same day]** `decompile.ts` now merges co-moving tracklets (greedy centroid clustering per concept, `merged_from` provenance kept) — fixture subject layers **65 → 20**, targets clean for P4.
+  - **P4 fine-tuning pipeline** — `cli/lib/dataset.ts` + `dataset export` → SFT chat jsonl for the reconstruction task (scene graph → skeleton), reusing the P3 prompt; deterministic train/val split; dedup + "corpus small" guard. `gpu/modal_train.py` — Unsloth QLoRA+DoRA on an L40S, saving a LoRA adapter to a Volume, **estimate-first / `--run`-gated** (no GPU spend without an explicit user-run `modal run`). Dry-validated: 7 unique pairs (5 train/2 val), valid chat rows, script syntax-clean. **The paid training run is user-gated** on (a) a scaled corpus (§7 targets 2–5k) and (b) explicit go. v1 base = a text coder LLM (task is text→text); Qwen3-VL frame path is the follow-up.
+  - **Audio understanding (task #6)** — `cli/lib/audio.ts` + `video audio <ref>`: dep-free (ffmpeg PCM → energy envelope) → **kind_segments** (speech/silence/sound), **onsets + tempo estimate** (BPM + confidence — correctly low on speech-only), **speech turns** (`spk0`; true multi-speaker diarization flagged as a model follow-up). Written to the sidecar; the decompiler's `audio` section now emits kind_segments + beats(onset times) + turns + word-count speech_segments — all STRUCTURE (verified: no transcript words leak). Enables cut-on-beat / silence-skip / turn-aware pacing.
+  - **Procurement — real content (Engine B) [SC ToS/IP gate cleared by Shane]** — `cli/lib/procure.ts` + `reactable procure "<brand>" [--library fb|tiktok] [--n]` | `--url <u>`. Pulls real ad/creator clips via the Scrape-Creators research proxy (key server-side, session-cookie auth), **downloads ALL pulled creative** (video + image), decompiles videos to **content-stripped skeletons** (leak-checked, refused on any leak) into the corpus, keeps images raw under `edit-intel/procured/` (gitignored). Fixed the SC endpoint (the old `ads()` used a 404 path → now `/v1/facebook/adLibrary/search/ads`, video at `snapshot.videos[0].video_hd_url`); added a 45s download abort (fbcdn stalls hang plain fetch); exposed `research()` from `intel.ts`. **Verified live on "True Classic"**: real FB ad videos → 15-shot content-stripped skeletons; SFT dataset now **11 pairs incl. 3 procured** ad skeletons. Follow-ups: tiktok/instagram video-search shapes; still-frame skeletonizing for image ads; structure-only SFT *input* for procured (content-free both sides).
+- **Fix (leak check, all lanes):** the strip-contract check scanned the whole serialized JSON, so common source words false-matched structural tokens (`true` boolean, `text_shape`/`timeline` keys) and wrongly refused real clips. Now scans string VALUES only, words ≥5 chars, minus the skeleton's structural vocabulary. Verified: 4 real ad clips pass, 32–48 content words checked, 0 false positives.
+- **Finding (perception):** ffmpeg `scene` scores are content-dependent — a flat-color hard cut measured ~0.13 vs the 0.30 gate (missed); dark/light luma alternation forces reliable synthetic recall. Real-footage scene-detect recall on low-contrast cuts is a footage-intel improvement to track.
+- **Follow-ups:** run the P4 paid fine-tune once the corpus is scaled (`synth pairs --n <big>` + real takes; §7 targets 2–5k) + explicit go; Engine A "full" = compose the 135 wavelet-ui components (byte-deterministic) once that lane merges from `reactable-wasmvideo`; text/subject round-trips; true multi-speaker diarization + music/sfx discrimination; Qwen3-VL frame path for the editor; V-JEPA-2 temporal-embedding bake-off vs SigLIP-2.

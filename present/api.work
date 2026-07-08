@@ -15,6 +15,7 @@ server :reactable_api do
   route "POST /reactable/exec", :exec_scripts, auth: :public
   route "GET /reactable/decks", :decks_list, auth: :public
   route "GET /reactable/surface", :surface_view, auth: :public
+  route "GET /reactable/asset", :asset_file, auth: :public
   route "GET /reactable/labs/:file", :lab_file, auth: :public
   route "GET /reactable/stage", :stage_status, auth: :public
   route "GET /reactable/stage/poll", :stage_poll, auth: :public
@@ -28,6 +29,7 @@ server :reactable_api do
   route "POST /reactable/agent/chat", :agent_chat, auth: :public
   route "POST /reactable/agent/approve", :agent_approve, auth: :public
   route "GET /reactable/agent/status", :agent_status, auth: :public
+  route "GET /reactable/agent/context", :agent_context, auth: :public
   route "POST /reactable/agent/prewarm", :agent_prewarm, auth: :public
   route "GET /reactable/agent/models", :agent_models, auth: :public
   route "POST /reactable/agent/pull", :agent_pull, auth: :public
@@ -37,6 +39,7 @@ server :reactable_api do
   route "GET /reactable/project", :project_get, auth: :public
   route "GET /reactable/surfaces", :surfaces_list, auth: :public
   route "GET /reactable/research", :research_list, auth: :public
+  route "GET /reactable/media", :media_file, auth: :public
   route "POST /reactable/research/add", :research_add, auth: :public
 
   def health(_req), do: %{ok: true, service: "reactable"}
@@ -262,6 +265,20 @@ server :reactable_api do
             {200, "text/html", surface_page(prose_to_html(File.read!(path)))}
         end
 
+      "image" ->
+        root_id = safe(req.query["project"] || "")
+        root = project_root_for(root_id)
+        path = project_file(root, ref)
+
+        cond do
+          path == nil or not File.regular?(path) ->
+            {404, "text/html", surface_page("<p class='err'>image not found: #{esc(ref)}</p>")}
+
+          true ->
+            src = "/reactable/asset?project=#{URI.encode_www_form(root_id)}&path=#{URI.encode_www_form(ref)}"
+            {200, "text/html", surface_image(src)}
+        end
+
       "take" ->
         id = safe_take_id(ref)
         dir = Path.join([wb_data(), "takes", id])
@@ -277,8 +294,191 @@ server :reactable_api do
             {200, "text/html", surface_video("/reactable/takes/#{id}/video")}
         end
 
+      "intel" ->
+        root_id = safe(req.query["project"] || "")
+        root = project_root_for(root_id)
+        idx_path = footage_index_for(root, ref)
+
+        case read_footage_index(idx_path) do
+          nil ->
+            {404, "text/html",
+             surface_page(
+               "<p class='err'>not indexed: #{esc(ref)}</p><p>Index it: <code>reactable video index #{esc(ref)}</code></p>"
+             )}
+
+          idx ->
+            {200, "text/html", footage_timeline_html(idx, Path.dirname(idx_path), ref, root_id)}
+        end
+
       _ ->
         {400, "text/html", surface_page("<p class='err'>unsupported surface: #{esc(kind)}</p>")}
+    end
+  end
+
+  # Rich intel timeline: shot filmstrip + transcript + tracklets + pass ledger.
+  defp footage_timeline_html(idx, intel_dir, ref, project_id) do
+    probe = idx["probe"] || %{}
+    dur = round((probe["duration_ms"] || 0) / 1000)
+    shots = idx["shots"] || []
+    transcript = idx["transcript"] || %{}
+    passes = idx["passes"] || %{}
+    concepts = footage_track_concepts(intel_dir)
+    edits = footage_edit_assets(intel_dir)
+
+    asset_url = fn rel ->
+      # <intel_dir>/<rel> is under the project; serve via /reactable/asset
+      full = Path.join(intel_dir, rel)
+      base = realpath(Path.expand(project_root_for(project_id)))
+      p = realpath(Path.expand(full))
+
+      if String.starts_with?(p, base <> "/") do
+        pr = String.replace_prefix(p, base <> "/", "")
+        "/reactable/asset?project=#{URI.encode_www_form(project_id)}&path=#{URI.encode_www_form(pr)}"
+      else
+        ""
+      end
+    end
+
+    filmstrip =
+      shots
+      |> Enum.map(fn s ->
+        t = round((s["in_ms"] || 0) / 1000)
+        cap = esc(to_string(s["caption"] || ""))
+
+        thumb =
+          case s["keyframe"] do
+            nil -> ""
+            kf -> "<img loading='lazy' src='#{asset_url.(kf)}' alt=''>"
+          end
+
+        "<div class='shot'><div class='thumb'>#{thumb}<span class='tc'>#{fmt_ts(t)}</span></div><div class='cap'>#{cap}</div></div>"
+      end)
+      |> Enum.join("")
+
+    words = transcript["words"] || []
+    transcript_txt = transcript["segments"] || []
+
+    transcript_html =
+      if transcript_txt == [] do
+        "<p class='muted'>no transcript</p>"
+      else
+        transcript_txt
+        |> Enum.map(fn seg ->
+          "<span class='seg' data-t='#{seg["in_ms"]}'>#{esc(to_string(seg["text"] || ""))}</span>"
+        end)
+        |> Enum.join(" ")
+      end
+
+    tracks_html =
+      if map_size(concepts) == 0 do
+        "<p class='muted'>no tracklets — run a pass: <code>reactable video pass #{esc(ref)} sam31 --concept \"…\"</code></p>"
+      else
+        concepts
+        |> Enum.map_join("", fn {c, n} -> "<span class='pill'>#{esc(c)} ×#{n}</span>" end)
+      end
+
+    edits_html =
+      if edits == [] do
+        "<p class='muted'>no edit assets yet</p>"
+      else
+        edits |> Enum.map_join("", fn e -> "<span class='pill edit'>#{esc(e)}</span>" end)
+      end
+
+    pass_rows =
+      ["t0", "t1", "sam31", "depth"]
+      |> Enum.map_join("", fn k ->
+        v = passes[k]
+        state = if v, do: "<b>✓</b>", else: "<span class='muted'>—</span>"
+        "<tr><td>#{k}</td><td>#{state}</td></tr>"
+      end)
+
+    inner = """
+    <div class="hdr">
+      <h1>#{esc(Path.basename(ref))}</h1>
+      <div class="meta">#{fmt_ts(dur)} · #{probe["width"]}×#{probe["height"]} · #{length(shots)} shots · #{length(words)} words</div>
+    </div>
+    <h3>Shots</h3>
+    <div class="film">#{filmstrip}</div>
+    <h3>Transcript</h3>
+    <div class="tr">#{transcript_html}</div>
+    <h3>Tracklets</h3>
+    <div class="pills">#{tracks_html}</div>
+    <h3>Edit assets</h3>
+    <div class="pills">#{edits_html}</div>
+    <h3>Passes</h3>
+    <table class="passes">#{pass_rows}</table>
+    """
+
+    """
+    <!doctype html><html><head><meta charset="utf-8">
+    <style>
+      html,body{margin:0;background:#09090b;color:#e7e7ea;
+        font:15px/1.6 ui-sans-serif,system-ui,-apple-system,sans-serif}
+      .wrap{max-width:900px;margin:0 auto;padding:32px 36px}
+      h1{margin:0;font-size:22px;letter-spacing:-.02em;color:#fafafa}
+      h3{margin:28px 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#a1a1aa}
+      .meta{color:#a1a1aa;font-size:13px;margin-top:4px}
+      .muted{color:#71717a}
+      code{background:#18181b;padding:2px 6px;border-radius:6px;font-size:13px}
+      .film{display:flex;gap:10px;overflow-x:auto;padding-bottom:8px}
+      .shot{flex:0 0 180px}
+      .thumb{position:relative;border-radius:8px;overflow:hidden;background:#18181b;aspect-ratio:16/9}
+      .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+      .tc{position:absolute;left:6px;bottom:6px;background:rgba(0,0,0,.7);
+        padding:1px 6px;border-radius:5px;font-size:11px;font-variant-numeric:tabular-nums}
+      .cap{font-size:12px;color:#a1a1aa;margin-top:6px;line-height:1.4}
+      .tr{background:#141417;border-radius:12px;padding:16px;line-height:1.9}
+      .seg{color:#d4d4d8}
+      .pills{display:flex;flex-wrap:wrap;gap:8px}
+      .pill{background:#1e1b4b;color:#c7d2fe;padding:4px 12px;border-radius:999px;font-size:13px}
+      .pill.edit{background:#134e2e;color:#bbf7d0}
+      table.passes{border-collapse:collapse}
+      table.passes td{padding:4px 24px 4px 0;border-bottom:1px solid #1f1f23}
+    </style></head><body><div class="wrap">#{inner}</div></body></html>
+    """
+  end
+
+  defp fmt_ts(sec) do
+    m = div(sec, 60)
+    s = rem(sec, 60)
+    "#{m}:#{String.pad_leading(to_string(s), 2, "0")}"
+  end
+
+  # Small project-file server for preview surfaces (images/docs). Video and
+  # audio deliberately NOT served here — File.read! loads whole files and the
+  # route has no Range support; the native preview plays those via AVPlayer.
+  @asset_exts ~w(.png .jpg .jpeg .gif .webp .svg .avif .heic .bmp .tiff .pdf .txt .md .work .json .csv)
+
+  def asset_file(req) do
+    root = project_root_for(safe(req.query["project"] || ""))
+    rel = to_string(req.query["path"] || "")
+    path = project_file(root, rel)
+    ext = rel |> Path.extname() |> String.downcase()
+
+    cond do
+      rel == "" -> {400, %{ok: false, error: "path required"}}
+      path == nil or not File.regular?(path) -> {404, %{ok: false, error: "not found"}}
+      ext not in @asset_exts -> {415, %{ok: false, error: "unsupported asset type"}}
+      true -> {200, MIME.from_path(path), File.read!(path)}
+    end
+  end
+
+  # Whole-file video/audio server for chat/preview cards (footage renders,
+  # derived edit assets). Range support is a later refinement; renders are
+  # short so a whole-file read is acceptable for preview.
+  @media_exts ~w(.mp4 .mov .m4v .webm .wav .m4a .mp3)
+
+  def media_file(req) do
+    root = project_root_for(safe(req.query["project"] || ""))
+    rel = to_string(req.query["path"] || "")
+    path = project_file(root, rel)
+    ext = rel |> Path.extname() |> String.downcase()
+
+    cond do
+      rel == "" -> {400, %{ok: false, error: "path required"}}
+      path == nil or not File.regular?(path) -> {404, %{ok: false, error: "not found"}}
+      ext not in @media_exts -> {415, %{ok: false, error: "unsupported media type"}}
+      true -> {200, MIME.from_path(path), File.read!(path)}
     end
   end
 
@@ -319,6 +519,15 @@ server :reactable_api do
       iframe{border:0;width:100vw;height:100vh;display:block}</style>
     </head><body><iframe src="#{url}" allow="autoplay; fullscreen; encrypted-media"
       allowfullscreen></iframe></body></html>
+    """
+  end
+
+  defp surface_image(url) do
+    """
+    <!doctype html><html><head><meta charset="utf-8">
+    <style>html,body{margin:0;height:100%;background:#000;display:flex;align-items:center;justify-content:center}
+      img{max-width:100%;max-height:100%;object-fit:contain}</style>
+    </head><body><img src="#{url}" alt=""></body></html>
     """
   end
 
@@ -1125,6 +1334,13 @@ server :reactable_api do
     end
   end
 
+  # Debug: the live per-turn context digest the agent sees. Handy for
+  # verifying footage/market intel lines render without driving the model.
+  def agent_context(req) do
+    deck = safe(req.query["deck"] || "showcase")
+    %{ok: true, digest: agent_context_digest(deck)}
+  end
+
   def agent_status(_req) do
     bin = tools_bin()
     cond do
@@ -1366,8 +1582,21 @@ server :reactable_api do
   defp surfaces_for(root, project_id) do
     deck_surfaces(root, project_id) ++
       take_surfaces(root, project_id) ++
+      intel_surfaces(root, project_id) ++
       doc_surfaces(root, project_id) ++
       research_surfaces(root, project_id)
+  end
+
+  # Each indexed media file is a browsable "intel" surface (rich timeline).
+  defp intel_surfaces(root, project_id) do
+    pid = project_id || Path.basename(root)
+    base = realpath(Path.expand(root))
+
+    footage_indexed(root)
+    |> Enum.map(fn {media, _idx} ->
+      rel = String.replace_prefix(realpath(Path.expand(media)), base <> "/", "")
+      %{kind: "intel", id: "intel:#{rel}", title: "#{Path.basename(media)} · intel", ref: rel, project: pid}
+    end)
   end
 
   defp deck_surfaces(root, project_id \\ nil) do
@@ -1576,13 +1805,13 @@ server :reactable_api do
               Enum.map(tools, fn tool ->
                 if needs_approval?(tool) do
                   approval_id = Base.url_encode64(:crypto.strong_rand_bytes(8))
-                  emit.(%{type: "tool.approval", tool: tool, id: approval_id})
+                  emit.(%{type: "tool.approval", tool: tool, id: approval_id, meta: approval_meta(tool)})
 
                   case await_approval(approval_id, 240) do
                     :accept ->
                       emit.(%{type: "tool.start", tool: tool})
                       out = run_agent_tool(tool)
-                      emit.(%{type: "tool.result", tool: tool, ok: out[:ok] == true, summary: tool_summary(out)})
+                      emit.(%{type: "tool.result", tool: tool, ok: out[:ok] == true, summary: tool_summary(out), card: tool_card(tool, out)})
                       %{tool: tool, result: out}
 
                     _ ->
@@ -1593,7 +1822,7 @@ server :reactable_api do
                 else
                   emit.(%{type: "tool.start", tool: tool})
                   out = run_agent_tool(tool)
-                  emit.(%{type: "tool.result", tool: tool, ok: out[:ok] == true, summary: tool_summary(out)})
+                  emit.(%{type: "tool.result", tool: tool, ok: out[:ok] == true, summary: tool_summary(out), card: tool_card(tool, out)})
                   %{tool: tool, result: out}
                 end
               end)
@@ -1620,9 +1849,60 @@ server :reactable_api do
     end
   end
 
-  # Spends that need a human: video generation (hundreds–thousands of credits).
+  # Spends that need a human: video generation (hundreds–thousands of credits)
+  # and footage GPU passes (SAM3/depth/matte run on cloud GPUs, real $).
   defp needs_approval?(%{"name" => "connector", "args" => %{"provider" => "videogen"}}), do: true
+
+  defp needs_approval?(%{"name" => "bash", "args" => %{"cmd" => cmd}}) when is_binary(cmd),
+    do: footage_pass_cmd?(cmd)
+
   defp needs_approval?(_), do: false
+
+  # A footage GPU pass that will actually dispatch (has --run).
+  # NB: `\b--run\b` never matches — `-` is a non-word char so there is no word
+  # boundary before it. Anchor on whitespace/start instead.
+  defp footage_pass_cmd?(cmd) do
+    Regex.match?(~r/\breactable\s+video\s+pass\b/, cmd) and
+      Regex.match?(~r/(^|\s)--run(\s|$)/, cmd) and
+      Regex.match?(~r/\b(sam31|depth|matte)\b/, cmd)
+  end
+
+  # Cost/scope meta shown on the approval card. Estimate map has STRING keys
+  # (Jason.decode), so build the whole map with string keys — mixing atom+string
+  # keys yields a duplicate "kind" in the JSON (last one wins in JS → wrong).
+  defp approval_meta(%{"name" => "bash", "args" => %{"cmd" => cmd}}) do
+    est = footage_pass_estimate(cmd) || %{}
+    Map.merge(est, %{"kind" => "footage.pass", "kind_label" => est["kind"] || "footage"})
+  end
+
+  defp approval_meta(%{"name" => "connector", "args" => %{"provider" => "videogen"} = a}) do
+    %{"kind" => "videogen", "model" => get_in(a, ["params", "model"]) || "video"}
+  end
+
+  defp approval_meta(_), do: %{}
+
+  # Shell `reactable video pass <ref> <kind> --estimate --json` for the card.
+  defp footage_pass_estimate(cmd) do
+    case Regex.run(~r/video\s+pass\s+(\S+)\s+(sam31|depth|matte)/, cmd) do
+      [_, ref, kind] ->
+        args =
+          ["-i" | Enum.map(sandbox_env(), fn {k, v} -> "#{k}=#{v}" end)] ++
+            ["/bin/bash", "-c", "reactable video pass #{ref} #{kind} --estimate --json"]
+
+        {out, code} = System.cmd("/usr/bin/env", args, cd: wb_data(), stderr_to_stdout: true)
+
+        with 0 <- code,
+             line when is_binary(line) <- out |> String.split("\n", trim: true) |> List.last(),
+             {:ok, m} <- Jason.decode(line) do
+          m
+        else
+          _ -> nil
+        end
+
+      _ ->
+        nil
+    end
+  end
 
   defp await_approval(_id, 0), do: :skip
 
@@ -1651,6 +1931,139 @@ server :reactable_api do
   end
 
   defp tool_summary(out), do: to_string(out[:error] || "failed")
+
+  # ── Structured footage cards (B1) — typed payload the chat renders as a
+  # component. nil for anything that isn't a footage verb (→ plain chip).
+
+  defp tool_card(%{"name" => "bash", "args" => %{"cmd" => cmd}}, %{ok: true, output: out})
+       when is_binary(out) do
+    if Regex.match?(~r/\breactable\s+video\b/, cmd) do
+      json = parse_last_json(out)
+      ref = video_ref_from_cmd(cmd)
+
+      cond do
+        is_nil(json) -> nil
+        Map.has_key?(json, "hits") -> Map.merge(%{kind: "footage.find", ref: ref}, take_keys(json, ["query", "hits"]))
+        Map.has_key?(json, "render") -> render_card(ref, json)
+        Map.has_key?(json, "punches") -> render_card(ref, json)
+        Map.has_key?(json, "tracklets") -> tracks_card(ref)
+        Map.has_key?(json, "sidecar") -> index_card(ref, json)
+        Map.has_key?(json, "tracks") -> tracks_card(ref)
+        true -> nil
+      end
+    else
+      nil
+    end
+  end
+
+  defp tool_card(_, _), do: nil
+
+  defp take_keys(map, keys), do: Map.new(keys, fn k -> {String.to_atom(k), map[k]} end)
+
+  defp parse_last_json(out) do
+    out
+    |> String.split("\n", trim: true)
+    |> Enum.reverse()
+    |> Enum.find_value(nil, fn line ->
+      case Jason.decode(String.trim(line)) do
+        {:ok, m} when is_map(m) -> m
+        _ -> nil
+      end
+    end)
+  end
+
+  defp video_ref_from_cmd(cmd) do
+    ref =
+      cond do
+        Regex.match?(~r/video\s+find\b/, cmd) ->
+          case Regex.run(~r/--in\s+(\S+)/, cmd) do
+            [_, r] -> r
+            _ -> nil
+          end
+
+        true ->
+          case Regex.run(~r/video\s+\w+\s+([^\s"]+)/, cmd) do
+            [_, r] -> r
+            _ -> nil
+          end
+      end
+
+    ref && String.trim(ref, "\"")
+  end
+
+  defp render_card(ref, json) do
+    win =
+      case json["foreground_window"] do
+        %{"in_ms" => i, "out_ms" => o} -> "#{fmt_ts(round(i / 1000))}–#{fmt_ts(round(o / 1000))}"
+        _ -> nil
+      end
+
+    %{
+      kind: "footage.render",
+      ref: ref,
+      render: project_rel(wb_data(), json["render"]),
+      preview: media_url(json["render"]),
+      poster: render_poster_url(json["render"]),
+      track: json["track"] || json["concept"],
+      window: win,
+      summary: json["note"] || "render ready"
+    }
+  end
+
+  defp index_card(ref, json) do
+    idx_path = footage_index_for(wb_data(), ref)
+    idx = read_footage_index(idx_path) || %{}
+    intel_dir = idx_path && Path.dirname(idx_path)
+
+    thumbs =
+      (idx["shots"] || [])
+      |> Enum.map(fn s -> s["keyframe"] && intel_asset_url(intel_dir, s["keyframe"]) end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.take(8)
+
+    %{
+      kind: "footage.index",
+      ref: ref,
+      shots: json["shots"],
+      words: get_in(idx, ["transcript", "words"]) |> then(&(&1 && length(&1))),
+      thumbs: thumbs
+    }
+  end
+
+  defp tracks_card(ref) do
+    idx_path = footage_index_for(wb_data(), ref)
+    concepts = idx_path && footage_track_concepts(Path.dirname(idx_path))
+    %{kind: "footage.tracks", ref: ref, concepts: concepts || %{}}
+  end
+
+  defp project_rel(_root, nil), do: nil
+
+  defp project_rel(root, abs) do
+    base = realpath(Path.expand(root))
+    p = realpath(Path.expand(abs))
+    if String.starts_with?(p, base <> "/"), do: String.replace_prefix(p, base <> "/", ""), else: nil
+  end
+
+  defp media_url(nil), do: nil
+
+  defp media_url(abs) do
+    case project_rel(wb_data(), abs) do
+      nil -> nil
+      rel -> "/reactable/media?project=#{URI.encode_www_form(Path.basename(wb_data()))}&path=#{URI.encode_www_form(rel)}"
+    end
+  end
+
+  defp intel_asset_url(intel_dir, rel) do
+    case project_rel(wb_data(), Path.join(intel_dir, rel)) do
+      nil -> nil
+      pr -> "/reactable/asset?project=#{URI.encode_www_form(Path.basename(wb_data()))}&path=#{URI.encode_www_form(pr)}"
+    end
+  end
+
+  # A poster still for a render: reuse a pre-generated thumb if present, else nil
+  # (the chat falls back to the <video> first frame).
+  defp render_poster_url(nil), do: nil
+  defp render_poster_url(_abs), do: nil
 
   # Streamed completion: the tools binary runs as a Port with --stream and we
   # forward each NDJSON tok line the moment it lands. Stub mode stays whole.
@@ -2073,26 +2486,41 @@ server :reactable_api do
 
   defp sandbox_env do
     home = System.get_env("HOME") || "/tmp"
-    # Include the user bin dirs where `reactable` (bun link) and uv land, so the
-    # allowlisted `reactable …` commands actually resolve. Still no profile sourced.
-    path =
-      Enum.join(
-        [
-          "#{home}/.bun/bin",
-          "#{home}/.local/bin",
-          "/opt/homebrew/bin",
-          "/usr/local/bin",
-          "/usr/bin",
-          "/bin"
-        ],
-        ":"
-      )
+    # Bundled tool dir (set by NexusSidecar to Contents/MacOS on a real install)
+    # goes first so ffmpeg / reactable-vision / reactable-tools resolve with no
+    # Homebrew. User bin dirs stay for dev (bun link, uv).
+    bundled = System.get_env("REACTABLE_BIN_DIR") || bundled_bin_dir()
 
-    [
-      {"WB_DATA", wb_data()},
-      {"HOME", home},
-      {"PATH", path}
-    ]
+    path =
+      ([bundled] ++
+         [
+           "#{home}/.bun/bin",
+           "#{home}/.local/bin",
+           "/opt/homebrew/bin",
+           "/usr/local/bin",
+           "/usr/bin",
+           "/bin"
+         ])
+      |> Enum.reject(&(&1 in [nil, ""]))
+      |> Enum.join(":")
+
+    # Pass the bundled tool paths through the scrubbed sandbox so the CLI's
+    # native footage lane (no uv/Python) is used on a clean install.
+    passthrough =
+      for k <- ["REACTABLE_VISION_BIN", "REACTABLE_TOOLS", "REACTABLE_FFMPEG"],
+          v = System.get_env(k),
+          is_binary(v),
+          do: {k, v}
+
+    [{"WB_DATA", wb_data()}, {"HOME", home}, {"PATH", path}] ++ passthrough
+  end
+
+  # The dir the bundled native binaries live in (reactable-vision beside them).
+  defp bundled_bin_dir do
+    case System.get_env("REACTABLE_VISION_BIN") do
+      p when is_binary(p) -> Path.dirname(p)
+      _ -> nil
+    end
   end
 
   defp safe_read(rel) do
@@ -2217,6 +2645,162 @@ server :reactable_api do
     end
   end
 
+  # ── Footage intelligence (<asset>.intel sidecars) ────────────────────
+  # Perception of pixels: index.json (probe/shots/transcript/ocr/passes),
+  # tracks.jsonl (tracklets), assets/ (cutout/matte/compose/motion/kf).
+  # docs/PLAN.footage-intel.work. Read directly here — no CLI shell per turn.
+
+  @footage_media_exts ~w(.mov .mp4 .m4v .webm .mkv .avi)
+
+  defp footage_index_path(media) do
+    base = Path.basename(media, Path.extname(media))
+    Path.join([Path.dirname(media), base <> ".intel", "index.json"])
+  end
+
+  defp footage_walk(dir, depth) when depth > 4, do: []
+
+  defp footage_walk(dir, depth) do
+    case File.ls(dir) do
+      {:ok, names} ->
+        Enum.flat_map(names, fn n ->
+          p = Path.join(dir, n)
+
+          cond do
+            String.ends_with?(n, ".intel") -> []
+            String.starts_with?(n, ".") -> []
+            File.dir?(p) -> footage_walk(p, depth + 1)
+            String.downcase(Path.extname(n)) in @footage_media_exts -> [p]
+            true -> []
+          end
+        end)
+
+      _ ->
+        []
+    end
+  end
+
+  # {media_abs, index_path} for every indexed media file under takes/ + assets/.
+  defp footage_indexed(root) do
+    ["takes", "assets"]
+    |> Enum.flat_map(fn sub -> footage_walk(Path.join(root, sub), 0) end)
+    |> Enum.map(fn media -> {media, footage_index_path(media)} end)
+    |> Enum.filter(fn {_m, idx} -> File.regular?(idx) end)
+  end
+
+  # Resolve a media ref (take id, take dir, or project-relative path) → index.json.
+  defp footage_index_for(root, ref) do
+    cond do
+      String.starts_with?(ref, "take-") ->
+        footage_index_path(Path.join([root, "takes", safe_take_id(ref), "stage.mov"]))
+
+      true ->
+        case project_file(root, ref) do
+          nil ->
+            nil
+
+          media ->
+            if File.dir?(media) do
+              stage = Path.join(media, "stage.mov")
+              if File.regular?(stage), do: footage_index_path(stage), else: nil
+            else
+              footage_index_path(media)
+            end
+        end
+    end
+  end
+
+  defp read_footage_index(path) do
+    with true <- is_binary(path) and File.regular?(path),
+         {:ok, body} <- File.read(path),
+         {:ok, map} <- Jason.decode(body) do
+      map
+    else
+      _ -> nil
+    end
+  end
+
+  # concept => count, from tracks.jsonl beside the index.
+  defp footage_track_concepts(intel_dir) do
+    case File.read(Path.join(intel_dir, "tracks.jsonl")) do
+      {:ok, body} ->
+        body
+        |> String.split("\n", trim: true)
+        |> Enum.map(fn line ->
+          case Jason.decode(line) do
+            {:ok, m} -> m["concept"]
+            _ -> nil
+          end
+        end)
+        |> Enum.reject(&is_nil/1)
+        |> Enum.frequencies()
+
+      _ ->
+        %{}
+    end
+  end
+
+  # Derived edit assets (cutout/matte/compose/motion) in <intel>/assets.
+  defp footage_edit_assets(intel_dir) do
+    case File.ls(Path.join(intel_dir, "assets")) do
+      {:ok, names} ->
+        Enum.filter(names, &Regex.match?(~r/^(cutout|matte|compose|motion|autoedit)/, &1))
+
+      _ ->
+        []
+    end
+  end
+
+  defp footage_queued(intel_dir) do
+    case File.read(Path.join(intel_dir, "passes-queue.jsonl")) do
+      {:ok, body} -> body |> String.split("\n", trim: true) |> length()
+      _ -> 0
+    end
+  end
+
+  # One-line status for the agent digest.
+  defp footage_line(root) do
+    case footage_indexed(root) do
+      [] ->
+        ""
+
+      list ->
+        n = length(list)
+
+        brief =
+          list
+          |> Enum.take(4)
+          |> Enum.map_join(", ", fn {media, idx_path} ->
+            dir = Path.dirname(idx_path)
+            concepts = footage_track_concepts(dir)
+
+            trk =
+              if map_size(concepts) > 0 do
+                concepts
+                |> Enum.map_join("/", fn {c, cnt} -> "#{c}×#{cnt}" end)
+              else
+                ""
+              end
+
+            edits = length(footage_edit_assets(dir))
+
+            bits =
+              [
+                if(trk != "", do: "trk #{trk}", else: nil),
+                if(edits > 0, do: "#{edits} edit-asset#{if edits == 1, do: "", else: "s"}", else: nil)
+              ]
+              |> Enum.reject(&is_nil/1)
+
+            name = Path.basename(media)
+            if bits == [], do: name, else: "#{name} (#{Enum.join(bits, ", ")})"
+          end)
+
+        queued = list |> Enum.map(fn {_m, idx} -> footage_queued(Path.dirname(idx)) end) |> Enum.sum()
+        q = if queued > 0, do: " · #{queued} pass queued", else: ""
+
+        "\nFootage: #{n} indexed — #{brief}#{q}. Verbs: reactable video find|at|pass|compose|autoedit"
+    end
+  end
+
   defp agent_context_digest(deck) do
     root = wb_data()
     summary = project_summary(root)
@@ -2267,6 +2851,8 @@ server :reactable_api do
           "\nIntel: #{count} tracked — #{hot}. Verbs: reactable intel trends|radar|breakouts --json"
       end
 
+    footage_line = footage_line(root)
+
     """
     ## Live project context
 
@@ -2274,7 +2860,7 @@ server :reactable_api do
     #{deck_line}
     Takes (#{length(takes)}, newest first): #{if take_ids == "", do: "none yet", else: take_ids}
     Assets (#{length(assets)}): #{assets |> Enum.take(30) |> Enum.join(", ")}#{notes_block}#{links_line}
-    Research: #{if research == "", do: "none", else: research}#{intel_line}
+    Research: #{if research == "", do: "none", else: research}#{intel_line}#{footage_line}
 
     Depth on demand: `reactable project --json`, `reactable decks get #{deck} --json`, `reactable takes events <id> --json`.
     """

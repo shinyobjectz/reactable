@@ -58,7 +58,7 @@ final class CaptureOutline {
         view.wantsLayer = true
         view.layer?.borderColor = NSColor(red: 0.93, green: 0.26, blue: 0.21, alpha: 0.95).cgColor
         view.layer?.borderWidth = 3
-        view.layer?.cornerRadius = 10
+        view.layer?.cornerRadius = Chrome.radiusInner
         win.contentView = view
         return win
     }

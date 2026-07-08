@@ -62,6 +62,7 @@ final class SettingsPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
         win.level = .modalPanel
         FloatingWindow.configure(win)
         let config = WKWebViewConfiguration()
+        Chrome.injectTokens(into: config)
         config.userContentController.add(self, name: "reactable")
         let web = WKWebView(frame: .zero, configuration: config)
         web.setValue(false, forKey: "drawsBackground")

@@ -14,8 +14,8 @@ client :bar do
       /* 48px control row + 8px reserved at the bottom for the mic meter strip */
       height: 56px; padding: 0 8px 8px 4px;
       background: rgba(22,22,24,.88);
-      border: 1px solid rgba(255,255,255,.08);
-      border-radius: 14px;
+      border: var(--rt-stroke-w, 1px) solid var(--rt-stroke-outer, rgba(255,255,255,.08));
+      border-radius: var(--rt-radius-outer, 14px);
       backdrop-filter: blur(18px);
       box-shadow: 0 8px 32px rgba(0,0,0,.35);
     }
@@ -69,6 +69,37 @@ client :bar do
       pointer-events: none;
     }
 
+    /* Docked mode: the bar lives inside the combined window. Its grip stays
+       (it's the tear-out handle); the close button and window shadow die.
+       The Stage / Agent panels are already visible columns, so their
+       show/hide toggles are redundant — hide them, and surface an Edit Stage
+       button instead. Floating, all three come back (the bar summons them). */
+    .bar.docked #close { display: none; }
+    /* Co-dock awareness: hide a panel's open/close toggle when that panel
+       shares the bar's combined window. When the STAGE is co-docked, the
+       show/hide toggle + its chevron give way to a single Edit Stage button. */
+    .bar.peer-projects #picker { display: none; }
+    .bar.peer-agent #agent { display: none; }
+    .bar.peer-stage #mode-stage, .bar.peer-stage #stage-mgr { display: none; }
+    #edit-stage { display: none; }
+    .bar.peer-stage #edit-stage { display: inline-flex; }
+    .shell.docked { justify-content: stretch; }
+    .shell.docked .bar { flex: 1; justify-content: center; border-radius: var(--rt-radius-inner, 10px); box-shadow: none; backdrop-filter: none; background: rgba(255,255,255,.03); }
+
+    /* Fit-driven disclosure: everything shows if it fits; each t-level hides
+       the next-lowest-priority piece until the row stops overflowing. */
+    #more { display: none; }
+    .bar.t1 #picker .lbl, .bar.t1 #stage-label { display: none; }
+    .bar.t1 .btn.mode { min-width: 0; }
+    .bar.t2 #cam-src, .bar.t2 #mic-src, .bar.t2 #stage-mgr { display: none; }
+    .bar.t2 .has-chev { border-radius: 8px; }
+    .bar.t2 #more { display: inline-flex; }
+    .bar.t3 #agent, .bar.t3 #gear { display: none; }
+    .bar.t4 #sys { display: none; }
+    .bar.t5 #picker { display: none; }
+    .bar.t6 #cam, .bar.t6 #mic { display: none; }
+    .bar.t7 .sep { display: none; }
+
     /* Mic meter — fixed-height gradient strip in the bar's bottom padding.
        Level maps to COLOR, not height: blank (silence) → purple → blue →
        green, peaking → orange → red. */
@@ -99,6 +130,10 @@ client :bar do
       <svg class="ic sm" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="m9 8 2 2 4-4"/></svg>
       <span class="lbl" id="stage-label">Stage</span>
     </button>
+    <button class="btn mode" id="edit-stage" type="button" title="Edit the current deck / stage content">
+      <svg class="ic sm" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+      <span class="lbl">Edit Stage</span>
+    </button>
     <button class="btn chev" id="stage-mgr" title="Stage Manager — lineup of scenes to record"><svg class="ic" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
     <div class="sep"></div>
     <button class="btn icon tog has-chev" id="cam" title="Camera"><svg class="ic" viewBox="0 0 24 24"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg></button>
@@ -118,6 +153,7 @@ client :bar do
     <div class="gear-wrap">
       <button class="btn icon" id="gear" title="Settings"><svg class="ic" viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.015 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.015 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.015 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.015"/><circle cx="12" cy="12" r="3"/></svg></button>
     </div>
+    <button class="btn icon" id="more" title="More controls"><svg class="ic" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg></button>
     <button class="btn icon close" id="close" title="Close bar and stage"><svg class="ic" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
     <div id="mic-wave"></div>
   </div>
@@ -126,6 +162,7 @@ client :bar do
   (function () {
     const $ = (id) => document.getElementById(id);
     let state = {};
+    let docked = false;
 
     function send(action, payload = {}) {
       window.webkit?.messageHandlers?.reactable?.postMessage({ action, payload });
@@ -142,6 +179,13 @@ client :bar do
     }
 
     function render() {
+      // Co-dock awareness: which panels share the bar's window right now.
+      const peers = state.barPeers || [];
+      const bar = $('bar');
+      bar.classList.toggle('peer-projects', peers.includes('projects'));
+      bar.classList.toggle('peer-agent', peers.includes('agent'));
+      bar.classList.toggle('peer-stage', peers.includes('stage'));
+
       // Stage button = window toggle; label reflects what recording will grab.
       const stageBtn = $('mode-stage');
       stageBtn.classList.toggle('on', !!state.stageVisible);
@@ -167,10 +211,29 @@ client :bar do
     }
 
     function syncBarWidth() {
+      if (docked) return; // the cell owns the width; native ignores it anyway
       const bar = $('bar');
       if (!bar) return;
       const w = Math.ceil(bar.getBoundingClientRect().width);
       send('bar.resize', { width: w });
+    }
+
+    // Fit-driven disclosure, docked only (floating sizes the window to content,
+    // so tiering there would feedback-loop with bar.resize). Show everything,
+    // then hide in priority order ONLY until the row fits the cell.
+    const MAX_TIER = 7;
+    function applyTier() {
+      const bar = $('bar');
+      const shell = document.querySelector('.shell');
+      bar.classList.toggle('docked', docked);
+      shell.classList.toggle('docked', docked);
+      for (let i = 1; i <= MAX_TIER; i++) bar.classList.remove('t' + i);
+      if (!docked) return;
+      let level = 0;
+      while (level < MAX_TIER && bar.scrollWidth > bar.clientWidth + 1) {
+        level++;
+        bar.classList.add('t' + level);
+      }
     }
 
     const DRAG_SLOP = 6;
@@ -179,9 +242,13 @@ client :bar do
       const btn = target.closest('button');
       if (!btn) return;
       if (btn.id === 'mode-stage') return send('stage.toggle');
+      // Edit Stage does what the (now-hidden) chevron did: opens the Stage
+      // Manager — the stage's editor panel. It does NOT switch app mode.
+      if (btn.id === 'edit-stage') return send('stage.manager');
       if (btn.id === 'stage-mgr') return send('stage.manager');
       if (btn.id === 'picker') return send('projects.board');
       if (btn.id === 'gear') return send('bar.menu.settings', anchor(btn));
+      if (btn.id === 'more') return send('bar.menu.overflow', anchor(btn));
       if (btn.id === 'agent') return send('agent.open');
       // Optimistic toggle — flip the icon immediately so it never lags behind
       // native work (e.g. stopping the camera session). Native confirms via state.
@@ -214,6 +281,14 @@ client :bar do
           if (ev.pointerId !== down.id) return;
           if (!dragging && Math.hypot(ev.screenX - down.x, ev.screenY - down.y) >= DRAG_SLOP) {
             dragging = true;
+            if (docked) {
+              // Docked drag = tear out. Native pops the bar back to a float and
+              // takes over the gesture; this pointer stream is done.
+              window.removeEventListener('pointermove', move);
+              window.removeEventListener('pointerup', up);
+              send('bar.tearOut');
+              return;
+            }
           }
           if (dragging) {
             send('bar.moveBy', { dx: ev.screenX - lastX, dy: ev.screenY - lastY });
@@ -226,6 +301,7 @@ client :bar do
           window.removeEventListener('pointermove', move);
           window.removeEventListener('pointerup', up);
           if (!dragging) handleTap(e.target, e);
+          else send('bar.moveEnd'); // release may land on a dock drop zone
         };
         window.addEventListener('pointermove', move);
         window.addEventListener('pointerup', up);
@@ -254,6 +330,7 @@ client :bar do
     send('bar.ready');
     window.ReactableBar = {
       setState(s) { state = s; render(); },
+      setDocked(d) { docked = !!d; applyTier(); },
       setDevices() { /* window list refreshed natively when picker opens */ },
       // level 0..1 from the native mic meter → color, not height. Silence = blank.
       setMicLevel(level) {
@@ -275,8 +352,10 @@ client :bar do
       new ResizeObserver(() => syncBarWidth()).observe($('bar'));
     }
     window.addEventListener('load', syncBarWidth);
+    window.addEventListener('resize', applyTier);
 
     render();
+    applyTier();
   })();
   </script>
 end

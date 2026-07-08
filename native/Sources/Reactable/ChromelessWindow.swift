@@ -11,21 +11,8 @@ extension Array {
     }
 }
 
-enum Chrome {
-    static let dragStripHeight: CGFloat = 28
-    static let gapBelowDrag: CGFloat = 8
-    static let frameMargin: CGFloat = 12
-    static let cornerRadius: CGFloat = 12
-    static let showAnimDuration: TimeInterval = 0.18
-
-    /// Shell size that wraps `content` with the header strip + rounded frame margins.
-    static func shellSize(for content: NSSize) -> NSSize {
-        NSSize(
-            width: content.width + frameMargin * 2,
-            height: dragStripHeight + gapBelowDrag + content.height + frameMargin
-        )
-    }
-}
+// Chrome tokens live in ChromeTokens.swift — the single source of truth for
+// radii, strokes, surfaces, and metrics (also injected into webviews as --rt-*).
 
 /// Draggable header strip with a centered grip. Optionally hosts tab views on
 /// its leading edge (Phase 3). mouseDown starts a window drag.
@@ -34,6 +21,8 @@ final class DragStripView: NSView {
     var onDoubleClick: (() -> Void)?
     /// Group windows center their title where the grip would sit.
     var showsGrip = true
+    /// Reveal/hide the strip's hover controls (the ⋯ panel menu).
+    var onHover: ((Bool) -> Void)?
 
     override var isFlipped: Bool { true }
 
@@ -41,8 +30,20 @@ final class DragStripView: NSView {
         WindowDrag.begin(in: self, onDoubleClick: onDoubleClick)
     }
 
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self, userInfo: nil))
+    }
+
+    override func mouseEntered(with event: NSEvent) { onHover?(true) }
+    override func mouseExited(with event: NSEvent) { onHover?(false) }
+
     override func draw(_ dirtyRect: NSRect) {
-        NSColor(white: 0.08, alpha: 1).setFill()
+        Chrome.bgRoot.setFill()
         dirtyRect.fill()
         guard showsGrip else { return }
         // Horizontal six-dot grip — same handle language as the bar's drag grip.
@@ -92,7 +93,7 @@ final class TabBarView: NSView {
     private func pill(_ tab: Tab, active: Bool) -> NSView {
         let pill = NSView()
         pill.wantsLayer = true
-        pill.layer?.cornerRadius = 7
+        pill.layer?.cornerRadius = Chrome.radiusControl - 1
         pill.layer?.backgroundColor = (active
             ? NSColor(white: 1, alpha: 0.16)
             : NSColor(white: 1, alpha: 0.06)).cgColor
@@ -139,18 +140,40 @@ final class TabBarView: NSView {
     }
 }
 
-/// A rounded, bordered content frame that clips its subviews (the stage/agent web view).
+/// A rounded, bordered content frame. The stroke lives in a 1pt padding ring:
+/// content is inset by `Chrome.strokeWidth` and rounds itself concentrically,
+/// so the border never overlays content pixels and the mask never hard-clips
+/// an unrounded content edge. Use `install(_:)` — never pin content to the
+/// frame's edges directly.
 @MainActor
 final class ContentFrameView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.cornerRadius = Chrome.cornerRadius
+        layer?.cornerRadius = Chrome.radiusInner
         layer?.masksToBounds = true
-        layer?.backgroundColor = NSColor(white: 0.035, alpha: 1).cgColor
-        layer?.borderColor = NSColor(white: 1, alpha: 0.14).cgColor
-        layer?.borderWidth = 1
+        layer?.backgroundColor = Chrome.bgContent.cgColor
+        layer?.borderColor = Chrome.strokeInner.cgColor
+        layer?.borderWidth = Chrome.strokeWidth
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    /// Pin `content` inside the stroke ring. The 1pt inset on both axes keeps
+    /// even/odd pixel parity for the h264 capture crop.
+    func install(_ content: NSView) {
+        let inset = Chrome.strokeWidth
+        content.removeFromSuperview()
+        content.translatesAutoresizingMaskIntoConstraints = false
+        content.wantsLayer = true
+        content.layer?.cornerRadius = Chrome.radiusInner - inset
+        content.layer?.masksToBounds = true
+        addSubview(content)
+        NSLayoutConstraint.activate([
+            content.topAnchor.constraint(equalTo: topAnchor, constant: inset),
+            content.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
+            content.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
+            content.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -inset),
+        ])
+    }
 }

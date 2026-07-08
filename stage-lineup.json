@@ -1,0 +1,62 @@
+[
+  {
+    "slideId" : "start",
+    "kind" : "slide",
+    "title" : "1 · start",
+    "ref" : "0"
+  },
+  {
+    "title" : "Built-in Retina Display",
+    "kind" : "display",
+    "ref" : "1",
+    "sub" : "full screen"
+  },
+  {
+    "title" : "2 · format-prose",
+    "ref" : "1",
+    "kind" : "slide",
+    "slideId" : "format-prose"
+  },
+  {
+    "ref" : "3",
+    "kind" : "slide",
+    "slideId" : "format-iframe-local",
+    "title" : "4 · format-iframe-local"
+  },
+  {
+    "ref" : "2",
+    "title" : "3 · format-client",
+    "kind" : "slide",
+    "slideId" : "format-client"
+  },
+  {
+    "title" : "5 · format-iframe-remote",
+    "slideId" : "format-iframe-remote",
+    "ref" : "4",
+    "kind" : "slide"
+  },
+  {
+    "title" : "6 · format-video",
+    "kind" : "slide",
+    "slideId" : "format-video",
+    "ref" : "5"
+  },
+  {
+    "title" : "7 · format-youtube",
+    "slideId" : "format-youtube",
+    "kind" : "slide",
+    "ref" : "6"
+  },
+  {
+    "title" : "8 · format-whiteboard",
+    "slideId" : "format-whiteboard",
+    "ref" : "7",
+    "kind" : "slide"
+  },
+  {
+    "title" : "9 · end",
+    "slideId" : "end",
+    "ref" : "8",
+    "kind" : "slide"
+  }
+]

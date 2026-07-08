@@ -71,6 +71,21 @@ reactable research add "<title>" [--url <u>] [--note <n>]
 reactable youtube search "<query>"
 ```
 
+Footage intelligence (perception of the pixels — timecodes, objects, edits):
+```
+reactable video find "<query>" --in <take-id|path> --json   # text → timecodes (transcript·ocr·visual·tracks)
+reactable video at <ref> <ms|mm:ss> --json                  # everything known at that moment
+reactable video pass <ref> <sam31|depth> --concept "…" [--estimate|--run]   # GPU: track/depth (--estimate first, costs credits)
+reactable video compose <ref> <track-id> [--bg <path|gradient>]   # finished render: isolate + bg-swap + fg punch-in
+reactable video autoedit <take-id> [--render]               # authored edit from ground-truth events (cursor punch-ins + silence trims)
+```
+Every take and imported clip auto-indexes on import/record-stop, so `find`/`at`
+work without a build step. When the digest shows `Footage: … indexed`, reach
+for these: `find` to locate a moment, `at` to read layout/events there, `pass`
+to track objects or depth (ALWAYS `--estimate` first and let the approval card
+show cost), `compose`/`autoedit` to produce edit assets. Full guide:
+read_file skill/verbs/video-intel.md.
+
 ## Deck DSL (native .work — never JSON)
 
 ```

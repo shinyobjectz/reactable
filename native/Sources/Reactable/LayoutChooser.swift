@@ -49,10 +49,7 @@ final class LayoutChooserPanel {
         FloatingWindow.configure(win)
 
         let root = NSView()
-        root.wantsLayer = true
-        root.layer?.backgroundColor = NSColor(white: 0.08, alpha: 1).cgColor
-        root.layer?.cornerRadius = 14
-        root.layer?.masksToBounds = true
+        Chrome.styleRoot(root)
         win.contentView = root
 
         let title = NSTextField(labelWithString: "How should Reactable feel?")
@@ -109,8 +106,8 @@ private final class ChoiceCard: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         layer?.backgroundColor = NSColor(white: 1, alpha: 0.06).cgColor
-        layer?.cornerRadius = 12
-        layer?.borderWidth = 1
+        layer?.cornerRadius = Chrome.radiusInner
+        layer?.borderWidth = Chrome.strokeWidth
         layer?.borderColor = NSColor(white: 1, alpha: 0.12).cgColor
 
         let icon = NSImageView()

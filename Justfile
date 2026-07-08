@@ -69,6 +69,39 @@ app: build
     if [ -x "$ROOT/dist/reactable-tools" ]; then
       cp "$ROOT/dist/reactable-tools" "$APP/Contents/MacOS/"
     fi
+    # Standalone CLI (bun runtime embedded) so `reactable <verb>` needs no bun
+    # on a clean install. NexusSidecar symlinks it to `reactable` on PATH.
+    echo "→ compiling standalone reactable-cli…"
+    ( cd "$ROOT" && bun build --compile cli/bin/reactable.ts --outfile dist/reactable-cli >/dev/null 2>&1 ) || echo "⚠ CLI compile failed"
+    if [ -x "$ROOT/dist/reactable-cli" ]; then
+      cp "$ROOT/dist/reactable-cli" "$APP/Contents/MacOS/reactable-cli"
+      chmod +x "$APP/Contents/MacOS/reactable-cli"
+    fi
+    # Native CoreML/ANE vision tool (OCR + MobileCLIP embeddings + depth) +
+    # its models — the offline T0/T1 + depth lane. No Python at runtime.
+    if [ ! -x "{{native}}/vision/.build/release/reactable-vision" ]; then
+      echo "→ building reactable-vision…"
+      ( cd "{{native}}/vision" && swift build -c release )
+    fi
+    if [ -x "{{native}}/vision/.build/release/reactable-vision" ]; then
+      cp "{{native}}/vision/.build/release/reactable-vision" "$APP/Contents/MacOS/"
+      chmod +x "$APP/Contents/MacOS/reactable-vision"
+      # models load from ../Resources/Models relative to the binary. Bundle
+      # only the light ANE models (depth ~48MB, mobileclip, clip-tokenizer);
+      # SKIP the SAM3 CoreML spike models (~1.6GB, dead end — ANE compile pegs
+      # the machine; tracking uses the guarded MLX lane instead).
+      mkdir -p "$APP/Contents/Resources/Models"
+      ( cd "{{native}}/vision/Models" && \
+        for m in *; do [ "$m" = "sam3" ] && continue; cp -R "$m" "$APP/Contents/Resources/Models/"; done )
+    fi
+    # Bundle STATIC ffmpeg + ffprobe (vendor/ffmpeg) so decode/probe/render
+    # needs no Homebrew. Homebrew's ffmpeg links Cellar dylibs → not standalone;
+    # the vendored static arm64 builds have no external deps. `just vendor-ffmpeg`.
+    for tool in ffmpeg ffprobe; do
+      SRC="$ROOT/vendor/ffmpeg/$tool"
+      if [ ! -x "$SRC" ]; then echo "⚠ static $tool missing — run: just vendor-ffmpeg (app will fall back to PATH ffmpeg)"; SRC="$(command -v $tool || true)"; fi
+      if [ -n "$SRC" ] && [ -x "$SRC" ]; then cp "$SRC" "$APP/Contents/MacOS/$tool"; chmod +x "$APP/Contents/MacOS/$tool"; fi
+    done
     # Codesign with entitlements — REQUIRED for Screen Recording / Camera / Mic.
     # Without this the app is only linker-adhoc-signed, its Info.plist isn't bound
     # to the signature, camera/mic entitlements don't apply, and TCC prompts never
@@ -85,6 +118,9 @@ app: build
     sign() { codesign --force --options runtime --entitlements "$ENT" --sign "$SIGN" "$1"; }
     [ -x "$APP/Contents/MacOS/reactable-nexus" ] && sign "$APP/Contents/MacOS/reactable-nexus"
     [ -x "$APP/Contents/MacOS/reactable-tools" ] && sign "$APP/Contents/MacOS/reactable-tools"
+    [ -x "$APP/Contents/MacOS/reactable-vision" ] && sign "$APP/Contents/MacOS/reactable-vision"
+    [ -x "$APP/Contents/MacOS/reactable-cli" ] && sign "$APP/Contents/MacOS/reactable-cli"
+    for t in ffmpeg ffprobe; do [ -x "$APP/Contents/MacOS/$t" ] && sign "$APP/Contents/MacOS/$t"; done
     sign "$APP/Contents/MacOS/reactable"
     sign "$APP"
     codesign --verify --strict "$APP" && echo "→ signed + verified"
@@ -199,6 +235,25 @@ skills-compile:
 # Rust tools sidecar → dist/reactable-tools
 tools:
     bash "{{root}}/scripts/build-tools.sh"
+
+# reactable-vision — native CoreML/ANE footage passes (depth today, SAM next).
+# The laptop-kind lane: Neural Engine, ~10% CPU, no Python. Model in Models/.
+vision:
+    cd "{{native}}/vision" && swift build -c release
+    @echo "→ {{native}}/vision/.build/release/reactable-vision"
+
+# Fetch static arm64 ffmpeg/ffprobe (no Homebrew deps) into vendor/ for bundling.
+vendor-ffmpeg:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p "{{root}}/vendor/ffmpeg"
+    base="https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0"
+    for t in ffmpeg ffprobe; do
+      echo "→ $t (static darwin-arm64)…"
+      curl -sL "$base/$t-darwin-arm64.gz" | gunzip > "{{root}}/vendor/ffmpeg/$t"
+      chmod +x "{{root}}/vendor/ffmpeg/$t"
+    done
+    @echo "→ vendored static ffmpeg/ffprobe"
 
 # MLX smoke — Moonshine STT, Kokoro TTS, speech edit (Apple Silicon)
 smoke-mlx take="take-fixture-validation":

@@ -13,7 +13,11 @@ reactable video index <take-id|path> [--tier t0|t1]   (re)build the sidecar
 reactable video find "<query>" --in <ref> --json      text → timecode hits
 reactable video at <ref> <ms|mm:ss> --json            everything known at that moment
 reactable video tracks <ref> [--concept "…"] --json   object tracklets (GPU pass output)
-reactable video pass <ref> <sam31|depth|matte> [--concept "…"]   queue a GPU pass
+reactable video pass <ref> <sam31|depth> --concept "…" [--estimate|--run]   GPU pass (Modal L4)
+reactable video matte <ref> <track-id> [--apply]      luma matte (+ --apply: RGBA cutout .mov)
+reactable video motion <ref> <track-id> [--style punch-in|follow]   keyframed transform plan
+reactable video compose <ref> <track-id> [--bg <path|gradient>]   finished render (cutout+bg-swap+fg punch-in)
+reactable video autoedit <take-id> [--render]         authored edit from ground-truth events
 reactable video sweep --json                          index anything un-indexed
 ```
 
@@ -32,8 +36,31 @@ relative to the project.
 - Editing decisions on a take (punch-in, trims, chapters) → prefer the
   `events` in `video at` output over inference: they are ground truth from
   record time.
-- "Track every <concept>" / mattes / depth → `video pass` queues it for the
-  GPU lane; results land in tracks.jsonl and assets/ when the runner ships.
+- Auto-edit a recorded take → `video autoedit <take-id> --render`. Reads
+  ONLY the take's ground-truth capture events + mic track: punches in toward
+  cursor/click activity (mapped to frame via `capture.stage` geometry) and
+  trims silence from the mic (deterministic `silencedetect`, no inference).
+  Writes `autoedit.json` (punches, keep_segments, chapters from slides) and,
+  with `--render`, a proof `autoedit-proof.mp4`. This is the authored
+  counterpart to the imported-footage `pass`/`compose` lane.
+- "Track every <concept>" → `video pass <ref> sam31 --concept "a,b" --run`
+  (always show the user the `--estimate` first — it costs real money).
+  Depth/prominence ("is X foreground?") → `video pass <ref> depth --run`,
+  then read `depth.zone_series` (fg/mid/bg) on each tracklet.
+- Edit assets from tracklets:
+  `video matte <ref> <trk> --apply` → `assets/cutout-<trk>.mov` (ProRes 4444
+  alpha) for background swaps and insert-behind-subject comps;
+  `video motion <ref> <trk>` → `assets/motion-<trk>.json` keyframes
+  ({t_ms, cx, cy, zoom}, source_res, ease) for punch-in/follow transforms in
+  HyperFrames comps. Cut lists come from the transcript verbs
+  (`edit trim-silence`, `edit remove-filler`) — no GPU needed.
+- Finished render in one shot:
+  `video compose <ref> <trk> --bg <path|gradient>` isolates the tracked
+  subject, lays it over a new background, and auto-punches-in during the
+  window where the subject is foreground (read from the depth `zone_series`,
+  so run the `depth` pass first). This is the "isolate the product, swap the
+  background, punch in when it's foreground" endpoint — no manual masks or
+  keyframes. Output: `assets/compose-<trk>.mp4`.
 
 ## Honesty rules (hard)
 

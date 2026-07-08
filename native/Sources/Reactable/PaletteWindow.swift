@@ -54,6 +54,7 @@ final class PaletteWindowController: NSObject, NSWindowDelegate, WKScriptMessage
         FloatingWindow.configure(win)
 
         let config = WKWebViewConfiguration()
+        Chrome.injectTokens(into: config)
         config.userContentController.add(self, name: "reactable")
         let web = WKWebView(frame: NSRect(origin: .zero, size: size), configuration: config)
         web.autoresizingMask = [.width, .height]

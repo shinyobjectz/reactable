@@ -129,6 +129,7 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
         guard panel == nil else { return }
 
         let config = WKWebViewConfiguration()
+        Chrome.injectTokens(into: config)
         config.userContentController.add(self, name: "reactable")
         config.mediaTypesRequiringUserActionForPlayback = []
 
@@ -259,6 +260,8 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
         case "slide.prev": bridge.bridgeSlidePrev()
         case "stage.toggle":
             bridge.bridgeToggleStage()
+        case "mode.edit":
+            bridge.bridgeSetMode(edit: true)
         case "capture.menu":
             showCaptureMenu(anchor: payload)
         case "capture.selectStage":

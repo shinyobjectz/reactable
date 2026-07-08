@@ -160,3 +160,32 @@ tracks.jsonl; depth zones answer prominence; estimate shown before dispatch.
 **P3 — edit assets:** matte/motion/layers/cuts generation consumed by
 HyperFrames comps. DoD: both P4 demos from the goal list pass; matting
 license ruling closed before anything sold uses it.
+
+## Proof demos (both PASSED 2026-07-08)
+
+- **Authored** (`video autoedit`): recorded real deck takes in the app;
+  auto-edit read only ground-truth events (cursor/click + `capture.stage`
+  geometry) → punch-ins toward the clicked pills, verified in the rendered
+  proof (zooms to centroid 0.22/0.868 during the click window, wide
+  elsewhere). Silence-trim proven on a voiceover take: 7.06s of dead air cut
+  into 3 speech segments. Note: screen captures are heavily VFR (frames only
+  on change — a static deck logged ~2.5fps over 66s), so the renderer forces
+  CFR before frame-indexed zoom.
+- **Imported** (`video pass` + `compose`): real 1956 Chevrolet PD ad
+  (archive.org) → sam31 tracked "car" (34 tracklets, RLE masks) + depth
+  zones → `compose` isolated the car onto a new gradient and punched in
+  during its foreground window (59.8–63.8s), one conceptual prompt, no manual
+  masks. ~$0.06 GPU.
+
+## Matting license ruling (closed 2026-07-08)
+
+| Model | License | Sold output? |
+|-------|---------|--------------|
+| SAM 3 raw masks (current `video matte`) | SAM License (commercial OK) | ✅ shipping default |
+| BiRefNet | MIT | ✅ the refinement path when edge quality matters |
+| MatAnyone / MatAnyone 2 | NTU S-Lab 1.0 (non-commercial) | ❌ research only |
+| VideoMaMa | CC BY-NC code + Stability AI Community weights | ❌ research only |
+
+Ruling: commercial path = SAM raw mattes now, BiRefNet refinement pass when
+we need hair-grade edges. MatAnyone/VideoMaMa may be evaluated locally but
+never touch a sold render.

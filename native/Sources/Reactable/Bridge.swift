@@ -27,11 +27,19 @@ protocol ReactableBridgeDelegate: AnyObject {
     func bridgeOpenStageManager()
     func bridgeOpenProjectsBoard()
     func bridgeOpenSettings()
+    func bridgeSetMode(edit: Bool)
     func bridgeSystemAudioToggle(on: Bool)
     func bridgeSettingSet(key: String, value: Bool)
     func bridgeRequestDevices(includeIOS: Bool)
     func bridgeCopyAgentPrompt()
     func bridgeBarClose()
+    // Footage intel: open a preview (media path, optional seek ms), open an
+    // arbitrary surface (e.g. intel timeline), add a derived render to assets,
+    // or drop a prefilled footage prompt into the agent chat.
+    func bridgeOpenPreview(path: String, ms: Double?)
+    func bridgeOpenSurface(kind: String, ref: String)
+    func bridgeAddAsset(path: String)
+    func bridgeFootagePrompt(path: String, action: String)
 }
 
 @MainActor
@@ -49,6 +57,9 @@ final class AppState {
     var stageVisible = false
     var agentVisible = false
     var captureLabel = "Stage"
+    /// Panel keys sharing the bar's combined window (empty when the bar floats).
+    /// The bar hides a panel's open/close toggle when that panel is co-docked.
+    var barPeers: [String] = []
     var projectId = "reactable"
     var projectName = "reactable"
     var deckSlug = "showcase"
@@ -79,6 +90,7 @@ final class AppState {
             "stageVisible": stageVisible,
             "agentVisible": agentVisible,
             "captureLabel": captureLabel,
+            "barPeers": barPeers,
             "projectId": projectId,
             "projectName": projectName,
             "deckSlug": deckSlug,

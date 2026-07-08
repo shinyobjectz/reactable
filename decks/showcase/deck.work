@@ -7,25 +7,8 @@ deck do
   title: Media Formats Showcase
 end
 
-preload do
-  /reactable/labs/chart.html?deck=showcase
-  /reactable/labs/whiteboard.html?deck=demo
-  https://tldraw.com
-end
 
-script do
-  id: open
-  on: deck.open
-  run: echo 'showcase deck — media formats tour'
-  detach: true
-end
 
-slide do
-  id: start
-  type: client
-  unit: showcase_title
-  notes: Title slide — designed client island
-end
 
 client :showcase_title do
   <div style="position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:10vh 10vw;background:radial-gradient(ellipse 90% 70% at 15% -10%,rgba(99,102,241,.35),transparent 55%),radial-gradient(ellipse 50% 40% at 95% 90%,rgba(236,72,153,.15),transparent 50%),#050508;color:#fff;font-family:ui-sans-serif,system-ui,sans-serif;overflow:hidden">
@@ -42,12 +25,6 @@ client :showcase_title do
   </div>
 end
 
-slide do
-  id: format-prose
-  type: prose
-  theme: section
-  notes: Prose slides use theme title / section / closing
-end
 
 ## Prose slides
 
@@ -55,12 +32,6 @@ end
 
 Speaker notes live in the slide header. Body text supports **emphasis**, lists, and `inline code` — rendered with deck typography before the stage loads.
 
-slide do
-  id: format-client
-  type: client
-  unit: pulse_slide
-  notes: Client islands — full custom HTML
-end
 
 client :pulse_slide do
   <div style="position:absolute;inset:0;background:linear-gradient(165deg,#0c0c12,#151528 45%,#0a0a0f);color:#f2f2f2;font:16px/1.45 ui-sans-serif,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;padding:48px">
@@ -74,55 +45,11 @@ client :pulse_slide do
   </div>
 end
 
-slide do
-  id: format-iframe-local
-  type: iframe
-  url: /reactable/labs/chart.html?deck=showcase
-  title: Local iframe app
-  notes: Same-origin lab — full bleed in stage frame
-  action: wait 500
-end
 
-slide do
-  id: format-iframe-remote
-  type: iframe
-  url: https://tldraw.com
-  title: Remote iframe
-  notes: Cross-origin embed when network allows
-  action: wait 1500
-end
 
-slide do
-  id: format-video
-  type: video
-  src: /reactable/labs/sample.mp4?deck=showcase
-  notes: Native HTML5 video — local MP4 from decks/showcase/labs/
-  action: play
-end
 
-slide do
-  id: format-youtube
-  type: youtube
-  videoId: aqz-KE-bpKQ
-  notes: Big Buck Bunny on YouTube — embed-friendly; some videos block embedding
-  action: wait 800
-end
 
-slide do
-  id: format-whiteboard
-  type: iframe
-  url: /reactable/labs/whiteboard.html?deck=demo
-  title: Whiteboard lab
-  notes: Interactive canvas lab
-  action: wait 300
-end
 
-slide do
-  id: end
-  type: prose
-  theme: closing
-  notes: Closing slide
-end
 
 # Ready to record
 
@@ -131,3 +58,404 @@ Press record on the bar — the rounded stage frame is exactly what lands in `st
 1. Author slides in `deck.work`
 2. Preview with **Stage** on the bar
 3. Ship takes to HyperFrames or ffmpeg
+
+
+
+
+
+
+
+
+
+
+
+## Prose slides
+
+# Authored in `.work`
+
+Speaker notes live in the slide header. Body text supports **emphasis**, lists, and `inline code` — rendered with deck typography before the stage loads.
+
+
+
+
+
+
+
+
+
+
+
+## Prose slides
+
+# Authored in `.work`
+
+Speaker notes live in the slide header. Body text supports **emphasis**, lists, and `inline code` — rendered with deck typography before the stage loads.
+
+
+
+
+
+
+
+
+
+
+
+## Prose slides
+
+# Authored in `.work`
+
+Speaker notes live in the slide header. Body text supports **emphasis**, lists, and `inline code` — rendered with deck typography before the stage loads.
+
+
+
+
+
+
+
+
+
+
+
+## Prose slides
+
+# Authored in `.work`
+
+Speaker notes live in the slide header. Body text supports **emphasis**, lists, and `inline code` — rendered with deck typography before the stage loads.
+
+
+
+
+
+
+
+
+
+
+
+## Prose slides
+
+# Authored in `.work`
+
+Speaker notes live in the slide header. Body text supports **emphasis**, lists, and `inline code` — rendered with deck typography before the stage loads.
+
+
+
+
+
+
+
+
+
+
+
+## Prose slides
+
+# Authored in `.work`
+
+Speaker notes live in the slide header. Body text supports **emphasis**, lists, and `inline code` — rendered with deck typography before the stage loads.
+
+
+
+
+
+
+
+
+
+
+
+## Prose slides
+
+# Authored in `.work`
+
+Speaker notes live in the slide header. Body text supports **emphasis**, lists, and `inline code` — rendered with deck typography before the stage loads.
+
+
+
+
+
+
+
+
+
+
+
+## Prose slides
+
+# Authored in `.work`
+
+Speaker notes live in the slide header. Body text supports **emphasis**, lists, and `inline code` — rendered with deck typography before the stage loads.
+
+
+
+
+
+
+
+
+
+
+
+## Prose slides
+
+# Authored in `.work`
+
+Speaker notes live in the slide header. Body text supports **emphasis**, lists, and `inline code` — rendered with deck typography before the stage loads.
+
+
+
+
+
+
+
+
+
+
+
+## Prose slides
+
+# Authored in `.work`
+
+Speaker notes live in the slide header. Body text supports **emphasis**, lists, and `inline code` — rendered with deck typography before the stage loads.
+
+
+
+
+
+
+
+
+
+
+
+## Prose slides
+
+# Authored in `.work`
+
+Speaker notes live in the slide header. Body text supports **emphasis**, lists, and `inline code` — rendered with deck typography before the stage loads.
+
+
+
+
+
+
+
+
+
+
+
+## Prose slides
+
+# Authored in `.work`
+
+Speaker notes live in the slide header. Body text supports **emphasis**, lists, and `inline code` — rendered with deck typography before the stage loads.
+
+
+
+
+
+
+
+
+
+
+
+## Prose slides
+
+# Authored in `.work`
+
+Speaker notes live in the slide header. Body text supports **emphasis**, lists, and `inline code` — rendered with deck typography before the stage loads.
+
+
+
+
+
+
+
+
+
+
+
+## Prose slides
+
+# Authored in `.work`
+
+Speaker notes live in the slide header. Body text supports **emphasis**, lists, and `inline code` — rendered with deck typography before the stage loads.
+
+
+
+
+
+
+
+
+
+
+
+## Prose slides
+
+# Authored in `.work`
+
+Speaker notes live in the slide header. Body text supports **emphasis**, lists, and `inline code` — rendered with deck typography before the stage loads.
+
+
+
+
+
+
+
+
+
+
+
+## Prose slides
+
+# Authored in `.work`
+
+Speaker notes live in the slide header. Body text supports **emphasis**, lists, and `inline code` — rendered with deck typography before the stage loads.
+
+
+
+
+
+
+
+
+
+
+
+## Prose slides
+
+# Authored in `.work`
+
+Speaker notes live in the slide header. Body text supports **emphasis**, lists, and `inline code` — rendered with deck typography before the stage loads.
+
+
+
+
+
+
+
+
+
+
+
+## Prose slides
+
+# Authored in `.work`
+
+Speaker notes live in the slide header. Body text supports **emphasis**, lists, and `inline code` — rendered with deck typography before the stage loads.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Prose slides
+
+# Authored in `.work`
+
+Speaker notes live in the slide header. Body text supports **emphasis**, lists, and `inline code` — rendered with deck typography before the stage loads.
+
+
+
+preload do
+  /reactable/labs/chart.html?deck=showcase
+  /reactable/labs/whiteboard.html?deck=demo
+  https://tldraw.com
+end
+
+
+
+script do
+  id: open
+  on: deck.open
+  run: echo 'showcase deck — media formats tour'
+  detach: true
+end
+
+
+
+slide do
+  id: start
+  type: client
+  notes: Title slide — designed client island
+  unit: showcase_title
+end
+
+slide do
+  id: format-prose
+  type: prose
+  notes: Prose slides use theme title / section / closing
+  theme: section
+end
+
+slide do
+  id: format-iframe-local
+  type: iframe
+  notes: Same-origin lab — full bleed in stage frame
+  url: /reactable/labs/chart.html?deck=showcase
+  title: Local iframe app
+  action: wait 500
+end
+
+slide do
+  id: format-client
+  type: client
+  notes: Client islands — full custom HTML
+  unit: pulse_slide
+end
+
+slide do
+  id: format-iframe-remote
+  type: iframe
+  notes: Cross-origin embed when network allows
+  url: https://tldraw.com
+  title: Remote iframe
+  action: wait 1500
+end
+
+slide do
+  id: format-video
+  type: video
+  notes: Native HTML5 video — local MP4 from decks/showcase/labs/
+  src: /reactable/labs/sample.mp4?deck=showcase
+  action: play
+end
+
+slide do
+  id: format-youtube
+  type: youtube
+  notes: Big Buck Bunny on YouTube — embed-friendly; some videos block embedding
+  videoId: aqz-KE-bpKQ
+  action: wait 800
+end
+
+slide do
+  id: format-whiteboard
+  type: iframe
+  notes: Interactive canvas lab
+  url: /reactable/labs/whiteboard.html?deck=demo
+  title: Whiteboard lab
+  action: wait 300
+end
+
+slide do
+  id: end
+  type: prose
+  notes: Closing slide
+  theme: closing
+end

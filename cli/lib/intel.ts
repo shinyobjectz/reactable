@@ -58,7 +58,7 @@ export const topics = () => readJson<Topic[]>(TOPICS, []);
 export const competitors = () => readJson<Competitor[]>(COMPETITORS, []);
 
 // ── research proxy ──
-async function research(endpoint: string, params: Record<string, string>): Promise<any> {
+export async function research(endpoint: string, params: Record<string, string>): Promise<any> {
   if (process.env.REACTABLE_INTEL_STUB === "1") {
     const name = endpoint.replace(/\//g, "_").replace(/^_/, "");
     const fix = resolve(PROJECT, "scripts", "eval", "fixture", "intel", `${name}.json`);

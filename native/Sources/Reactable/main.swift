@@ -19,7 +19,16 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     private var micTimer: Timer?
     private var sidecar: NexusSidecar?
     private var stage: StageWindowController?
+    private var preview: PreviewPanel?
     private var bar: BarPanel?
+    /// Record (stage + recorder) or Edit (projects | preview | chat).
+    private var appMode: AppMode = .record
+    /// True once boot's initial layout is applied — gates layout persistence so
+    /// the transient boot arrangement doesn't overwrite the saved one.
+    private var didFinishBoot = false
+    /// The layout captured just before stepping aside for an external-window
+    /// scene, restored when navigation returns to an in-app scene.
+    private var layoutBeforeScene: LayoutSnapshot?
     private var cam: CamBubblePanel?
     private var hotkeyMonitor: Any?
     private var localMonitor: Any?
@@ -29,6 +38,9 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     private var decksMenuItem: NSMenuItem?
     private var layoutCombinedItem: NSMenuItem?
     private var layoutFloatingItem: NSMenuItem?
+    private var modeRecordItem: NSMenuItem?
+    private var modeEditItem: NSMenuItem?
+    private var savedLayoutsItem: NSMenuItem?
     private var layoutChooser: LayoutChooserPanel?
     private var takeRecorder: TakeRecorder?
     private var inputMonitor: InputMonitor?
@@ -142,6 +154,15 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         addMenuItem(menu, title: "Local Agent…", action: #selector(openAgent), key: "l")
         addMenuItem(menu, title: "Find Surface…", action: #selector(togglePalette), key: "i")
         menu.addItem(.separator())
+        let modeItem = menu.addItem(withTitle: "Mode", action: nil, keyEquivalent: "")
+        let modeMenu = NSMenu()
+        modeRecordItem = modeMenu.addItem(
+            withTitle: "Record", action: #selector(pickRecordMode), keyEquivalent: "")
+        modeRecordItem?.target = self
+        modeEditItem = modeMenu.addItem(
+            withTitle: "Edit", action: #selector(pickEditMode), keyEquivalent: "")
+        modeEditItem?.target = self
+        modeItem.submenu = modeMenu
         let layoutItem = menu.addItem(withTitle: "Layout", action: nil, keyEquivalent: "")
         let layoutMenu = NSMenu()
         layoutCombinedItem = layoutMenu.addItem(
@@ -151,6 +172,9 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             withTitle: "Floating Panels", action: #selector(pickFloatingLayout), keyEquivalent: "")
         layoutFloatingItem?.target = self
         layoutItem.submenu = layoutMenu
+        let layoutsItem = menu.addItem(withTitle: "Layouts", action: nil, keyEquivalent: "")
+        layoutsItem.submenu = NSMenu()
+        savedLayoutsItem = layoutsItem
         menu.addItem(.separator())
         projectsMenuItem = menu.addItem(withTitle: "Project", action: nil, keyEquivalent: "")
         projectsMenuItem?.submenu = NSMenu()
@@ -245,13 +269,18 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                     self.prewarmCapture()
                 }
             }
-            showBar()
+            appMode = ModePreference.saved ?? .record
+            if appMode == .record { showBar() }  // no recorder in Edit mode
             stagePoller = StageCommandPoller(port: port, delegate: self)
             stagePoller?.start()
             agent = AgentWindowController(port: port, deck: state.deckSlug, bridge: self)
             let pal = PaletteWindowController(port: port)
             pal.onOpenSurface = { [weak self] surface in
                 guard let self else { return }
+                if self.appMode == .edit {
+                    self.preview?.openSurface(surface)
+                    return
+                }
                 if self.stage == nil || self.stage?.isVisible != true { self.openStage() }
                 self.stage?.openSurface(surface)
             }
@@ -288,10 +317,13 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                 Self.runIntelSnapshot()
             }
             Self.runIntelSnapshot()
+            Self.runFootageSweep(root: activeProjectURL)
 
-            board.onPreview = { [weak self] p in
-                guard let self else { return }
-                TakePreviewWindow.show(takeDir: self.activeProjectURL.appending(path: p))
+            board.onPreview = { [weak self] p, icon in
+                self?.openPreview(path: p, icon: icon)
+            }
+            board.onVideoAction = { [weak self] path, action in
+                self?.bridgeFootagePrompt(path: path, action: action)
             }
             board.onReveal = { [weak self] p in
                 guard let self else { return }
@@ -301,31 +333,48 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             projectsBoard = board
             syncBar()
 
+            // The one preview window — every projects-board double-click
+            // lands here as a tab (docked center in Edit mode, floats in Record).
+            let prev = PreviewPanel(
+                port: port,
+                projectRoot: { [weak self] in self?.activeProjectURL ?? URL(fileURLWithPath: "/") },
+                projectId: { [weak self] in self?.activeProjectURL.lastPathComponent ?? "" }
+            )
+            preview = prev
+
             // Composable panels: register the dockables; block re-docking while
             // recording (the capture stream is bound to a specific window).
             DockController.shared.interactionLocked = { [weak self] in self?.state.recording ?? false }
+            // Record|Edit switch + layouts hamburger in every group header.
+            DockController.shared.modeProvider = { [weak self] in self?.appMode ?? .record }
+            DockController.shared.onModeSwitch = { [weak self] mode in self?.applyMode(mode) }
+            DockController.shared.hamburgerMenu = { [weak self] in self?.layoutsMenu() ?? NSMenu() }
+            DockController.shared.onOpenSettings = { [weak self] in self?.bridgeOpenSettings() }
+            DockController.shared.onGroupChanged = { [weak self] in
+                self?.syncBar()
+                self?.persistCurrentLayout()
+            }
             if let agent { DockController.shared.register(agent) }
             if let bar { DockController.shared.register(bar) }
             DockController.shared.register(mgr)
             DockController.shared.register(board)
+            DockController.shared.register(prev)
 
-            switch LayoutPreference.saved {
-            case .combined:
-                applyLayout(.combined)
-            case .floating:
+            // Reopen exactly as the current view was last left, if remembered;
+            // otherwise land on the shipped default (combined, center-widest).
+            if let current = LayoutStore.loadCurrent(mode: appMode.rawValue),
+               !current.groups.isEmpty || !current.floats.isEmpty {
+                applyLayoutSnapshot(current)
+            } else if LayoutPreference.saved == .floating {
                 arrangeDefaultLayout()
-            case nil:
-                // First launch: default floating behind a one-time chooser.
-                arrangeDefaultLayout()
-                let chooser = LayoutChooserPanel { [weak self] mode in
-                    LayoutPreference.save(mode)
-                    self?.applyLayout(mode)
-                    self?.refreshLayoutMenu()
-                }
-                layoutChooser = chooser
-                chooser.present()
+            } else {
+                LayoutPreference.save(.combined)
+                applyLayoutSnapshot(defaultLayoutSnapshot(for: appMode))
             }
+            didFinishBoot = true
             refreshLayoutMenu()
+            refreshModeMenu()
+            refreshSavedLayoutsMenu()
         } catch {
             fputs("reactable boot failed: \(error)\n", stderr)
             let alert = NSAlert()
@@ -374,6 +423,8 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         state.stageVisible = stage?.isVisible ?? false
         state.agentVisible = agent?.isVisible ?? false
         state.captureLabel = captureTargetLabel()
+        // Panels sharing the bar's window — the bar hides their toggles.
+        state.barPeers = bar?.dockHost?.panelKeys ?? []
         bar?.pushState(state)
     }
 
@@ -477,6 +528,10 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             if state.hideDesktopIcons { setDesktopIconsVisible(true) }
             if state.hideDockWhileRecording { NSApp.setActivationPolicy(.regular) }
             syncBar()
+            if let savedDir {
+                // T0 footage index for the fresh take, detached
+                Self.runFootageSweep(root: savedDir.deletingLastPathComponent().deletingLastPathComponent())
+            }
             projectsBoard?.pushData()  // the new take shows up in assets
             prewarmCapture()  // warm the stream for the next take
             if state.quickShareAfter, let savedDir {
@@ -506,6 +561,10 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     // stage while recording a window, or record the stage while it's hidden).
     func bridgeToggleStage() {
         if stage?.isVisible == true { hideStage() } else { openStage() }
+    }
+
+    func bridgeSetMode(edit: Bool) {
+        applyMode(edit ? .edit : .record)
     }
 
     // Capture-target selectors set what recording grabs; they no longer touch
@@ -781,7 +840,8 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     func bridgeOpenSettings() {
         if settingsPanel == nil {
             settingsPanel = SettingsPanel(port: port)
-            if let settingsPanel { DockController.shared.register(settingsPanel) }
+            // NOT registered with DockController: Settings is a floating modal,
+            // not a dockable panel — it can be moved but never docked.
         }
         settingsPanel?.toggle()
     }
@@ -824,6 +884,92 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         ]
     }
 
+    /// Classify a projects-board item into a preview surface and open it as a
+    /// tab in THE preview window (docked center in Edit mode; floats in Record).
+    private func openPreview(path: String, icon: String) {
+        let name = (path as NSString).lastPathComponent
+        let ext = (name as NSString).pathExtension.lowercased()
+        let project = activeProjectURL.lastPathComponent
+
+        let surface: StageSurface
+        if icon == "intel" {
+            // The footage-intel timeline surface for this media file.
+            surface = StageSurface(kind: "intel", ref: path, title: "\(name) · intel", project: project)
+        } else if path.hasPrefix("http") {
+            surface = StageSurface(kind: "web", ref: path, title: name.isEmpty ? path : name, project: project)
+        } else if path.hasPrefix("takes/") || icon == "take" {
+            surface = StageSurface(kind: "take", ref: path, title: name, project: project)
+        } else {
+            switch ext {
+            case "mov", "mp4", "webm", "m4v", "avi":
+                surface = StageSurface(kind: "video", ref: path, title: name, project: project)
+            case "wav", "mp3", "m4a", "aiff", "aac", "flac", "ogg":
+                surface = StageSurface(kind: "audio", ref: path, title: name, project: project)
+            case "png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "heic", "bmp", "tiff":
+                surface = StageSurface(kind: "image", ref: path, title: name, project: project)
+            default:
+                surface = StageSurface(kind: "doc", ref: path, title: name, project: project)
+            }
+        }
+        preview?.openSurface(surface)
+    }
+
+    // MARK: - Footage intel bridge (agent cards + panel actions)
+
+    func bridgeOpenPreview(path: String, ms: Double?) {
+        let ext = (path as NSString).pathExtension.lowercased()
+        let icon = ["mov", "mp4", "webm", "m4v"].contains(ext) ? "video"
+            : (path.hasPrefix("takes/") ? "take" : "")
+        openPreview(path: path, icon: icon)
+    }
+
+    func bridgeOpenSurface(kind: String, ref: String) {
+        let project = activeProjectURL.lastPathComponent
+        let title = (ref as NSString).lastPathComponent
+        preview?.openSurface(StageSurface(kind: kind, ref: ref, title: title, project: project))
+    }
+
+    /// Promote a derived render (e.g. a compose output under <asset>.intel/assets)
+    /// into the project's assets/ so it's a first-class, retained asset.
+    func bridgeAddAsset(path: String) {
+        let src = activeProjectURL.appending(path: path)
+        guard FileManager.default.fileExists(atPath: src.path) else { return }
+        let assetsDir = activeProjectURL.appending(path: "assets")
+        try? FileManager.default.createDirectory(at: assetsDir, withIntermediateDirectories: true)
+        var dest = assetsDir.appending(path: src.lastPathComponent)
+        var i = 1
+        while FileManager.default.fileExists(atPath: dest.path) {
+            let stem = src.deletingPathExtension().lastPathComponent
+            dest = assetsDir.appending(path: "\(stem)-\(i).\(src.pathExtension)")
+            i += 1
+        }
+        try? FileManager.default.copyItem(at: src, to: dest)
+        fputs("reactable: added \(dest.lastPathComponent) to assets\n", stderr)
+        projectsBoard?.pushData()
+    }
+
+    /// Drop a prefilled footage prompt into the agent chat. index/autoedit send
+    /// immediately; find/track fill the box for the user to complete.
+    func bridgeFootagePrompt(path: String, action: String) {
+        let name = (path as NSString).lastPathComponent
+        let takeId = path.hasPrefix("takes/")
+            ? path.replacingOccurrences(of: "takes/", with: "").components(separatedBy: "/").first ?? path
+            : path
+        bridgeOpenAgent()
+        switch action {
+        case "index":
+            agent?.sendPrompt("Index the footage at `\(path)` and tell me what's in it — shots, transcript, any text on screen.")
+        case "autoedit":
+            agent?.sendPrompt("Auto-edit the take `\(takeId)`: punch in on cursor activity and trim the silences, then render a proof. Run `reactable video autoedit \(takeId) --render` and show me the result.")
+        case "find":
+            agent?.fillPrompt("In `\(name)` (`\(path)`), find the moment where ")
+        case "track":
+            agent?.fillPrompt("Track every ")
+        default:
+            agent?.fillPrompt("Work with the footage at `\(path)`: ")
+        }
+    }
+
     /// Switch the whole app to a project (root + deck the stage shows).
     private func selectProjectDeck(root: String, slug: String) {
         Task {
@@ -842,38 +988,87 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     // MARK: - Layout modes (combined window vs floating panels)
 
     private func applyLayout(_ mode: LayoutMode) {
+        applyWorkspace(layout: mode)
+    }
+
+    /// Switch Record ⇄ Edit. Same recording guard as layout switches: the
+    /// capture stream is bound to a specific window topology.
+    func applyMode(_ mode: AppMode) {
+        guard !state.recording else {
+            fputs("reactable: mode switch ignored while recording\n", stderr)
+            DockController.shared.refreshModeUI()  // snap the segment back
+            return
+        }
+        guard mode != appMode else { return }
+        // Remember the layout of the view we're leaving, then switch and restore
+        // the target view's OWN remembered layout (record and edit each keep one).
+        persistCurrentLayout()
+        appMode = mode
+        ModePreference.save(mode)
+        restoreLayout(for: mode)
+        refreshModeMenu()
+        DockController.shared.refreshModeUI()
+    }
+
+    /// Restore a view's remembered layout, or land on the shipped default.
+    private func restoreLayout(for mode: AppMode) {
+        if let saved = LayoutStore.loadCurrent(mode: mode.rawValue),
+           !saved.groups.isEmpty || !saved.floats.isEmpty {
+            applyLayoutSnapshot(saved)
+        } else {
+            applyLayoutSnapshot(defaultLayoutSnapshot(for: mode))
+        }
+    }
+
+    /// THE workspace builder — one function reads (layout × mode) and arranges
+    /// every panel. Record = projects | stage | agent + bar. Edit = projects |
+    /// preview | agent, no recorder.
+    private func applyWorkspace(layout: LayoutMode) {
         guard !state.recording else {
             fputs("reactable: layout switch ignored while recording\n", stderr)
             return
         }
-        switch mode {
+        switch layout {
         case .floating:
             DockController.shared.explodeAll()
             arrangeDefaultLayout()
         case .combined:
-            if stage == nil {
+            if appMode == .record, stage == nil {
                 let ctrl = StageWindowController(port: port, deck: state.deckSlug, bridge: self)
                 wireStageEvents(ctrl)
                 DockController.shared.register(ctrl)
                 stage = ctrl
             }
+            // The other mode's center panel leaves the group before gathering.
+            if appMode == .edit { stage?.hide(); bar?.close() } else { preview?.hide() }
+
             var panels: [DockablePanel] = []
             var fractions: [CGFloat] = []
-            if let projectsBoard { panels.append(projectsBoard); fractions.append(0.2) }
-            if let stage { panels.append(stage); fractions.append(0.52) }
-            if let agent { panels.append(agent); fractions.append(0.28) }
+            // Center column (stage / preview) gets the lion's share of the width.
+            if let projectsBoard { panels.append(projectsBoard); fractions.append(0.17) }
+            if appMode == .record, let stage { panels.append(stage); fractions.append(0.62) }
+            if appMode == .edit, let preview { panels.append(preview); fractions.append(0.62) }
+            if let agent { panels.append(agent); fractions.append(0.21) }
             // Panels already open ride along instead of getting stranded.
+            // Settings is intentionally excluded — it's a modal, not dockable.
             if let stageManager, stageManager.isVisible { panels.append(stageManager) }
-            if let settingsPanel, settingsPanel.isVisible { panels.append(settingsPanel) }
             let group = DockController.shared.gather(panels, frame: combinedFrame(), fractions: fractions)
             // The control bar rides under the stage by default — tear it out anytime.
-            if let group, let bar, let stage {
+            if appMode == .record, let group, let bar, let stage {
                 bar.ensureLoaded()
                 DockController.shared.dock(bar, into: group, edge: .bottom, relativeTo: stage)
             }
+            // Reassert the column proportions once the whole tree (incl. the
+            // docked bar) has settled — the intermediate layouts otherwise leave
+            // the trailing/leading pane oversized.
+            if let group {
+                DispatchQueue.main.async { group.setColumnFractions(fractions) }
+            }
             projectsBoard?.pushData()
             stageManager?.pushData()
-            prewarmCapture()  // stage capture now binds to the group window
+            if appMode == .record {
+                prewarmCapture()  // stage capture now binds to the group window
+            }
         }
         syncBar()
     }
@@ -882,10 +1077,9 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         guard let screen = NSScreen.main else {
             return NSRect(x: 120, y: 120, width: 1280, height: 800)
         }
-        let f = screen.visibleFrame
-        let w = min(f.width - 48, 1720)
-        let h = min(f.height - 48, 980)
-        return NSRect(x: f.midX - w / 2, y: f.midY - h / 2, width: w, height: h)
+        // Fill the screen (below the menu bar) by default — the combined window
+        // is the workspace, so it opens maximized rather than a floating card.
+        return screen.visibleFrame
     }
 
     private func refreshLayoutMenu() {
@@ -906,12 +1100,236 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         refreshLayoutMenu()
     }
 
-    /// Default layout: bar top-center, then one row that always fits the
-    /// screen — projects | stage | agent, centered below the bar.
+    @objc private func pickRecordMode() { applyMode(.record) }
+    @objc private func pickEditMode() { applyMode(.edit) }
+
+    private func refreshModeMenu() {
+        modeRecordItem?.state = appMode == .record ? .on : .off
+        modeEditItem?.state = appMode == .edit ? .on : .off
+    }
+
+    // MARK: - Named layouts (hamburger + tray "Layouts")
+
+    /// All dockable panels that can appear in a snapshot, by key.
+    private var snapshotPanels: [(key: String, window: NSWindow?, docked: Bool, visible: Bool)] {
+        let entries: [(String, NSWindow?, Bool, Bool)?] = [
+            projectsBoard.map { ("projects", $0.panelWindow, $0.dockHost != nil, $0.isVisible) },
+            stage.map { ("stage", $0.panelWindow, $0.dockHost != nil, $0.isVisible) },
+            preview.map { ("preview", $0.panelWindow, $0.dockHost != nil, $0.isVisible) },
+            agent.map { ("agent", $0.panelWindow, $0.dockHost != nil, $0.isVisible) },
+            bar.map { ("bar", $0.panelWindow, $0.dockHost != nil, $0.panelWindow?.isVisible ?? false) },
+            stageManager.map { ("manager", $0.panelWindow, $0.dockHost != nil, $0.isVisible) },
+            settingsPanel.map { ("settings", $0.panelWindow, $0.dockHost != nil, $0.isVisible) },
+        ]
+        return entries.compactMap { $0 }
+    }
+
+    /// Snapshot the workspace EXACTLY as it is on screen right now — every
+    /// group's real column order + widths, every floating window's frame, and
+    /// the live record/edit + combined/floating modes.
+    private func currentLayoutSnapshot(named name: String) -> LayoutSnapshot {
+        let groups = DockController.shared.groups.map { $0.layoutSnapshot() }
+        let floats = snapshotPanels.compactMap { p -> PanelFrameSnapshot? in
+            guard !p.docked, let win = p.window else { return nil }
+            return PanelFrameSnapshot(key: p.key, frame: win.frame, visible: p.visible)
+        }
+        // Derive the layout mode from what's actually on screen, not a pref.
+        let layout: LayoutMode = groups.isEmpty ? .floating : .combined
+        return LayoutSnapshot(
+            name: name,
+            layoutMode: layout.rawValue,
+            appMode: appMode.rawValue,
+            groups: groups,
+            floats: floats,
+            savedAt: Date()
+        )
+    }
+
+    private func captureLayoutSnapshot(named name: String) {
+        LayoutStore.upsert(currentLayoutSnapshot(named: name))
+        refreshSavedLayoutsMenu()
+        fputs("reactable: saved layout \"\(name)\"\n", stderr)
+    }
+
+    /// Continuously persist the live layout so the app reopens exactly as left.
+    /// Skipped mid-recording (scene collapses shouldn't overwrite the real one)
+    /// and when nothing is arranged yet.
+    private func persistCurrentLayout() {
+        guard didFinishBoot, !state.recording else { return }
+        let snap = currentLayoutSnapshot(named: appMode.rawValue)
+        guard !snap.groups.isEmpty || !snap.floats.isEmpty else { return }
+        // Don't overwrite a good layout with a transient zero-width capture
+        // (can happen if a group is mid-layout when this fires).
+        let degenerate = snap.groups.contains {
+            !$0.columnFractions.isEmpty && $0.columnFractions.allSatisfy { $0 < 0.001 }
+        }
+        guard !degenerate else { return }
+        LayoutStore.saveCurrent(snap, mode: appMode.rawValue)
+    }
+
+    /// The built-in default arrangement for a view — the shipped "dist default":
+    /// projects | center | agent, center widest, combined and full-screen. This
+    /// is what a fresh install (or a Reset) lands on.
+    private func defaultLayoutSnapshot(for mode: AppMode) -> LayoutSnapshot {
+        let columns: [[String]] = mode == .record
+            ? [["projects"], ["stage", "bar"], ["agent"]]
+            : [["projects"], ["preview"], ["agent"]]
+        // Stage column stacks the bar underneath (bar row is pinned by height).
+        let rows: [[CGFloat]] = mode == .record ? [[1], [0.85, 0.15], [1]] : [[1], [1], [1]]
+        let group = DockGroupSnapshot(
+            frame: combinedFrame(),
+            columns: columns,
+            columnFractions: [0.17, 0.62, 0.21],
+            rowFractions: rows
+        )
+        return LayoutSnapshot(
+            name: mode.rawValue, layoutMode: "combined", appMode: mode.rawValue,
+            groups: [group], floats: [], savedAt: Date()
+        )
+    }
+
+    /// Bring back the pre-scene arrangement after an external scene. A combined
+    /// group that only got hidden is re-revealed (cheap, safe mid-record); if
+    /// the layout was torn down and we're not recording, rebuild it fully.
+    private func restoreSceneLayout(_ snap: LayoutSnapshot) {
+        captureOutline.hide()
+        if let group = DockController.shared.groups.first {
+            group.reveal()
+            if appMode == .record { openStage() }
+        } else if !state.recording {
+            applyLayoutSnapshot(snap)
+        } else {
+            // Recording with no group to revive — at least bring the stage back.
+            openStage()
+        }
+    }
+
+    private func applyLayoutSnapshot(_ snap: LayoutSnapshot) {
+        guard !state.recording else {
+            fputs("reactable: layout apply ignored while recording\n", stderr)
+            return
+        }
+        if let layout = LayoutMode(rawValue: snap.layoutMode) { LayoutPreference.save(layout) }
+        if let mode = AppMode(rawValue: snap.appMode) {
+            appMode = mode
+            ModePreference.save(mode)
+        }
+
+        // Panels referenced by the snapshot must exist before restore; stale
+        // keys in layouts.json are skipped by restoreGroups.
+        let referenced = Set(snap.groups.flatMap { $0.columns.flatMap { $0 } }
+            + snap.floats.map(\.key))
+        if referenced.contains("stage"), stage == nil {
+            let ctrl = StageWindowController(port: port, deck: state.deckSlug, bridge: self)
+            wireStageEvents(ctrl)
+            DockController.shared.register(ctrl)
+            stage = ctrl
+        }
+        for key in referenced { DockController.shared.panel(forKey: key)?.ensureLoaded() }
+
+        DockController.shared.restoreGroups(snap.groups)
+
+        let dockedNow = Set(DockController.shared.groups.flatMap(\.panelKeys))
+        for float in snap.floats where !dockedNow.contains(float.key) {
+            guard let panel = DockController.shared.panel(forKey: float.key) else { continue }
+            if float.visible {
+                panel.ensureLoaded()
+                panel.panelWindow?.setFrame(float.frame, display: true)
+                panel.panelWindow?.makeKeyAndOrderFront(nil)
+            } else {
+                panel.panelWindow?.orderOut(nil)
+            }
+        }
+        // Anything alive but in neither list stays as-is except the center
+        // panels, which follow the mode.
+        if appMode == .edit { stage?.hide(); bar?.close() } else { preview?.hide() }
+
+        projectsBoard?.pushData()
+        stageManager?.pushData()
+        if appMode == .record { prewarmCapture() }
+        refreshLayoutMenu()
+        refreshModeMenu()
+        DockController.shared.refreshModeUI()
+        syncBar()
+        fputs("reactable: applied layout \"\(snap.name)\"\n", stderr)
+    }
+
+    /// Shared menu for the group-header hamburger and the tray's "Layouts".
+    /// Layouts auto-save per view (Record / Edit); Save is an explicit nudge,
+    /// Reset forgets this view's layout and rebuilds its default.
+    func layoutsMenu() -> NSMenu {
+        let menu = NSMenu()
+        let viewName = appMode == .record ? "Record" : "Edit"
+        let save = menu.addItem(withTitle: "Save \(viewName) Layout", action: #selector(saveLayout), keyEquivalent: "")
+        save.target = self
+        let reset = menu.addItem(withTitle: "Reset \(viewName) Layout", action: #selector(resetLayout), keyEquivalent: "")
+        reset.target = self
+        return menu
+    }
+
+    /// Explicitly stamp the current arrangement as this view's layout. Redundant
+    /// with the continuous auto-save, but a clear, reassuring affordance.
+    @objc private func saveLayout() {
+        guard !state.recording else { return }
+        let snap = currentLayoutSnapshot(named: appMode.rawValue)
+        guard !snap.groups.isEmpty || !snap.floats.isEmpty else { return }
+        LayoutStore.saveCurrent(snap, mode: appMode.rawValue)
+    }
+
+    /// Forget this view's remembered arrangement and rebuild the shipped default.
+    @objc private func resetLayout() {
+        LayoutStore.clearCurrent(mode: appMode.rawValue)
+        applyLayoutSnapshot(defaultLayoutSnapshot(for: appMode))
+        persistCurrentLayout()
+    }
+
+    private func refreshSavedLayoutsMenu() {
+        savedLayoutsItem?.submenu = layoutsMenu()
+    }
+
+    @objc private func saveLayoutPrompt() {
+        let alert = NSAlert()
+        alert.messageText = "Save Current Layout"
+        alert.informativeText = "Snapshots exactly what's on screen now — every window, dock, split size, and mode — under a name you can restore later."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 230, height: 24))
+        field.placeholderString = "Layout name"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        captureLayoutSnapshot(named: name)
+    }
+
+    @objc private func applySavedLayout(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String,
+              let snap = LayoutStore.load().first(where: { $0.name == name }) else { return }
+        applyLayoutSnapshot(snap)
+    }
+
+    @objc private func deleteSavedLayout(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        LayoutStore.delete(name: name)
+        refreshSavedLayoutsMenu()
+    }
+
+    /// Default floating layout: bar top-center (Record only), then one row
+    /// that always fits the screen — projects | center | agent. The center is
+    /// the stage in Record mode, the tabbed preview in Edit mode.
     private func arrangeDefaultLayout() {
         guard let screen = NSScreen.main else { return }
         let f = screen.visibleFrame
-        openStage()
+        if appMode == .record {
+            preview?.hide()
+            openStage()
+            showBar()
+        } else {
+            stage?.hide()
+            bar?.close()
+            preview?.open()
+        }
         projectsBoard?.open()
         if agent?.isVisible != true { bridgeOpenAgent() }
 
@@ -925,8 +1343,9 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         let startX = f.midX - total / 2
         let y = f.maxY - 66 - gap - stageH
 
+        let center = NSRect(x: startX + projW + gap, y: y, width: stageW, height: stageH)
         projectsBoard?.place(frame: NSRect(x: startX, y: y, width: projW, height: stageH))
-        stage?.place(frame: NSRect(x: startX + projW + gap, y: y, width: stageW, height: stageH))
+        if appMode == .record { stage?.place(frame: center) } else { preview?.place(frame: center) }
         agent?.place(frame: NSRect(x: startX + projW + gap + stageW + gap, y: y, width: agentW, height: stageH))
     }
 
@@ -1029,6 +1448,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             try? FileManager.default.copyItem(at: url, to: to)
         }
         fputs("reactable: imported \(urls.count) asset(s)\n", stderr)
+        Self.runFootageSweep(root: activeProjectURL)
         projectsBoard?.pushData()
     }
 
@@ -1041,6 +1461,21 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = "\(NSHomeDirectory())/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
         task.environment = env
+        try? task.run()
+    }
+
+    /// Footage intel T0: index anything un-indexed in the active project
+    /// (takes + imported assets). Detached; verb self no-ops when everything
+    /// already has a fresh sidecar. docs/PLAN.footage-intel.work.
+    static func runFootageSweep(root: URL) {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        task.arguments = ["reactable", "video", "sweep", "--json"]
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = "\(NSHomeDirectory())/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+        env["WB_DATA"] = root.path()
+        task.environment = env
+        task.qualityOfService = .background
         try? task.run()
     }
 
@@ -1095,17 +1530,23 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     }
 
     /// The project's media, code abstracted away: takes + assets (+ root media).
+    /// Footage-intel state (indexed/tracks/edits) rides on each source row;
+    /// finished derived assets (compose/cutout/autoedit) surface separately.
     private func projectFiles() -> [[String: Any]] {
         var out: [[String: Any]] = []
+        var derived: [[String: Any]] = []
         let fm = FileManager.default
         let takes = activeProjectURL.appending(path: "takes")
         if let items = try? fm.contentsOfDirectory(atPath: takes.path) {
             for t in items.sorted(by: >) where t.hasPrefix("take") {
                 var row: [String: Any] = ["name": t, "path": "takes/\(t)", "group": "Takes", "icon": "take", "sub": ""]
                 let stageMov = takes.appending(path: "\(t)/stage.mov")
-                if FileManager.default.fileExists(atPath: stageMov.path),
-                   let thumb = thumbnail(for: stageMov, kind: "take") {
-                    row["thumb"] = thumb
+                if FileManager.default.fileExists(atPath: stageMov.path) {
+                    if let thumb = thumbnail(for: stageMov, kind: "take") { row["thumb"] = thumb }
+                    if let intel = intelInfo(forMedia: stageMov) {
+                        row["intel"] = intel
+                        derived += derivedRows(forMedia: stageMov, sourceName: t, sourcePath: "takes/\(t)")
+                    }
                 }
                 out.append(row)
             }
@@ -1114,6 +1555,8 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         if let en = fm.enumerator(at: assets, includingPropertiesForKeys: nil) {
             for case let f as URL in en where !f.hasDirectoryPath {
                 let rel = f.path.replacingOccurrences(of: assets.path + "/", with: "")
+                // Skip .intel internals — they surface as intel state / derived rows, not loose files.
+                if rel.contains(".intel/") { continue }
                 let ext = f.pathExtension.lowercased()
                 let icon = ["mov", "mp4", "webm"].contains(ext) ? "video"
                     : ["wav", "mp3", "m4a", "aiff"].contains(ext) ? "audio"
@@ -1123,15 +1566,80 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                 if icon == "image" || icon == "video", let thumb = thumbnail(for: f, kind: icon) {
                     row["thumb"] = thumb
                 }
+                if ["video"].contains(icon), let intel = intelInfo(forMedia: f) {
+                    row["intel"] = intel
+                    derived += derivedRows(forMedia: f, sourceName: f.lastPathComponent, sourcePath: "assets/\(rel)")
+                }
                 out.append(row)
                 if out.count > 240 { break }
             }
         }
+        out += derived
         let links = (try? JSONSerialization.jsonObject(with: Data(contentsOf: linksURL))) as? [String] ?? []
         for l in links {
             out.append(["name": l, "path": l, "group": "Links", "icon": "link", "sub": "url"])
         }
         return out
+    }
+
+    /// Footage-intel state for a media file: indexed flag, shot count, pass
+    /// list, tracked-concept counts, derived-edit-asset count. nil = not indexed.
+    private func intelInfo(forMedia media: URL) -> [String: Any]? {
+        let base = media.deletingPathExtension().lastPathComponent
+        let intelDir = media.deletingLastPathComponent().appending(path: "\(base).intel")
+        let indexJSON = intelDir.appending(path: "index.json")
+        guard FileManager.default.fileExists(atPath: indexJSON.path) else { return nil }
+        var info: [String: Any] = ["indexed": true]
+        if let data = try? Data(contentsOf: indexJSON),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let shots = obj["shots"] as? [[String: Any]] { info["shots"] = shots.count }
+            if let passes = obj["passes"] as? [String: Any] {
+                info["passes"] = passes.compactMap { (k, v) -> String? in (v is NSNull) ? nil : k }.sorted()
+            }
+        }
+        let tracksFile = intelDir.appending(path: "tracks.jsonl")
+        if let s = try? String(contentsOf: tracksFile, encoding: .utf8) {
+            var concepts: [String: Int] = [:]
+            for line in s.split(separator: "\n") {
+                if let d = line.data(using: .utf8),
+                   let m = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+                   let c = m["concept"] as? String {
+                    concepts[c, default: 0] += 1
+                }
+            }
+            if !concepts.isEmpty { info["tracks"] = concepts }
+        }
+        let editDir = intelDir.appending(path: "assets")
+        if let names = try? FileManager.default.contentsOfDirectory(atPath: editDir.path) {
+            let edits = names.filter { n in
+                ["cutout", "matte", "compose", "motion"].contains { n.hasPrefix($0) }
+            }
+            if !edits.isEmpty { info["editAssets"] = edits.count }
+        }
+        return info
+    }
+
+    /// Finished, previewable derived assets (compose/cutout renders) as their
+    /// own cards, grouped under the source clip. Skips intermediate mattes/motion.
+    private func derivedRows(forMedia media: URL, sourceName: String, sourcePath: String) -> [[String: Any]] {
+        let base = media.deletingPathExtension().lastPathComponent
+        let editDir = media.deletingLastPathComponent().appending(path: "\(base).intel/assets")
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: editDir.path) else { return [] }
+        var rows: [[String: Any]] = []
+        for n in names.sorted() {
+            let ext = (n as NSString).pathExtension.lowercased()
+            let isRender = (n.hasPrefix("compose") || n.hasPrefix("cutout")) && ["mp4", "mov"].contains(ext)
+            guard isRender else { continue }
+            let f = editDir.appending(path: n)
+            let relFromProject = f.path.replacingOccurrences(of: activeProjectURL.path + "/", with: "")
+            var row: [String: Any] = [
+                "name": n, "path": relFromProject, "group": "Edits · \(sourceName)",
+                "icon": "video", "sub": ext, "derivedFrom": sourcePath,
+            ]
+            if let thumb = thumbnail(for: f, kind: "video") { row["thumb"] = thumb }
+            rows.append(row)
+        }
+        return rows
     }
 
     private func saveStageLineup(_ newLineup: [[String: Any]]) {
@@ -1174,6 +1682,17 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         let ref = entry["ref"] as? String ?? ""
         let title = entry["title"] as? String ?? ref
         takeRecorder?.stamp("scene", payload: ["kind": kind, "ref": ref, "title": title])
+
+        // Layout memory across scenes: when we step aside for an external
+        // window/display, remember the arrangement; when the next scene is back
+        // in-app (stage/deck/slide), restore it instead of leaving the app bare.
+        let externalScene = ["window", "display"].contains(kind)
+        if externalScene {
+            if layoutBeforeScene == nil { layoutBeforeScene = currentLayoutSnapshot(named: "__scene__") }
+        } else if let saved = layoutBeforeScene {
+            layoutBeforeScene = nil
+            restoreSceneLayout(saved)
+        }
 
         // Mid-take: hand the recording off to the new target as a segment.
         if state.recording, let takeRecorder, takeRecorder.isActive {
@@ -1540,6 +2059,11 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                     self?.takeRecorder?.stamp(type, payload: payload)
                 }
 
+                // opening slide's ground-truth layout (footage intel)
+                stage?.captureLayout { [weak self] layout in
+                    self?.takeRecorder?.stamp("layout", payload: layout)
+                }
+
                 recordTimer?.invalidate()
                 recordTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
                     Task { @MainActor in
@@ -1655,6 +2179,16 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         controller.onEvent = { [weak self] type, payload in
             guard let self else { return }
             takeRecorder?.stamp(type, payload: payload)
+            if type == "slide", takeRecorder?.isActive == true {
+                // settle, then stamp the slide's ground-truth element rects
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+                    self?.stage?.captureLayout { layout in
+                        var p = layout
+                        p["slide"] = payload["id"] ?? payload["idx"]
+                        self?.takeRecorder?.stamp("layout", payload: p)
+                    }
+                }
+            }
             if self.state.speakerNotes {
                 if type == "notes" {
                     self.speakerNotes?.setText(payload["text"] as? String ?? "")
@@ -1760,6 +2294,11 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         bridgeToggleStage()
     }
     @objc private func toggleRecord() {
+        // ⌘R in Edit mode = "get me back to recording", not "start a take".
+        if appMode == .edit {
+            applyMode(.record)
+            return
+        }
         if state.recording { bridgeRecordStop() }
         else { bridgeRecordStart(countdown: state.countdownSeconds) }
     }
