@@ -5,6 +5,7 @@
  * pull ad accounts, campaigns, and insights into the agent.
  */
 import type { Env } from "./types";
+import { addConnection, connectionStatus, openTokens, pickConnection, removeConnection } from "./conns";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 const SCOPES = "ads_read,read_insights,business_management";
@@ -15,40 +16,11 @@ const json = (body: unknown, init: ResponseInit = {}) =>
     headers: { "content-type": "application/json", ...(init.headers || {}) },
   });
 
-// ── same envelope crypto as drive.ts (kept local to avoid a shared-module
-// refactor; the key derivation differs by label so blobs aren't portable) ──
-async function vaultKey(env: Env): Promise<CryptoKey> {
-  const material = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`meta-vault:${env.SESSION_SECRET}`));
-  return crypto.subtle.importKey("raw", material, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
-}
-
-async function sealJson(env: Env, value: unknown): Promise<string> {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await vaultKey(env);
-  const data = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(JSON.stringify(value)));
-  const buf = new Uint8Array(iv.length + data.byteLength);
-  buf.set(iv);
-  buf.set(new Uint8Array(data), iv.length);
-  return btoa(String.fromCharCode(...buf));
-}
-
-async function openJson<T>(env: Env, sealed: string): Promise<T | null> {
-  try {
-    const buf = Uint8Array.from(atob(sealed), (c) => c.charCodeAt(0));
-    const key = await vaultKey(env);
-    const data = await crypto.subtle.decrypt({ name: "AES-GCM", iv: buf.slice(0, 12) }, key, buf.slice(12));
-    return JSON.parse(new TextDecoder().decode(data)) as T;
-  } catch {
-    return null;
-  }
-}
 
 interface MetaTokens {
   access_token: string;
   expires_at: number;
 }
-
-const tokenKey = (email: string) => `metatok:${email.toLowerCase()}`;
 
 export async function metaConnect(email: string, env: Env): Promise<Response> {
   if (!env.META_APP_ID) return json({ ok: false, error: "meta not configured" }, { status: 503 });
@@ -58,6 +30,8 @@ export async function metaConnect(email: string, env: Env): Promise<Response> {
   url.searchParams.set("client_id", env.META_APP_ID);
   url.searchParams.set("redirect_uri", `${env.SITE_URL}/api/meta/callback`);
   url.searchParams.set("scope", SCOPES);
+  // let the user attach a different FB identity / business any time
+  url.searchParams.set("auth_type", "reauthenticate");
   url.searchParams.set("state", state);
   return new Response(null, { status: 302, headers: { location: url.toString() } });
 }
@@ -90,29 +64,43 @@ export async function metaCallback(req: Request, env: Env): Promise<Response> {
     access_token: token,
     expires_at: Date.now() + (longRes.expires_in ?? 5_184_000) * 1000,
   };
-  await env.KV.put(tokenKey(email), await sealJson(env, tokens));
+  let label = "Meta";
+  try {
+    const who = (await (await fetch(`${GRAPH}/me?fields=name&access_token=${token}`)).json()) as any;
+    label = who?.name || label;
+    const accts = (await (
+      await fetch(`${GRAPH}/me/adaccounts?fields=name&limit=1&access_token=${token}`)
+    ).json()) as any;
+    if (accts?.data?.[0]?.name) label = `${label} · ${accts.data[0].name}`;
+  } catch {}
+  await addConnection(env, email, "meta", label, tokens);
   return new Response(null, { status: 302, headers: { location: "/connected?service=meta" } });
 }
 
-async function metaToken(email: string, env: Env): Promise<string | null> {
-  const sealed = await env.KV.get(tokenKey(email));
-  if (!sealed) return null;
-  const tokens = await openJson<MetaTokens>(env, sealed);
+async function metaToken(email: string, env: Env, selector?: string | null): Promise<string | null> {
+  const conn = await pickConnection(env, email, "meta", selector);
+  if (!conn) return null;
+  const tokens = await openTokens<MetaTokens>(env, "meta", conn.sealed);
   if (!tokens || Date.now() > tokens.expires_at) return null;
   return tokens.access_token;
 }
 
 export async function metaStatus(email: string, env: Env): Promise<Response> {
-  const token = await metaToken(email, env);
-  return json({ ok: true, connected: Boolean(token) });
+  return connectionStatus(env, email, "meta");
+}
+
+export async function metaDisconnect(email: string, req: Request, env: Env): Promise<Response> {
+  const id = new URL(req.url).searchParams.get("id") || "";
+  if (id) await removeConnection(env, email, "meta", id);
+  return json({ ok: true });
 }
 
 /** Scoped Graph proxy: ad accounts, campaigns, insights — GET only,
  * path-allowlisted, token appended server-side. */
 export async function metaGraph(email: string, req: Request, env: Env): Promise<Response> {
-  const token = await metaToken(email, env);
-  if (!token) return json({ ok: false, error: "meta not connected" }, { status: 404 });
   const url = new URL(req.url);
+  const token = await metaToken(email, env, url.searchParams.get("conn"));
+  if (!token) return json({ ok: false, error: "meta not connected" }, { status: 404 });
   const path = url.searchParams.get("path") || "/me/adaccounts";
   const allowed =
     /^\/me(\/adaccounts)?$/.test(path) ||
@@ -122,7 +110,7 @@ export async function metaGraph(email: string, req: Request, env: Env): Promise<
 
   const target = new URL(GRAPH + path);
   for (const [k, v] of url.searchParams) {
-    if (k !== "path") target.searchParams.set(k, v);
+    if (k !== "path" && k !== "conn") target.searchParams.set(k, v);
   }
   target.searchParams.set("access_token", token);
   const res = await fetch(target);

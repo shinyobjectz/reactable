@@ -32,6 +32,14 @@
   .conn .nm { font-size:13.5px; } .conn .st { color:var(--faint); font-size:11.5px; }
   .dot { width:8px; height:8px; border-radius:50%; background:#3a3a38; margin-left:auto; }
   .dot.on { background:var(--green); box-shadow:0 0 10px rgba(125,208,139,.4); }
+  .prov { border-top:1px solid var(--line); }
+  .prov:first-of-type { border-top:0; }
+  .prov .conn { border-top:0; }
+  .accts { padding:0 0 14px 31px; }
+  .acct { display:flex; align-items:center; gap:10px; padding:7px 0; color:var(--dim); font-size:12.5px; }
+  .acct .dot { margin-left:0; }
+  .acct .rm { margin-left:auto; color:var(--faint); cursor:pointer; border:0; background:none; font-size:13px; }
+  .acct .rm:hover { color:#e07070; }
   .conn a { color:var(--dim); text-decoration:none; font-size:12px; border:1px solid var(--line); border-radius:8px; padding:6px 12px; margin-left:14px; }
   .conn a:hover { color:var(--ink); border-color:#3a3a38; }
   .act { display:inline-flex; align-items:center; gap:8px; margin-top:20px; margin-right:8px; font-size:12.5px; color:var(--ink); text-decoration:none; border:1px solid var(--line); border-radius:10px; padding:9px 16px; }
@@ -73,11 +81,23 @@
   <h2 class="sec">Recent usage</h2>
   <div class="card"><div class="ledger" id="ledger" style="margin-top:0"><p class="sub">No activity yet — ask the agent something in the app.</p></div></div>
 
-  <h2 class="sec" id="connections">Connections</h2>
+  <h2 class="sec" id="connections">Connections <span class="sub" style="letter-spacing:0">(connect as many accounts as you need)</span></h2>
   <div class="card">
-    <div class="conn"><svg class="pi" fill="currentColor" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>YouTube</title><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg><div><div class="nm">YouTube</div><div class="st">Post takes straight from the agent</div></div><span class="dot" id="d-yt"></span><a href="/api/youtube/connect">Connect</a></div>
+    <div class="prov" data-p="youtube">
+      <div class="conn"><svg class="pi" fill="currentColor" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>YouTube</title><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg><div><div class="nm">YouTube</div><div class="st">Post takes straight from the agent — any channel</div></div><a href="/api/youtube/connect">+ Add channel</a></div>
+      <div class="accts" id="a-youtube"></div>
+    </div>
+    <div class="prov" data-p="meta">
+      <div class="conn"><svg class="pi" fill="currentColor" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>YouTube</title><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg><div><div class="nm">YouTube</div><div class="st">Post takes straight from the agent</div></div><span class="dot" id="d-yt"></span><a href="/api/youtube/connect">Connect</a></div>
+    <div class="conn"><svg class="pi" fill="currentColor" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>Meta</title><path d="M6.915 4.03c-1.968 0-3.683 1.28-4.871 3.113C.704 9.208 0 11.883 0 14.449c0 .706.07 1.369.21 1.973a6.624 6.624 0 0 0 .265.86 5.297 5.297 0 0 0 .371.761c.696 1.159 1.818 1.927 3.593 1.927 1.497 0 2.633-.671 3.965-2.444.76-1.012 1.144-1.626 2.663-4.32l.756-1.339.186-.325c.061.1.121.196.183.3l2.152 3.595c.724 1.21 1.665 2.556 2.47 3.314 1.046.987 1.992 1.22 3.06 1.22 1.075 0 1.876-.355 2.455-.843a3.743 3.743 0 0 0 .81-.973c.542-.939.861-2.127.861-3.745 0-2.72-.681-5.357-2.084-7.45-1.282-1.912-2.957-2.93-4.716-2.93-1.047 0-2.088.467-3.053 1.308-.652.57-1.257 1.29-1.82 2.05-.69-.875-1.335-1.547-1.958-2.056-1.182-.966-2.315-1.303-3.454-1.303zm10.16 2.053c1.147 0 2.188.758 2.992 1.999 1.132 1.748 1.647 4.195 1.647 6.4 0 1.548-.368 2.9-1.839 2.9-.58 0-1.027-.23-1.664-1.004-.496-.601-1.343-1.878-2.832-4.358l-.617-1.028a44.908 44.908 0 0 0-1.255-1.98c.07-.109.141-.224.211-.327 1.12-1.667 2.118-2.602 3.358-2.602zm-10.201.553c1.265 0 2.058.791 2.675 1.446.307.327.737.871 1.234 1.579l-1.02 1.566c-.757 1.163-1.882 3.017-2.837 4.338-1.191 1.649-1.81 1.817-2.486 1.817-.524 0-1.038-.237-1.383-.794-.263-.426-.464-1.13-.464-2.046 0-2.221.63-4.535 1.66-6.088.454-.687.964-1.226 1.533-1.533a2.264 2.264 0 0 1 1.088-.285z"/></svg><div><div class="nm">Meta ads</div><div class="st">Ad accounts, campaigns, spend intelligence</div></div><a href="/api/meta/connect">+ Add account</a></div>
+      <div class="accts" id="a-meta"></div>
+    </div>
+    <div class="prov" data-p="drive">
+      <div class="conn"><svg class="pi" fill="currentColor" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>YouTube</title><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg><div><div class="nm">YouTube</div><div class="st">Post takes straight from the agent</div></div><span class="dot" id="d-yt"></span><a href="/api/youtube/connect">Connect</a></div>
     <div class="conn"><svg class="pi" fill="currentColor" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>Meta</title><path d="M6.915 4.03c-1.968 0-3.683 1.28-4.871 3.113C.704 9.208 0 11.883 0 14.449c0 .706.07 1.369.21 1.973a6.624 6.624 0 0 0 .265.86 5.297 5.297 0 0 0 .371.761c.696 1.159 1.818 1.927 3.593 1.927 1.497 0 2.633-.671 3.965-2.444.76-1.012 1.144-1.626 2.663-4.32l.756-1.339.186-.325c.061.1.121.196.183.3l2.152 3.595c.724 1.21 1.665 2.556 2.47 3.314 1.046.987 1.992 1.22 3.06 1.22 1.075 0 1.876-.355 2.455-.843a3.743 3.743 0 0 0 .81-.973c.542-.939.861-2.127.861-3.745 0-2.72-.681-5.357-2.084-7.45-1.282-1.912-2.957-2.93-4.716-2.93-1.047 0-2.088.467-3.053 1.308-.652.57-1.257 1.29-1.82 2.05-.69-.875-1.335-1.547-1.958-2.056-1.182-.966-2.315-1.303-3.454-1.303zm10.16 2.053c1.147 0 2.188.758 2.992 1.999 1.132 1.748 1.647 4.195 1.647 6.4 0 1.548-.368 2.9-1.839 2.9-.58 0-1.027-.23-1.664-1.004-.496-.601-1.343-1.878-2.832-4.358l-.617-1.028a44.908 44.908 0 0 0-1.255-1.98c.07-.109.141-.224.211-.327 1.12-1.667 2.118-2.602 3.358-2.602zm-10.201.553c1.265 0 2.058.791 2.675 1.446.307.327.737.871 1.234 1.579l-1.02 1.566c-.757 1.163-1.882 3.017-2.837 4.338-1.191 1.649-1.81 1.817-2.486 1.817-.524 0-1.038-.237-1.383-.794-.263-.426-.464-1.13-.464-2.046 0-2.221.63-4.535 1.66-6.088.454-.687.964-1.226 1.533-1.533a2.264 2.264 0 0 1 1.088-.285z"/></svg><div><div class="nm">Meta ads</div><div class="st">Ad accounts, campaigns, spend intelligence</div></div><span class="dot" id="d-meta"></span><a href="/api/meta/connect">Connect</a></div>
-    <div class="conn"><svg class="pi" fill="currentColor" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>Google Drive</title><path d="M12.01 1.485c-2.082 0-3.754.02-3.743.047.01.02 1.708 3.001 3.774 6.62l3.76 6.574h3.76c2.081 0 3.753-.02 3.742-.047-.005-.02-1.708-3.001-3.775-6.62l-3.76-6.574zm-4.76 1.73a789.828 789.861 0 0 0-3.63 6.319L0 15.868l1.89 3.298 1.885 3.297 3.62-6.335 3.618-6.33-1.88-3.287C8.1 4.704 7.255 3.22 7.25 3.214zm2.259 12.653-.203.348c-.114.198-.96 1.672-1.88 3.287a423.93 423.948 0 0 1-1.698 2.97c-.01.026 3.24.042 7.222.042h7.244l1.796-3.157c.992-1.734 1.85-3.23 1.906-3.323l.104-.167h-7.249z"/></svg><div><div class="nm">Google Drive</div><div class="st">Footage import into project assets</div></div><span class="dot" id="d-drive"></span><a href="/api/drive/connect">Connect</a></div>
+    <div class="conn"><svg class="pi" fill="currentColor" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>Google Drive</title><path d="M12.01 1.485c-2.082 0-3.754.02-3.743.047.01.02 1.708 3.001 3.774 6.62l3.76 6.574h3.76c2.081 0 3.753-.02 3.742-.047-.005-.02-1.708-3.001-3.775-6.62l-3.76-6.574zm-4.76 1.73a789.828 789.861 0 0 0-3.63 6.319L0 15.868l1.89 3.298 1.885 3.297 3.62-6.335 3.618-6.33-1.88-3.287C8.1 4.704 7.255 3.22 7.25 3.214zm2.259 12.653-.203.348c-.114.198-.96 1.672-1.88 3.287a423.93 423.948 0 0 1-1.698 2.97c-.01.026 3.24.042 7.222.042h7.244l1.796-3.157c.992-1.734 1.85-3.23 1.906-3.323l.104-.167h-7.249z"/></svg><div><div class="nm">Google Drive</div><div class="st">Footage import into project assets</div></div><a href="/api/drive/connect">+ Add drive</a></div>
+      <div class="accts" id="a-drive"></div>
+    </div>
   </div>
 
   <h2 class="sec">Bring-your-own keys <span class="sub" style="letter-spacing:0">(free tier — set in the app&rsquo;s Settings)</span></h2>
@@ -101,9 +121,13 @@
   document.getElementById('plan').innerHTML = pro ? 'Pro <span>$20/mo</span>' : 'Free';
   if (pro) { const a = document.getElementById('plan-act'); a.textContent = 'Manage subscription'; a.href = '/api/billing/portal';
     document.getElementById('plan-note').textContent = 'Intelligence suite active — connections below.'; }
-  document.getElementById('d-yt').classList.toggle('on', !!me.youtube);
-  for (const s of ['meta', 'drive']) fetch(`/api/${s}/status`).then(r => r.json()).then(d =>
-    document.getElementById('d-' + s).classList.toggle('on', !!d.connected)).catch(() => {});
+  const acctRow = (p, c) => `<div class="acct"><span class="dot on"></span>${c.label}
+    <button class="rm" title="Disconnect" onclick="fetch('/api/${p}/disconnect?id=${c.id}').then(()=>location.reload())">&#10005;</button></div>`;
+  document.getElementById('a-youtube').innerHTML = me.youtube
+    ? `<div class="acct"><span class="dot on"></span>Connected channel</div>` : '';
+  for (const p of ['meta', 'drive']) fetch(`/api/${p}/status`).then(r => r.json()).then(d => {
+    document.getElementById('a-' + p).innerHTML = (d.connections || []).map(c => acctRow(p, c)).join('');
+  }).catch(() => {});
   try {
     const u = await (await fetch('/api/gateway/usage')).json();
     const bal = u.balance ?? 0;

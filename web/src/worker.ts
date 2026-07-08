@@ -1,8 +1,8 @@
 import type { Env, CliChallenge, Session } from "./types";
 import { billingCheckout, billingPortal, polarWebhook, userRecord } from "./billing";
 import { gatewayBalance, gatewayChat, gatewayUsage } from "./gateway";
-import { driveCallback, driveConnect, driveFile, driveList, driveStatus } from "./drive";
-import { metaCallback, metaConnect, metaGraph, metaStatus } from "./meta";
+import { driveCallback, driveConnect, driveDisconnect, driveFile, driveList, driveStatus } from "./drive";
+import { metaCallback, metaConnect, metaDisconnect, metaGraph, metaStatus } from "./meta";
 import { ledgerBalance } from "./ledger";
 export { CreditLedger } from "./ledger";
 import {
@@ -298,6 +298,7 @@ async function handle(req: Request, env: Env, ctx: ExecutionContext): Promise<Re
     }
     if (path === "/api/meta/connect") return metaConnect(session.email, env);
     if (path === "/api/meta/status") return metaStatus(session.email, env);
+    if (path === "/api/meta/disconnect") return metaDisconnect(session.email, req, env);
     if (path === "/api/meta/graph") return metaGraph(session.email, req, env);
   }
   if (path.startsWith("/api/drive/") && req.method === "GET") {
@@ -309,6 +310,7 @@ async function handle(req: Request, env: Env, ctx: ExecutionContext): Promise<Re
     }
     if (path === "/api/drive/connect") return driveConnect(session.email, env);
     if (path === "/api/drive/status") return driveStatus(session.email, env);
+    if (path === "/api/drive/disconnect") return driveDisconnect(session.email, req, env);
     if (path === "/api/drive/files") return driveList(session.email, req, env);
     if (path === "/api/drive/file") return driveFile(session.email, req, env);
   }

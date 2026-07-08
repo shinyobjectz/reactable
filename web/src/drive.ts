@@ -5,6 +5,7 @@
  * from SESSION_SECRET — the app never sees them (rule of two vaults).
  */
 import type { Env } from "./types";
+import { addConnection, connectionStatus, openTokens, pickConnection, removeConnection, updateConnectionTokens } from "./conns";
 
 const SCOPE = "https://www.googleapis.com/auth/drive.file";
 
@@ -14,40 +15,12 @@ const json = (body: unknown, init: ResponseInit = {}) =>
     headers: { "content-type": "application/json", ...(init.headers || {}) },
   });
 
-// ── envelope crypto ──
-async function vaultKey(env: Env): Promise<CryptoKey> {
-  const material = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`vault:${env.SESSION_SECRET}`));
-  return crypto.subtle.importKey("raw", material, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
-}
-
-async function sealJson(env: Env, value: unknown): Promise<string> {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await vaultKey(env);
-  const data = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(JSON.stringify(value)));
-  const buf = new Uint8Array(iv.length + data.byteLength);
-  buf.set(iv);
-  buf.set(new Uint8Array(data), iv.length);
-  return btoa(String.fromCharCode(...buf));
-}
-
-async function openJson<T>(env: Env, sealed: string): Promise<T | null> {
-  try {
-    const buf = Uint8Array.from(atob(sealed), (c) => c.charCodeAt(0));
-    const key = await vaultKey(env);
-    const data = await crypto.subtle.decrypt({ name: "AES-GCM", iv: buf.slice(0, 12) }, key, buf.slice(12));
-    return JSON.parse(new TextDecoder().decode(data)) as T;
-  } catch {
-    return null;
-  }
-}
 
 interface DriveTokens {
   access_token: string;
   refresh_token?: string;
   expires_at: number;
 }
-
-const tokenKey = (email: string) => `drivetok:${email.toLowerCase()}`;
 
 // ── OAuth flow ──
 export async function driveConnect(email: string, env: Env): Promise<Response> {
@@ -60,7 +33,8 @@ export async function driveConnect(email: string, env: Env): Promise<Response> {
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", SCOPE);
   url.searchParams.set("access_type", "offline");
-  url.searchParams.set("prompt", "consent");
+  // select_account lets the user attach ANOTHER Drive account any time.
+  url.searchParams.set("prompt", "consent select_account");
   url.searchParams.set("state", state);
   return new Response(null, { status: 302, headers: { location: url.toString() } });
 }
@@ -98,14 +72,24 @@ export async function driveCallback(req: Request, env: Env): Promise<Response> {
     refresh_token: body.refresh_token,
     expires_at: Date.now() + (body.expires_in ?? 3600) * 1000 - 60_000,
   };
-  await env.KV.put(tokenKey(email), await sealJson(env, tokens));
+  // Label the connection with the Drive account's own identity.
+  let label = "Google Drive";
+  try {
+    const about = (await (
+      await fetch("https://www.googleapis.com/drive/v3/about?fields=user(emailAddress,displayName)", {
+        headers: { authorization: `Bearer ${tokens.access_token}` },
+      })
+    ).json()) as any;
+    label = about?.user?.emailAddress || about?.user?.displayName || label;
+  } catch {}
+  await addConnection(env, email, "drive", label, tokens);
   return new Response(null, { status: 302, headers: { location: "/connected?service=drive" } });
 }
 
-async function freshToken(email: string, env: Env): Promise<string | null> {
-  const sealed = await env.KV.get(tokenKey(email));
-  if (!sealed) return null;
-  const tokens = await openJson<DriveTokens>(env, sealed);
+async function freshToken(email: string, env: Env, selector?: string | null): Promise<string | null> {
+  const conn = await pickConnection(env, email, "drive", selector);
+  if (!conn) return null;
+  const tokens = await openTokens<DriveTokens>(env, "drive", conn.sealed);
   if (!tokens) return null;
   if (Date.now() < tokens.expires_at) return tokens.access_token;
   if (!tokens.refresh_token) return null;
@@ -127,20 +111,26 @@ async function freshToken(email: string, env: Env): Promise<string | null> {
     refresh_token: tokens.refresh_token,
     expires_at: Date.now() + (body.expires_in ?? 3600) * 1000 - 60_000,
   };
-  await env.KV.put(tokenKey(email), await sealJson(env, next));
+  await updateConnectionTokens(env, email, "drive", conn.id, next);
   return next.access_token;
 }
 
 export async function driveStatus(email: string, env: Env): Promise<Response> {
-  const connected = Boolean(await env.KV.get(tokenKey(email)));
-  return json({ ok: true, connected });
+  return connectionStatus(env, email, "drive");
+}
+
+export async function driveDisconnect(email: string, req: Request, env: Env): Promise<Response> {
+  const id = new URL(req.url).searchParams.get("id") || "";
+  if (id) await removeConnection(env, email, "drive", id);
+  return json({ ok: true });
 }
 
 /** List files visible to the app (drive.file scope: app-created/-opened). */
 export async function driveList(email: string, req: Request, env: Env): Promise<Response> {
-  const token = await freshToken(email, env);
+  const url0 = new URL(req.url);
+  const token = await freshToken(email, env, url0.searchParams.get("conn"));
   if (!token) return json({ ok: false, error: "drive not connected" }, { status: 404 });
-  const q = new URL(req.url).searchParams.get("q") || "";
+  const q = url0.searchParams.get("q") || "";
   const url = new URL("https://www.googleapis.com/drive/v3/files");
   url.searchParams.set("pageSize", "25");
   url.searchParams.set("fields", "files(id,name,mimeType,size,modifiedTime)");
@@ -151,9 +141,10 @@ export async function driveList(email: string, req: Request, env: Env): Promise<
 
 /** Stream a file's bytes — the nexus saves them into the project's assets/. */
 export async function driveFile(email: string, req: Request, env: Env): Promise<Response> {
-  const token = await freshToken(email, env);
+  const url1 = new URL(req.url);
+  const token = await freshToken(email, env, url1.searchParams.get("conn"));
   if (!token) return json({ ok: false, error: "drive not connected" }, { status: 404 });
-  const id = new URL(req.url).searchParams.get("id") || "";
+  const id = url1.searchParams.get("id") || "";
   if (!id) return json({ ok: false, error: "id required" }, { status: 400 });
   const res = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?alt=media`, {
     headers: { authorization: `Bearer ${token}` },
