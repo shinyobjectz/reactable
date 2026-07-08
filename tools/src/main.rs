@@ -122,9 +122,10 @@ enum Commands {
         lossless: bool,
         #[arg(long)]
         keep_frames: bool,
-        /// TTF/OTF replacing the bundled Geist (match the deck's real font)
+        /// TTF/OTF font(s), priority order (repeatable). Auto-appended:
+        /// ~/.reactable/fonts/*, a wide-coverage system font, bundled Geist.
         #[arg(long)]
-        font: Option<String>,
+        font: Vec<String>,
     },
 }
 
@@ -187,7 +188,7 @@ fn main() {
             lossless,
             keep_frames,
             font,
-        } => wavelet::render(&comp, &output, w, h, fps, duration, lossless, keep_frames, font.as_deref()),
+        } => wavelet::render(&comp, &output, w, h, fps, duration, lossless, keep_frames, &font),
     };
     process::exit(code);
 }

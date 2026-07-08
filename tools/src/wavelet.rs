@@ -19,18 +19,44 @@ pub fn render(
     duration: f64,
     lossless: bool,
     keep_frames: bool,
-    font: Option<&str>,
+    fonts: &[String],
 ) -> i32 {
-    let font_bytes = match font {
-        Some(p) => match std::fs::read(p) {
-            Ok(b) => Some(b),
+    // Font chain: explicit --font args (priority order) → ~/.reactable/fonts/*
+    // → a wide-coverage local system font if present (glyph rescue for chars
+    // outside Geist, e.g. U+FF0B) → bundled Geist floor. Chain order = metrics
+    // priority; later fonts only fill missing glyphs.
+    let mut font_bytes: Vec<Vec<u8>> = Vec::new();
+    for p in fonts {
+        match std::fs::read(p) {
+            Ok(b) => font_bytes.push(b),
             Err(e) => {
                 eprintln!("wavelet: cannot read font {p}: {e}");
                 return 1;
             }
-        },
-        None => None,
-    };
+        }
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        let dir = Path::new(&home).join(".reactable/fonts");
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            let mut paths: Vec<_> = entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| matches!(p.extension().and_then(|e| e.to_str()), Some("ttf" | "otf")))
+                .collect();
+            paths.sort();
+            for p in paths {
+                if let Ok(b) = std::fs::read(&p) {
+                    font_bytes.push(b);
+                }
+            }
+        }
+    }
+    for rescue in ["/System/Library/Fonts/Supplemental/Arial Unicode.ttf", "C:\\Windows\\Fonts\\arialuni.ttf"] {
+        if let Ok(b) = std::fs::read(rescue) {
+            font_bytes.push(b);
+            break;
+        }
+    }
     let comp_path = Path::new(comp);
     if !comp_path.exists() {
         eprintln!("wavelet: comp not found: {comp}");
@@ -53,7 +79,11 @@ pub fn render(
     }
 
     let started = std::time::Instant::now();
-    let n = match wavelet_render_core::render_sequence_to_dir_font(comp_path, &frames_dir, fps, duration, w, h, font_bytes.as_deref()) {
+    let n = match {
+        let mut chain: Vec<&[u8]> = font_bytes.iter().map(|b| b.as_slice()).collect();
+        chain.push(wavelet_render_core::bundled_font());
+        wavelet_render_core::render_sequence_to_dir_fonts(comp_path, &frames_dir, fps, duration, w, h, &chain)
+    } {
         Ok(n) => n,
         Err(e) => {
             eprintln!("wavelet: render failed: {e}");
