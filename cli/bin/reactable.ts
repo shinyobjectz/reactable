@@ -15,6 +15,7 @@ import {
   type Slide,
 } from "../lib/deck.ts";
 import { scaffoldHyperframes, hfDir } from "../lib/hf.ts";
+import { renderWaveletTake } from "../lib/wavelet.ts";
 import {
   assertProject,
   apiBase,
@@ -399,6 +400,20 @@ function cmdTakesEvents(id: string, asJson: boolean) {
 
 async function cmdTakesRender(id: string, flags: Record<string, string | boolean>) {
   const aspects = flags.aspect ? String(flags.aspect).split(",") : undefined;
+  if (flags.engine === "wavelet") {
+    try {
+      const out = await renderWaveletTake(id, {
+        port: PORT,
+        fps: flags.fps ? Number(flags.fps) : undefined,
+        lossless: Boolean(flags.lossless),
+      });
+      jsonOut({ ok: true, engine: "wavelet", ...out });
+      return 0;
+    } catch (e) {
+      console.error(`wavelet: ${e instanceof Error ? e.message : e}`);
+      return 1;
+    }
+  }
   try {
     const out = await renderTake(id, PORT, aspects);
     jsonOut(out);
