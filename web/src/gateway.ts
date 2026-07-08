@@ -106,3 +106,10 @@ export async function gatewayBalance(email: string, env: Env): Promise<Response>
   const balance = await ledgerBalance(env.LEDGER, email);
   return json({ ok: true, balance });
 }
+
+/** Balance + recent ledger entries — the dashboard's usage meter. */
+export async function gatewayUsage(email: string, env: Env): Promise<Response> {
+  const stub = env.LEDGER.get(env.LEDGER.idFromName(email.toLowerCase()));
+  const res = await stub.fetch("https://ledger/log");
+  return new Response(res.body, { headers: { "content-type": "application/json" } });
+}

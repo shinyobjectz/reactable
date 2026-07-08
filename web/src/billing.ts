@@ -27,7 +27,15 @@ export async function saveUserRecord(env: Env, email: string, record: UserRecord
 }
 
 /** GET /api/billing/checkout — signed-in user → Polar hosted checkout. */
-export async function billingCheckout(email: string, env: Env): Promise<Response> {
+// Credit packs are separate purchases from the intelligence-suite
+// subscription: ?product=pack5|pack15 buys credits, default = Pro sub.
+const PRODUCTS: Record<string, string> = {
+  pro: "ca8d6255-935d-4eb4-89d6-32e52a9a2d00",
+  pack5: "1ce9effd-639a-47ba-a189-afcdc8ae5563",
+  pack15: "b50adcb6-09e9-47b9-ab52-65e15805a2f2",
+};
+
+export async function billingCheckout(email: string, env: Env, product = "pro"): Promise<Response> {
   if (!env.POLAR_ACCESS_TOKEN || !env.POLAR_PRODUCT_PRO) {
     return json({ ok: false, error: "billing not configured" }, { status: 503 });
   }
@@ -39,7 +47,7 @@ export async function billingCheckout(email: string, env: Env): Promise<Response
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      products: [env.POLAR_PRODUCT_PRO],
+      products: [PRODUCTS[product] || env.POLAR_PRODUCT_PRO],
       customer_email: email,
       success_url: `${env.SITE_URL}/pro/welcome`,
     }),

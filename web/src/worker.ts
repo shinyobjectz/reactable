@@ -1,6 +1,6 @@
 import type { Env, CliChallenge, Session } from "./types";
 import { billingCheckout, billingPortal, polarWebhook, userRecord } from "./billing";
-import { gatewayBalance, gatewayChat } from "./gateway";
+import { gatewayBalance, gatewayChat, gatewayUsage } from "./gateway";
 import { driveCallback, driveConnect, driveFile, driveList, driveStatus } from "./drive";
 import { metaCallback, metaConnect, metaGraph, metaStatus } from "./meta";
 import { ledgerBalance } from "./ledger";
@@ -283,7 +283,7 @@ async function handle(req: Request, env: Env, ctx: ExecutionContext): Promise<Re
         headers: { location: `/api/auth/login?next=${encodeURIComponent("/api/billing/checkout")}` },
       });
     }
-    return billingCheckout(session.email, env);
+    return billingCheckout(session.email, env, url.searchParams.get("product") || "pro");
   }
   // Pro integrations: signed-in + pro plan. The callback is unauthenticated
   // by nature (state carries the binding).
@@ -345,6 +345,11 @@ async function handle(req: Request, env: Env, ctx: ExecutionContext): Promise<Re
     const session = await openSession(env, req);
     if (!session) return json({ ok: false, error: "sign in first" }, { status: 401 });
     return gatewayBalance(session.email, env);
+  }
+  if (path === "/api/gateway/usage" && req.method === "GET") {
+    const session = await openSession(env, req);
+    if (!session) return json({ ok: false, error: "sign in first" }, { status: 401 });
+    return gatewayUsage(session.email, env);
   }
   if (path === "/api/billing/portal" && req.method === "GET") {
     const session = await openSession(env, req);

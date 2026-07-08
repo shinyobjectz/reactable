@@ -38,6 +38,34 @@
   @keyframes shine { 0%,55% { left:-60%; } 85%,100% { left:130%; } }
   @keyframes rise { from { opacity:0; transform:translateY(18px); } to { opacity:1; } }
   @keyframes drop { from { opacity:0; transform:translateY(-30px) rotate(-18deg); } to { opacity:1; } }
+  /* real app components, recreated in the app's own chrome */
+  .stage { margin-top:120px; }
+  .appwin { background:#141414; border:1px solid #2a2a28; border-radius:14px; box-shadow:0 30px 80px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.05); overflow:hidden; }
+  .strip { display:flex; align-items:center; justify-content:center; gap:3px; height:26px; position:relative; }
+  .strip i { width:3px; height:3px; border-radius:50%; background:rgba(255,255,255,.18); }
+  .strip .t { position:absolute; left:14px; font-size:10.5px; color:#8f8d88; }
+  .strip .x { position:absolute; right:12px; color:#5a5a58; font-size:11px; }
+  .dock { display:flex; align-items:center; gap:14px; padding:12px 18px 16px; justify-content:center; }
+  .rec { width:34px; height:34px; border-radius:50%; border:2px solid #3a3a38; display:flex; align-items:center; justify-content:center; }
+  .rec i { width:14px; height:14px; border-radius:50%; background:#e25555; box-shadow:0 0 14px rgba(226,85,85,.5); animation:pulse 2.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { transform:scale(.82); opacity:.75; } }
+  .tgl { display:flex; align-items:center; gap:7px; color:#8f8d88; font-size:11px; border:1px solid #232220; border-radius:999px; padding:7px 13px; }
+  .lvl { display:flex; gap:2px; align-items:flex-end; height:12px; }
+  .lvl i { width:3px; border-radius:2px; background:#7dd08b; animation:eq 1s ease-in-out infinite; }
+  .lvl i:nth-child(1) { height:5px; } .lvl i:nth-child(2) { height:11px; animation-delay:.15s; } .lvl i:nth-child(3) { height:7px; animation-delay:.3s; }
+  @keyframes eq { 50% { transform:scaleY(.45); } }
+  .duo { display:grid; grid-template-columns:1.15fr .85fr; gap:22px; margin-top:22px; }
+  .pane { padding:16px 18px 20px; font-size:12px; }
+  .amsg { background:#1b1b1a; border-radius:10px; padding:10px 12px; margin:9px 0; max-width:90%; color:#c9c7c2; }
+  .amsg.u { margin-left:auto; background:#20201e; }
+  .achip { display:inline-flex; gap:6px; align-items:center; border:1px solid #232220; border-radius:999px; padding:4px 10px; margin:2px 4px 2px 0; color:#7dd08b; font-size:10.5px; }
+  .prow { display:flex; align-items:center; gap:9px; padding:9px 8px; border-radius:8px; color:#a8a6a1; }
+  .prow:hover { color:#fff; }
+  .thumb { width:44px; height:28px; border-radius:6px; background:linear-gradient(120deg,#e25555,#67d1e0 55%,#d76fd0); flex-shrink:0; }
+  .thumb.b { background:linear-gradient(120deg,#2a2a3a,#4a6a8a); }
+  .cap { text-align:center; color:var(--faint); font-size:11.5px; margin-top:16px; }
+  .tm { width:12px; height:12px; fill:currentColor; vertical-align:-2px; margin-right:6px; }
+  @media (max-width:760px) { .duo { grid-template-columns:1fr; } }
   .ticker { border-block:1px solid var(--line); margin-top:120px; padding:16px 0; overflow:hidden; mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent); }
   .track { display:flex; gap:44px; white-space:nowrap; width:max-content; animation:roll 30s linear infinite; color:var(--faint); font-size:13px; }
   @keyframes roll { to { transform:translateX(-50%); } }
@@ -82,9 +110,36 @@
     </div>
   </div>
 
+  <div class="stage">
+    <div class="appwin">
+      <div class="strip"><span class="t">Reactable</span><i></i><i></i><i></i><i></i><i></i><i></i><span class="x">&#10005;</span></div>
+      <div class="dock">
+        <div class="rec"><i></i></div>
+        <span class="tgl"><span class="lvl"><i></i><i></i><i></i></span> MacBook Pro Microphone</span>
+        <span class="tgl">&#9673; FaceTime HD</span>
+        <span class="tgl">&#9654; showcase &middot; slide 3/7</span>
+      </div>
+    </div>
+    <div class="duo">
+      <div class="appwin"><div class="strip"><span class="t">Agent</span><i></i><i></i><i></i><i></i><i></i><i></i><span class="x">&#10005;</span></div>
+        <div class="pane">
+          <div class="amsg u">clean the voice and post yesterday's take, unlisted</div>
+          <div><span class="achip">&#10003; edit clean-voice take-0707</span><span class="achip">&#10003; takes render &middot; 16:9</span><span class="achip">&#10003; youtube.upload</span></div>
+          <div class="amsg">Up for review — <b style="color:#e9e7e2">2:41</b>, unlisted. Want the 9:16 cut for Reels too?</div>
+        </div></div>
+      <div class="appwin"><div class="strip"><span class="t">Projects</span><i></i><i></i><i></i><i></i><i></i><i></i><span class="x">&#10005;</span></div>
+        <div class="pane">
+          <div class="prow"><span class="thumb"></span>take-0707 &middot; 2:41</div>
+          <div class="prow"><span class="thumb b"></span>b-roll-warehouse.mp4</div>
+          <div class="prow"><span class="thumb" style="background:linear-gradient(120deg,#3a3a38,#6a5a3a)"></span>vo-intro.mp3</div>
+        </div></div>
+    </div>
+    <p class="cap">The actual studio: the dock, the agent, your assets — recorded on a real stage, shipped by asking.</p>
+  </div>
+
   <div class="ticker"><div class="track">
-    <span>&#10022; Stage recording</span><span>&#10022; Agent editing</span><span>&#10022; YouTube posting</span><span>&#10022; Meta campaign intelligence</span><span>&#10022; Google Drive import</span><span>&#10022; Brand intelligence</span><span>&#10022; Consumer research</span><span>&#10022; Voice cleanup</span><span>&#10022; Auto-zoom &amp; captions</span>
-    <span>&#10022; Stage recording</span><span>&#10022; Agent editing</span><span>&#10022; YouTube posting</span><span>&#10022; Meta campaign intelligence</span><span>&#10022; Google Drive import</span><span>&#10022; Brand intelligence</span><span>&#10022; Consumer research</span><span>&#10022; Voice cleanup</span><span>&#10022; Auto-zoom &amp; captions</span>
+    <span>&#10022; Stage recording</span><span>&#10022; Agent editing</span><span><svg class="tm" fill="currentColor" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>YouTube</title><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>YouTube posting</span><span><svg class="tm" fill="currentColor" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>Meta</title><path d="M6.915 4.03c-1.968 0-3.683 1.28-4.871 3.113C.704 9.208 0 11.883 0 14.449c0 .706.07 1.369.21 1.973a6.624 6.624 0 0 0 .265.86 5.297 5.297 0 0 0 .371.761c.696 1.159 1.818 1.927 3.593 1.927 1.497 0 2.633-.671 3.965-2.444.76-1.012 1.144-1.626 2.663-4.32l.756-1.339.186-.325c.061.1.121.196.183.3l2.152 3.595c.724 1.21 1.665 2.556 2.47 3.314 1.046.987 1.992 1.22 3.06 1.22 1.075 0 1.876-.355 2.455-.843a3.743 3.743 0 0 0 .81-.973c.542-.939.861-2.127.861-3.745 0-2.72-.681-5.357-2.084-7.45-1.282-1.912-2.957-2.93-4.716-2.93-1.047 0-2.088.467-3.053 1.308-.652.57-1.257 1.29-1.82 2.05-.69-.875-1.335-1.547-1.958-2.056-1.182-.966-2.315-1.303-3.454-1.303zm10.16 2.053c1.147 0 2.188.758 2.992 1.999 1.132 1.748 1.647 4.195 1.647 6.4 0 1.548-.368 2.9-1.839 2.9-.58 0-1.027-.23-1.664-1.004-.496-.601-1.343-1.878-2.832-4.358l-.617-1.028a44.908 44.908 0 0 0-1.255-1.98c.07-.109.141-.224.211-.327 1.12-1.667 2.118-2.602 3.358-2.602zm-10.201.553c1.265 0 2.058.791 2.675 1.446.307.327.737.871 1.234 1.579l-1.02 1.566c-.757 1.163-1.882 3.017-2.837 4.338-1.191 1.649-1.81 1.817-2.486 1.817-.524 0-1.038-.237-1.383-.794-.263-.426-.464-1.13-.464-2.046 0-2.221.63-4.535 1.66-6.088.454-.687.964-1.226 1.533-1.533a2.264 2.264 0 0 1 1.088-.285z"/></svg>Meta campaign intelligence</span><span><svg class="tm" fill="currentColor" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>Google Drive</title><path d="M12.01 1.485c-2.082 0-3.754.02-3.743.047.01.02 1.708 3.001 3.774 6.62l3.76 6.574h3.76c2.081 0 3.753-.02 3.742-.047-.005-.02-1.708-3.001-3.775-6.62l-3.76-6.574zm-4.76 1.73a789.828 789.861 0 0 0-3.63 6.319L0 15.868l1.89 3.298 1.885 3.297 3.62-6.335 3.618-6.33-1.88-3.287C8.1 4.704 7.255 3.22 7.25 3.214zm2.259 12.653-.203.348c-.114.198-.96 1.672-1.88 3.287a423.93 423.948 0 0 1-1.698 2.97c-.01.026 3.24.042 7.222.042h7.244l1.796-3.157c.992-1.734 1.85-3.23 1.906-3.323l.104-.167h-7.249z"/></svg>Google Drive import</span><span>&#10022; Brand intelligence</span><span>&#10022; Consumer research</span><span>&#10022; Voice cleanup</span><span>&#10022; Auto-zoom &amp; captions</span>
+    <span>&#10022; Stage recording</span><span>&#10022; Agent editing</span><span><svg class="tm" fill="currentColor" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>YouTube</title><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>YouTube posting</span><span><svg class="tm" fill="currentColor" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>Meta</title><path d="M6.915 4.03c-1.968 0-3.683 1.28-4.871 3.113C.704 9.208 0 11.883 0 14.449c0 .706.07 1.369.21 1.973a6.624 6.624 0 0 0 .265.86 5.297 5.297 0 0 0 .371.761c.696 1.159 1.818 1.927 3.593 1.927 1.497 0 2.633-.671 3.965-2.444.76-1.012 1.144-1.626 2.663-4.32l.756-1.339.186-.325c.061.1.121.196.183.3l2.152 3.595c.724 1.21 1.665 2.556 2.47 3.314 1.046.987 1.992 1.22 3.06 1.22 1.075 0 1.876-.355 2.455-.843a3.743 3.743 0 0 0 .81-.973c.542-.939.861-2.127.861-3.745 0-2.72-.681-5.357-2.084-7.45-1.282-1.912-2.957-2.93-4.716-2.93-1.047 0-2.088.467-3.053 1.308-.652.57-1.257 1.29-1.82 2.05-.69-.875-1.335-1.547-1.958-2.056-1.182-.966-2.315-1.303-3.454-1.303zm10.16 2.053c1.147 0 2.188.758 2.992 1.999 1.132 1.748 1.647 4.195 1.647 6.4 0 1.548-.368 2.9-1.839 2.9-.58 0-1.027-.23-1.664-1.004-.496-.601-1.343-1.878-2.832-4.358l-.617-1.028a44.908 44.908 0 0 0-1.255-1.98c.07-.109.141-.224.211-.327 1.12-1.667 2.118-2.602 3.358-2.602zm-10.201.553c1.265 0 2.058.791 2.675 1.446.307.327.737.871 1.234 1.579l-1.02 1.566c-.757 1.163-1.882 3.017-2.837 4.338-1.191 1.649-1.81 1.817-2.486 1.817-.524 0-1.038-.237-1.383-.794-.263-.426-.464-1.13-.464-2.046 0-2.221.63-4.535 1.66-6.088.454-.687.964-1.226 1.533-1.533a2.264 2.264 0 0 1 1.088-.285z"/></svg>Meta campaign intelligence</span><span><svg class="tm" fill="currentColor" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>Google Drive</title><path d="M12.01 1.485c-2.082 0-3.754.02-3.743.047.01.02 1.708 3.001 3.774 6.62l3.76 6.574h3.76c2.081 0 3.753-.02 3.742-.047-.005-.02-1.708-3.001-3.775-6.62l-3.76-6.574zm-4.76 1.73a789.828 789.861 0 0 0-3.63 6.319L0 15.868l1.89 3.298 1.885 3.297 3.62-6.335 3.618-6.33-1.88-3.287C8.1 4.704 7.255 3.22 7.25 3.214zm2.259 12.653-.203.348c-.114.198-.96 1.672-1.88 3.287a423.93 423.948 0 0 1-1.698 2.97c-.01.026 3.24.042 7.222.042h7.244l1.796-3.157c.992-1.734 1.85-3.23 1.906-3.323l.104-.167h-7.249z"/></svg>Google Drive import</span><span>&#10022; Brand intelligence</span><span>&#10022; Consumer research</span><span>&#10022; Voice cleanup</span><span>&#10022; Auto-zoom &amp; captions</span>
   </div></div>
 
   <section id="studio">
