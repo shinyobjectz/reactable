@@ -41,6 +41,11 @@ async function googleLogin(req: Request, env: Env): Promise<Response> {
     if (cli && device) {
       await env.KV.put(`cli_state:${state}`, device, { expirationTtl: 600 });
     }
+    // Carry a safe same-origin return path through OAuth state.
+    const next = url.searchParams.get("next") || "";
+    if (next.startsWith("/") && !next.startsWith("//")) {
+      await env.KV.put(`next_state:${state}`, next, { expirationTtl: 600 });
+    }
 
     const { id } = oauthClient(env, "google");
     const auth = new URL("https://accounts.google.com/o/oauth2/v2/auth");
@@ -64,10 +69,10 @@ async function googleCallback(req: Request, env: Env): Promise<Response> {
   const oauthErr = url.searchParams.get("error");
 
   if (oauthErr) {
-    return redirect(`${env.SITE_URL}/app/?error=${encodeURIComponent(oauthErr)}`);
+    return redirect(`${env.SITE_URL}/?authError=${encodeURIComponent(oauthErr)}`);
   }
   if (!code || !state) {
-    return redirect(`${env.SITE_URL}/app/?error=${encodeURIComponent("missing code or state")}`);
+    return redirect(`${env.SITE_URL}/?authError=${encodeURIComponent("missing code or state")}`);
   }
 
   try {
@@ -86,12 +91,12 @@ async function googleCallback(req: Request, env: Env): Promise<Response> {
     const tokens = (await tokenRes.json()) as Record<string, unknown>;
     if (!tokenRes.ok) {
       const msg = oauthError(tokens.error) || "token exchange failed";
-      return redirect(`${env.SITE_URL}/app/?error=${encodeURIComponent(msg)}`);
+      return redirect(`${env.SITE_URL}/?authError=${encodeURIComponent(msg)}`);
     }
 
     const accessToken = String(tokens.access_token || "");
     if (!accessToken) {
-      return redirect(`${env.SITE_URL}/app/?error=${encodeURIComponent("no access_token")}`);
+      return redirect(`${env.SITE_URL}/?authError=${encodeURIComponent("no access_token")}`);
     }
 
     const profileRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
@@ -99,7 +104,7 @@ async function googleCallback(req: Request, env: Env): Promise<Response> {
     });
     const profile = (await profileRes.json()) as Record<string, string>;
     if (!profileRes.ok || !profile.email) {
-      return redirect(`${env.SITE_URL}/app/?error=${encodeURIComponent("profile fetch failed")}`);
+      return redirect(`${env.SITE_URL}/?authError=${encodeURIComponent("profile fetch failed")}`);
     }
 
     const session: Session = {
@@ -122,20 +127,23 @@ async function googleCallback(req: Request, env: Env): Promise<Response> {
         { expirationTtl: 300 },
       );
       await env.KV.delete(`cli_state:${state}`);
-      return redirect(`${env.SITE_URL}/app/?cli=connected`);
+      return redirect(`${env.SITE_URL}/connected?service=account`);
     }
 
+    const next = await env.KV.get(`next_state:${state}`);
+    if (next) await env.KV.delete(`next_state:${state}`);
+    const dest = next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
     return new Response(null, {
       status: 302,
       headers: {
-        location: `${env.SITE_URL}/app/`,
+        location: `${env.SITE_URL}${dest}`,
         "set-cookie": sessionCookie(sealed),
       },
     });
   } catch (e) {
     console.error("googleCallback", e);
     const msg = e instanceof Error ? e.message : String(e);
-    return redirect(`${env.SITE_URL}/app/?error=${encodeURIComponent(msg)}`);
+    return redirect(`${env.SITE_URL}/?authError=${encodeURIComponent(msg)}`);
   }
 }
 
@@ -448,8 +456,8 @@ async function handle(req: Request, env: Env, ctx: ExecutionContext): Promise<Re
   if (path === "/api/youtube/search" && req.method === "GET") return youtubeSearch(req, env);
   if (path === "/api/youtube/proxy" && req.method === "GET") return youtubeProxy(req, env);
 
-  if (path === "/app.html") {
-    return redirect(`${env.SITE_URL}/app/`);
+  if (path === "/app" || path === "/app/" || path === "/app.html" || path === "/app/index.html") {
+    return redirect(`${env.SITE_URL}/dashboard`);
   }
 
   return env.ASSETS.fetch(req);

@@ -8,7 +8,7 @@ const YT_SCOPES = [
 
 export async function youtubeConnect(req: Request, env: Env): Promise<Response> {
   const session = await openSession(env, req);
-  if (!session) return redirect(`${env.SITE_URL}/app/`);
+  if (!session) return redirect(`${env.SITE_URL}/api/auth/login?next=/dashboard/connections`);
 
   const { id, secret } = oauthClient(env, "youtube");
   const state = crypto.randomUUID();
@@ -62,7 +62,7 @@ export async function youtubeCallback(req: Request, env: Env): Promise<Response>
   await saveSession(env, session);
   await env.KV.delete(`yt_oauth:${state}`);
 
-  return Response.redirect(`${env.SITE_URL}/app/?youtube=connected`, 302);
+  return Response.redirect(`${env.SITE_URL}/connected?service=youtube`, 302);
 }
 
 export async function youtubeStatus(req: Request, env: Env): Promise<Response> {
