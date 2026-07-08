@@ -27,9 +27,11 @@ const ALLOWED_PREFIXES = [
 ];
 
 // Credit pricing: upstream cost + margin. Flat default, heavier calls named.
-function costFor(path: string): number {
-  if (path.includes("/audience")) return 30;
-  if (path.includes("transcript")) return 4;
+function costFor(path: string, params: URLSearchParams): number {
+  if (path.includes("/audience")) return 60; // upstream 26 SC credits
+  if (path.includes("transcript")) {
+    return params.get("use_ai_as_fallback") === "true" ? 15 : 4; // fallback = +10 upstream
+  }
   return 3;
 }
 
@@ -48,7 +50,7 @@ export async function researchRaw(email: string, req: Request, env: Env, ctx: Ex
     return json({ ok: false, error: "endpoint not allowed" }, { status: 400 });
   }
 
-  const cost = costFor(path);
+  const cost = costFor(path, url.searchParams);
   const balance = await ledgerBalance(env.LEDGER, email);
   if (balance < cost) {
     return json({ ok: false, error: "out of credits", balance, topup: "/dashboard/usage" }, { status: 402 });

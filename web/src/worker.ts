@@ -140,6 +140,17 @@ async function authMe(req: Request, env: Env): Promise<Response> {
   const session = await openSession(env, req);
   if (!session) return json({ ok: true, signedIn: false });
   const record = await userRecord(env, session.email);
+  // Pro allowance: 2,000 credits/month, idempotent by KV flag — no cron,
+  // no webhook dependency; lands on first /me read of the month.
+  if (record.plan === "pro") {
+    const month = new Date().toISOString().slice(0, 7);
+    const flag = `allow:${session.email.toLowerCase()}:${month}`;
+    if (!(await env.KV.get(flag))) {
+      await env.KV.put(flag, "1", { expirationTtl: 40 * 86400 });
+      const { ledgerApply } = await import("./ledger");
+      await ledgerApply(env.LEDGER, session.email, "grant", 2000, `allowance:${month}`);
+    }
+  }
   const credits = await ledgerBalance(env.LEDGER, session.email);
   return json({
     ok: true,

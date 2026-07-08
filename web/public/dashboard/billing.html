@@ -94,7 +94,7 @@ window.boot = async () => {
   const me = await window.boot(); if (!me) return;
   const pro=(me.user.plan||'')==='pro';
   document.getElementById('plan').innerHTML=pro?'Pro <span>$20/mo</span>':'Free';
-  document.getElementById('plan-note').textContent=pro?'Intelligence suite active.':'The recorder is free forever; Pro connects the machine.';
+  document.getElementById('plan-note').textContent=pro?'Intelligence suite active.':'The recorder is free forever; Pro adds the suite, the trend commons, and 2,000 credits monthly.';
   if(pro){const a=document.getElementById('plan-act');a.textContent='Manage subscription';a.href='/api/billing/portal';}
 })();
 </script></body></html>

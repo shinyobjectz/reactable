@@ -1,0 +1,97 @@
+# Unit economics — every sink, every faucet, real vendor prices
+
+Sources (2026-07-08): MiniMax M3 list $0.60/M input, $2.40/M output (≤512K;
+promo currently half). Scrape Creators pay-as-you-go $1.88/1k calls entry,
+→ ~$0.99/1k at volume; 1 call = 1 SC credit, exceptions: audience 26,
+AI-fallback transcript +10. Polar MoR ≈ 4% + $0.40/txn. CF Workers paid
+$5/mo + pennies of KV/DO at our scale. YouTube/Drive/Meta APIs: $0.
+
+## Our credit (the only unit users see)
+
+1 Reactable credit is sold at:
+- pack5: $10 / 5,000 → **$0.0020/cr**
+- pack15: $25 / 15,000 → **$0.00167/cr**
+- allowance (in Pro): granted, COGS-only.
+
+"Credits" ≠ MiniMax credits ≠ SC credits. Ours is the retail unit; theirs
+are our COGS. The user's old $20 MiniMax top-up is now just fuel in OUR
+gateway key.
+
+## Sink 1 — inference (gateway)
+
+Measured agent turn shape: system (AGENT.md + appendix + digest) ≈ 4–6k in,
+history grows, ~300–800 out, mean ~2.2 internal turns per user message.
+Per user MESSAGE ≈ 11k in + 1.1k out:
+- COGS (list): 11k×$0.60/M + 1.1k×$2.40/M ≈ **$0.0093 ≈ 1¢/message**
+- We meter 1cr/1k total tokens → ~12 cr/message
+- Revenue: 12cr = $0.024 (pack5) / $0.020 (pack15)
+- **Margin: 2.6× / 2.2× (61% / 53% gross)** ✓ sane
+- Promo-price months double these margins; cache-read pricing ($0.12/M)
+  is upside once we send cache headers on the static system prompt.
+
+## Sink 2 — research (SC)
+
+| action | SC cost (entry rate) | our charge | revenue (pack5) | margin |
+|---|---|---|---|---|
+| standard pull | $0.00188 | 3 cr | $0.006 | **3.2×** ✓ |
+| transcript | ≤$0.0038 | 4 cr | $0.008 | 2.1× ✓ |
+| transcript + AI fallback | ~$0.0207 | ~~4~~ → **15 cr** | $0.030 | 1.4× (was LOSING) |
+| audience demographics | $0.0489 | ~~30~~ → **60 cr** | $0.120 | 2.5× (was 1.2×) |
+
+Repricing shipped in web/src/research.ts. At volume ($0.99/1k) every margin
+roughly doubles.
+
+## Sink 3 — composite actions
+
+- **Deconstruct**: meta(3) + transcript(4) + structure pass (~9cr metered
+  tokens) ≈ 16 cr ≈ $0.032 revenue vs ≈ $0.012 COGS → 2.7× ✓
+- **Personal daily snapshot**: 3 platforms × topic + competitors. 5 topics
+  + 3 competitors = ~18 calls/day = **~1,620 cr/mo** — would devour any
+  sane allowance. **This is the economic proof of the commons**: topic
+  series move to central collection (fixed cost), personal credits pay only
+  for PRIVATE competitor snapshots (~90 cr/mo for 3). Without the commons,
+  per-user trend tracking is unsellable at $20.
+
+## Sink 4 — the commons (fixed)
+
+500 topics × 3 platforms daily ≈ 45k SC calls/mo ≈ **$85/mo flat** (entry
+rate; ~$45 at volume). Amortized: $0.85/user at 100 subs, $0.09 at 1,000.
+Plus CF ≈ $5–20/mo. Total fixed ≈ **~$100/mo** → breakeven ≈ 6 subscribers.
+
+## Faucet — Pro $20/mo P&L per subscriber
+
+| line | $ |
+|---|---|
+| price | 20.00 |
+| Polar fee (4% + $0.40) | −1.20 |
+| commons amortized (at 100 subs) | −0.85 |
+| infra share | −0.15 |
+| allowance COGS if FULLY consumed¹ | −1.45 |
+| **gross profit (worst case)** | **16.35 (82%)** |
+| gross profit (median ~40% consumption) | ~17.2 (86%) |
+
+¹ 2,000 cr basket: 60% inference (≈100 messages, $0.93) + 40% research
+(≈266 pulls, $0.50). Full consumption is the CEILING of our exposure —
+allowance can never cost more than ~$1.45.
+
+Packs are additional-margin revenue on top (53–69% gross).
+
+## Allowance sizing (why 2,000 is right)
+
+2,000 cr ≈ 165 agent messages OR 665 research pulls OR ~125 deconstructs —
+"a real month of making videos" for a normal creator, ceiling-capped at
+$1.45 COGS. Doesn't roll over (packs do) so exposure resets monthly.
+Implemented as an idempotent grant `allowance:YYYY-MM` on /api/auth/me
+(KV flag dedupe) — no cron, no webhook dependency.
+
+## Strategy summary
+
+- **Subscription $20 = access + commons + allowance.** 82–86% gross. The
+  commons converts the worst per-user cost (daily trend series) into a
+  $100/mo fixed cost we amortize — that's the whole trick.
+- **Credits = private/marginal actions**, uniformly 2–3× COGS after this
+  repricing; every action's margin is now known, not vibes.
+- **Watchpoints:** MiniMax promo ending is priced in (we used list); SC
+  entry rate is priced in (volume rate only improves us); the two
+  loss-makers (AI-fallback transcript, audience) are repriced; re-run this
+  doc if the agent's mean tokens/message drifts >2× (watch ledger refs).

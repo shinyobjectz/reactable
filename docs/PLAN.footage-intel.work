@@ -1,0 +1,162 @@
+# PLAN — Footage Intelligence (perception of the pixels)
+
+Sibling to [[docs/PLAN.content-intelligence]] — that lane is MARKET intel
+(topics, competitors, breakouts). This lane is FOOTAGE intel: the agent
+perceiving video itself — timecodes, objects, layout, depth, text — so it
+can answer "when does X appear" and edit any clip, authored or imported.
+
+Design rule: **the agent is wired to an index contract, not to models.**
+Producers (ground-truth emitters, local passes, GPU passes) all write the
+same sidecar; models are swappable behind it. Ground truth when we authored
+the footage; inference only when we didn't.
+
+## 1. The sidecar — `<asset>.intel/` (schema `footage-intel/1`)
+
+Lives next to the media file, named by basename: `stage.mov` →
+`stage.intel/`, `assets/footage/ad.mp4` → `assets/footage/ad.intel/`.
+Distinct from project-level `.reactable/intel/` (market intel).
+
+```
+<basename>.intel/
+  index.json            # the spine — everything timecoded, small, always present
+  tracks.jsonl          # tracklets from concept/object passes (one JSON per line)
+  embeddings/           # <model>.f32 (row-major float32) + <model>.meta.json
+  assets/               # derived edit assets: keyframes, mattes, depth, crops
+  pts.json.gz           # full frame→ms table, ONLY when VFR (SCK output is VFR)
+```
+
+### index.json
+
+```json
+{
+  "schema": "footage-intel/1",
+  "source": { "file": "../stage.mov", "sha256": "…", "bytes": 0 },
+  "probe": {
+    "duration_ms": 0, "width": 0, "height": 0,
+    "avg_fps": 59.94, "nominal_fps": "60000/1001", "vfr": true,
+    "drop_frame": false, "time_base": "1/6000", "start_pts": 0,
+    "audio": { "sample_rate": 48000, "channels": 1 }
+  },
+  "shots": [ { "id": "s0", "in_ms": 0, "out_ms": 4210, "keyframe": "assets/kf-s0.jpg",
+               "caption": null, "caption_model": null } ],
+  "transcript": {
+    "model": "moonshine|whisper-large-v3-turbo", "lang": "en",
+    "words": [ { "w": "hello", "in_ms": 120, "out_ms": 380, "p": 0.98 } ],
+    "segments": [ { "in_ms": 0, "out_ms": 5300, "text": "…" } ]
+  },
+  "ocr": [ { "t_ms": 1000, "items": [ { "text": "Submit", "bbox": [0,0,0,0], "conf": 0.99 } ] } ],
+  "events": { "source": "../events.jsonl", "clock_offset_ms": 0 },
+  "passes": {
+    "t0": { "at": "…", "tools": { "ffprobe": "7.x", "whisper": "…" } },
+    "t1": { "at": "…", "embed_model": "siglip2-…", "caption_model": "…" },
+    "sam31": null, "depth": null
+  }
+}
+```
+
+Conventions: all times are **integer `t_ms` from media start**. SMPTE is
+derived, never stored (fps + drop_frame in probe; one helper both directions).
+`events.clock_offset_ms` maps the take's event clock (`events.jsonl` `t`,
+seconds from record.start) onto this asset's media clock — capture.stage
+first-frame timestamps give the offset. bbox is `[x, y, w, h]` in source
+pixels.
+
+### tracks.jsonl (one tracklet per line)
+
+```json
+{ "id": "trk-12", "concept": "red car", "pass": "sam31",
+  "in_ms": 74066, "out_ms": 78510,
+  "frames": [ { "t_ms": 74066, "bbox": [120,45,300,400], "conf": 0.92,
+                "rle": "…COCO-RLE…", "mask": null } ],
+  "depth": { "zone_series": [ { "t_ms": 74066, "zone": "fg", "mean": 0.88 } ] },
+  "assets": { "matte": "assets/matte-trk-12.mov" } }
+```
+
+Small masks inline as COCO-RLE; anything heavy is a ref into `assets/`.
+
+### embeddings/
+
+`<model>.f32` — N rows × D float32, row i ↔ `meta.json.rows[i]` =
+`{ shot: "s0", t_ms }`. Brute-force cosine locally (hundreds of shots — no
+vector DB needed; if a library ever grows past ~100k rows, lift into
+sqlite-vec without changing producers).
+
+## 2. Fill paths — same schema, two producers
+
+**Authored (takes):** events are the index. `events.jsonl` already carries
+record lifecycle, `capture.stage` geometry, `scene`, cursor·click on one
+clock ([[native/Sources/Reactable/EventLog.swift]]). T0 folds it in via
+`clock_offset_ms`; slide/fragment/DOM events answer layout queries with zero
+inference. Gaps to close at record time: slide/fragment transition stamps
+(deck bridge) + periodic DOM layout snapshot (`layout` event: element rects
+of the current slide).
+
+**Imported (anything else):** inference passes fill the same fields. The
+agent cannot tell the difference — that is the point.
+
+## 3. Passes (escalate cost only when the edit needs it)
+
+| Tier | What | Runs | Writes |
+|------|------|------|--------|
+| T0 | ffprobe, shot cuts, transcript (word-ts), OCR | local, auto on import | probe, shots, transcript, ocr |
+| T1 | SigLIP-2 shot embeddings + VLM shot captions | local (MPS) / gateway | embeddings/, shots[].caption |
+| T2 | SAM 3.1 PCS concept tracking; DA3 depth (Apache weights only) | GPU worker (Modal/fal) | tracks.jsonl, assets/depth |
+| T3 | mask→matte refinement (license-clean; BiRefNet fallback) | GPU worker | assets/matte-*.mov |
+
+T0 tools: ffprobe/ffmpeg (probe, scene filter, keyframes),
+`reactable-tools transcribe` (chunked Moonshine, already shipped) with
+whisper-cli fallback, Apple Vision OCR (small Swift helper). T2/T3 jobs go
+through the nexus job queue; artifacts write back into the sidecar; the Mac
+never blocks. `sam3.1-tiny` is the default; every dispatch surfaces a cost
+estimate first. Runner is swappable (CUDA cloud today, MLX/MPS when ports
+land) — the contract doesn't move.
+
+## 4. CLI verbs (the agent's hands) — `cli/lib/video.ts`
+
+All support `--json`; errors teach the fixing verb; `<ref>` is a take id or
+a media path.
+
+```
+reactable video index <ref> [--tier t0|t1]     # (re)build sidecar
+reactable video find "<query>" [--in <ref>]    # text → timecodes (transcript+OCR+captions+embeddings)
+reactable video at <ref> <tc|ms>               # everything known at that moment
+reactable video tracks <ref> [--concept "…"]   # tracklets
+reactable video pass <ref> <sam31|depth|matte> [--concept "…"] [--estimate]
+```
+
+Registration: verb doc `skill/verbs/video-intel.md` + `manifest.json`
+verbIndex + digest line when sidecars exist
+(`Footage: 3 indexed · 1 pass pending`).
+
+## 5. Edit-asset payoff (P3)
+
+tracklet → keyframed HyperFrames transform (follow, punch-in, track-locked
+highlight/blur) · matte → alpha asset (bg swap, insert-behind-subject) ·
+depth → parallax/DoF layers · transcript+shots → cut lists, silence trims,
+chapters. Agent flow: query index → missing capability? `video pass …` →
+asset ref lands → author the comp. The agent never touches pixels.
+
+## 6. Acceptance (AX bar, mirrors [[docs/GOALS.content-intelligence]] style)
+
+- Stub mode `REACTABLE_VIDEO_STUB=1` reads fixtures — deterministic evals.
+- Eval: "when does the chart appear?" → `video find` → correct ms ±500.
+- Authored demo: recorded deck → punch-ins + silence trims from events only.
+- Imported demo: ad clip, one prompt → product isolated, bg swapped,
+  punch-in when foreground — no manual masks.
+- Honesty: unindexed ref → "not indexed — `reactable video index <ref>`",
+  never an invented timecode.
+
+## Phases + DoD
+
+**P1 — spine + local perception:** schema (this doc), `video.ts` verbs,
+T0 auto-index on import + take finalize, T1 embeddings/captions, record-time
+slide/layout stamps. DoD: `video find` returns correct timecodes on a real
+take AND an imported clip; authored answers cite events, not inference.
+
+**P2 — GPU lane:** Modal worker (SAM 3.1 + DA3), pass plumbing, RLE store,
+cost guard. DoD: "track every X" on an ad clip → tracklets with masks in
+tracks.jsonl; depth zones answer prominence; estimate shown before dispatch.
+
+**P3 — edit assets:** matte/motion/layers/cuts generation consumed by
+HyperFrames comps. DoD: both P4 demos from the goal list pass; matting
+license ruling closed before anything sold uses it.
