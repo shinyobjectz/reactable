@@ -21,14 +21,14 @@ export const MODEL = {
   inferenceCogsUsd: 0.0093,
   researchCogsUsd: 0.00188,
   researchChargeCr: 3,
-  allowanceCr: 2000,
+  allowanceCr: 10000,
   commonsDailyBudget: 1500,
   scUsdPerCall: 0.00188,
   minimaxInPerM: 0.6,
   minimaxOutPerM: 2.4,
   polarPct: 0.04,
   polarFlatUsd: 0.4,
-  proPriceUsd: 20,
+  proPriceUsd: 100,
 };
 
 export async function econReport(env: Env): Promise<Record<string, unknown>> {

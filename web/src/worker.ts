@@ -152,8 +152,8 @@ async function authMe(req: Request, env: Env): Promise<Response> {
       await env.KV.put(flag, "1", { expirationTtl: 40 * 86400 });
       const { ledgerApply } = await import("./ledger");
       const { econAdd } = await import("./econ");
-      await econAdd(env, "granted", 2000);
-      await ledgerApply(env.LEDGER, session.email, "grant", 2000, `allowance:${month}`);
+      await econAdd(env, "granted", 10000);
+      await ledgerApply(env.LEDGER, session.email, "grant", 10000, `allowance:${month}`);
     }
   }
   const credits = await ledgerBalance(env.LEDGER, session.email);
