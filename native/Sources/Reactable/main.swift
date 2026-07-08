@@ -758,11 +758,15 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             columns = obj["columns"] as? [String] ?? columns
             stages = obj["stages"] as? [String: String] ?? [:]
         }
+        let files = projectFiles()
+        fputs("projects: data root=\(activeProjectURL.path) files=\(files.count)\n", stderr)
         return [
             "columns": columns,
             "projects": projects,
             "stages": stages,
             "active": "\(state.projectId)/\(state.deckSlug)",
+            "files": files,
+            "notes": loadAssetNotes(),
         ]
     }
 
@@ -877,8 +881,6 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             "deckSlug": state.deckSlug,
             "tabs": tabs,
             "lineup": lineup,
-            "files": projectFiles(),
-            "notes": loadAssetNotes(),
         ] as [String: Any]
     }
 
