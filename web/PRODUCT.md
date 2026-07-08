@@ -39,3 +39,17 @@ Never name Scrape Creators — sell "brand intelligence / consumer research".
   the agent posting, a campaign-spend mini-table, Drive import chips),
   line-art icons in the app's stroke style, specific outcome copy.
 - /dashboard: session-gated true dashboard (plan/credits/connections/app).
+
+## Connections model (locked 2026-07-08)
+Multi-account per provider — a user may have several YouTube channels, Meta
+ad accounts, Drive accounts. Design:
+- KV: `conns:<email>:<provider>` → array of {id (uuid), label (channel
+  title / ad-account name / drive email — fetched at callback), sealed
+  (AES-GCM tokens), addedAt}. Callback APPENDS (Google:
+  prompt=select_account+consent; Meta: auth_type=reauthenticate).
+- Status: {connections:[{id,label}]} arrays, never booleans.
+- Routes: /api/<p>/connect (always add-another), /api/<p>/disconnect?id=,
+  proxy routes take ?conn=<id> (default: first).
+- Dashboard: provider row expands to labeled account list, per-account
+  disconnect ✕, persistent "+ Add" button with the real brand mark.
+- Nexus connector args gain "account": label-or-id matcher.
