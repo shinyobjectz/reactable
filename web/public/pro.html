@@ -1,54 +1,164 @@
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Reactable Pro — next-generation content intelligence</title><link rel="preconnect" href="https://fonts.googleapis.com"/><link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,600;9..144,700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet"/><style>
-  :root { --ink:#e9e7e2; --dim:#8f8d88; --faint:#4a4947; --bg:#101010; --line:#232220; --metal:linear-gradient(135deg,#b9b9bd,#f2f2f4 38%,#97979d 62%,#dedee2); }
+<title>Reactable Pro — next-generation content intelligence</title>
+<meta name="description" content="Connect YouTube, Meta, and Drive. Research any creator. Ask the agent to ship the video. $20/mo."/><link rel="preconnect" href="https://fonts.googleapis.com"/><link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;1,9..144,600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+  :root { --ink:#e9e7e2; --dim:#8f8d88; --faint:#4a4947; --bg:#101010; --card:#141414; --line:#232220; --green:#7dd08b; --metal:linear-gradient(135deg,#b9b9bd,#f2f2f4 38%,#97979d 62%,#dedee2); }
   * { box-sizing:border-box; margin:0; }
-  body { background:var(--bg); color:var(--ink); font:15px/1.6 "Spline Sans Mono", ui-monospace, monospace; -webkit-font-smoothing:antialiased; }
-  body::before { content:''; position:fixed; inset:0; pointer-events:none; background:radial-gradient(60% 42% at 50% -6%, rgba(255,255,255,.07), transparent 70%); }
+  body { background:var(--bg); color:var(--ink); font:15px/1.65 "Spline Sans Mono", ui-monospace, monospace; -webkit-font-smoothing:antialiased; overflow-x:hidden; }
+  body::before { content:''; position:fixed; inset:0; pointer-events:none; background:radial-gradient(55% 40% at 72% -4%, rgba(255,255,255,.08), transparent 70%); }
+  body::after { content:''; position:fixed; inset:0; pointer-events:none; opacity:.05; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E"); }
   .wrap { max-width:1060px; margin:0 auto; padding:0 28px; position:relative; }
   header { display:flex; align-items:center; gap:12px; padding:26px 0; }
   .mark { width:22px; height:22px; } .mark path { fill:var(--ink); }
   .word { font:600 17px Fraunces, serif; }
   nav { margin-left:auto; display:flex; gap:24px; align-items:center; font-size:13px; }
   nav a { color:var(--dim); text-decoration:none; } nav a:hover { color:var(--ink); }
+  .kicker { color:var(--faint); font-size:12px; letter-spacing:.22em; text-transform:uppercase; }
   .btn { text-decoration:none; padding:14px 26px; border-radius:12px; font-size:14px; display:inline-flex; align-items:center; gap:9px; }
   .btn.light { background:var(--ink); color:#101010; font-weight:500; }
   .btn.ghost { border:1px solid var(--line); color:var(--ink); position:relative; overflow:hidden; }
   .btn.ghost::after { content:''; position:absolute; top:0; bottom:0; left:-60%; width:40%; background:linear-gradient(105deg,transparent,rgba(255,255,255,.13),transparent); transform:skewX(-18deg); animation:shine 3.4s ease-in-out infinite; }
   @keyframes shine { 0%,55%{left:-60%} 85%,100%{left:130%} }
-  .apl { width:15px; height:15px; margin-top:-2px; }
-  .coin { width:46px; height:46px; border-radius:50%; background:var(--metal); border:1px solid #6f6f74; box-shadow:inset 0 2px 3px rgba(255,255,255,.9), inset 0 -3px 4px rgba(0,0,0,.45), 0 6px 24px rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; color:#5c5c62; font-size:21px; text-shadow:0 -1px 1px rgba(0,0,0,.6),0 1px 1px #fff; }
-  .kicker { color:var(--faint); font-size:12px; letter-spacing:.22em; text-transform:uppercase; }
+  @keyframes rise { from { opacity:0; transform:translateY(16px); } to { opacity:1; } }
 
-  .hero { text-align:center; padding:76px 0 40px; }
-  .hero .coin { margin:0 auto 30px; width:58px; height:58px; font-size:26px; animation:drop .9s cubic-bezier(.2,1.4,.4,1) both; }
-  @keyframes drop { from { opacity:0; transform:translateY(-30px) rotate(-18deg); } }
-  h1 { font:300 clamp(38px,6vw,68px)/1.06 Fraunces, serif; } h1 em { font-style:italic; font-weight:600; }
-  .sub { max-width:560px; margin:22px auto 0; color:var(--dim); }
-  .price { font:600 46px Fraunces, serif; margin:34px 0 4px; } .price span { font:400 14px "Spline Sans Mono", monospace; color:var(--dim); }
-  .cta { display:flex; gap:14px; justify-content:center; margin:30px 0 8px; }
-  .fine { color:var(--faint); font-size:12px; }
-  .grid { display:grid; gap:1px; background:var(--line); border:1px solid var(--line); border-radius:16px; overflow:hidden; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); margin:70px 0; }
-  .cell { background:#141414; padding:30px 28px 34px; } .cell:hover { background:#171716; }
-  .cell h3 { font:600 19px Fraunces, serif; margin:14px 0 8px; } .cell p { color:var(--dim); font-size:13px; }
-  .cell .ic { font-size:19px; color:var(--dim); }
-  .packs { text-align:center; color:var(--dim); font-size:13px; padding-bottom:90px; }
-</style></head><body><div class="wrap"><header><svg class="mark" width="260" height="260" viewBox="0 0 260 260" fill="none" xmlns="http://www.w3.org/2000/svg">
+  /* hero — asymmetric, coin off-axis */
+  .hero { display:grid; grid-template-columns:1.4fr .6fr; gap:40px; align-items:center; padding:70px 0 30px; }
+  .hero h1 { font:300 clamp(40px,5.6vw,64px)/1.06 Fraunces, serif; letter-spacing:-.01em; animation:rise .7s .05s both; }
+  .hero h1 em { font-style:italic; font-weight:600; }
+  .hero .sub { color:var(--dim); max-width:480px; margin-top:20px; animation:rise .7s .15s both; }
+  .hero .cta { display:flex; gap:14px; margin-top:32px; align-items:center; animation:rise .7s .25s both; }
+  .price { font:600 26px Fraunces, serif; } .price span { font:400 12.5px "Spline Sans Mono",monospace; color:var(--dim); }
+  .coin { width:120px; height:120px; border-radius:50%; margin:0 auto; background:var(--metal); border:1px solid #6f6f74; box-shadow:inset 0 4px 6px rgba(255,255,255,.9), inset 0 -6px 8px rgba(0,0,0,.45), 0 18px 50px rgba(0,0,0,.65); display:flex; align-items:center; justify-content:center; color:#5c5c62; font-size:54px; text-shadow:0 -2px 2px rgba(0,0,0,.6),0 2px 2px #fff; animation:spin 1.1s cubic-bezier(.2,1.3,.4,1) both; }
+  @keyframes spin { from { opacity:0; transform:rotateY(140deg) translateY(-24px); } }
+
+  /* features — alternating asymmetric rows, mock-UI vignettes */
+  .feat { display:grid; grid-template-columns:.9fr 1.1fr; gap:44px; align-items:center; padding:64px 0; border-top:1px solid var(--line); }
+  .feat.rev { grid-template-columns:1.1fr .9fr; }
+  .feat h2 { font:600 clamp(24px,3vw,32px)/1.15 Fraunces, serif; margin:14px 0 12px; }
+  .feat p { color:var(--dim); font-size:13.5px; max-width:420px; }
+  .fk { display:flex; align-items:center; gap:9px; color:var(--faint); font-size:12px; letter-spacing:.18em; text-transform:uppercase; }
+  .ti { width:15px; height:15px; fill:currentColor; }
+  .shot { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px; box-shadow:0 24px 60px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.04); font-size:12.5px; }
+  .shot .bar { display:flex; gap:5px; margin-bottom:14px; } .shot .bar i { width:8px; height:8px; border-radius:50%; background:#242422; }
+  .msg { background:#1b1b1a; border-radius:10px; padding:10px 12px; margin:8px 0; max-width:88%; }
+  .msg.user { margin-left:auto; background:#20201e; }
+  .chip { display:inline-flex; gap:6px; align-items:center; border:1px solid var(--line); border-radius:999px; padding:4px 10px; margin:3px 4px 3px 0; color:var(--dim); font-size:11px; }
+  .chip.ok { color:var(--green); border-color:#2c3a2e; }
+  .trow { display:flex; justify-content:space-between; padding:8px 4px; border-top:1px solid var(--line); color:var(--dim); }
+  .trow:first-of-type { border-top:0; color:var(--faint); font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
+  .trow b { color:var(--ink); font-weight:500; } .up { color:var(--green); }
+  .fchip { display:flex; gap:9px; align-items:center; padding:9px 10px; border:1px solid var(--line); border-radius:10px; margin:7px 0; color:var(--dim); }
+  .fchip .ti { width:14px; height:14px; } .fchip b { color:var(--ink); font-weight:500; }
+  .fchip .to { margin-left:auto; color:var(--faint); font-size:11px; }
+  .ledg { font-size:12px; color:var(--dim); } .ledg .big { font:600 34px Fraunces, serif; color:var(--ink); margin-bottom:8px; }
+
+  /* pricing — free vs pro */
+  .plans { display:grid; grid-template-columns:.85fr 1.15fr; gap:16px; margin:70px 0 30px; }
+  .plan { border:1px solid var(--line); border-radius:18px; padding:30px 28px; background:var(--card); }
+  .plan.pro { background:radial-gradient(80% 130% at 50% -10%, #1a1a1d, #131312); box-shadow:0 30px 70px rgba(0,0,0,.5); position:relative; }
+  .plan h3 { font:600 22px Fraunces, serif; display:flex; align-items:center; gap:10px; }
+  .plan .pp { font:600 34px Fraunces, serif; margin:10px 0 18px; } .plan .pp span { font:400 12.5px "Spline Sans Mono",monospace; color:var(--dim); }
+  .plan li { list-style:none; padding:8px 0; border-top:1px solid var(--line); color:var(--dim); font-size:13px; display:flex; gap:10px; }
+  .plan li b { color:var(--ink); font-weight:500; }
+  .plan li::before { content:'✦'; color:var(--faint); font-size:11px; margin-top:2px; }
+  .plan.pro li::before { color:#b9b9bd; }
+  .mini { width:26px; height:26px; border-radius:50%; background:var(--metal); border:1px solid #6f6f74; display:inline-flex; align-items:center; justify-content:center; color:#5c5c62; font-size:12px; box-shadow:inset 0 1px 2px rgba(255,255,255,.85), inset 0 -2px 2px rgba(0,0,0,.4); text-shadow:0 -1px 1px rgba(0,0,0,.6),0 1px 1px #fff; }
+  .fine { text-align:center; color:var(--faint); font-size:12px; padding-bottom:90px; }
+  .fine a { color:var(--dim); }
+  @media (max-width:760px) { .hero, .feat, .feat.rev, .plans { grid-template-columns:1fr; } .coin { width:84px; height:84px; font-size:38px; } }
+</style></head><body><div class="wrap">
+<header><svg class="mark" width="260" height="260" viewBox="0 0 260 260" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M0.234554 0C3.01842 0.358903 12.2517 0.14986 15.6428 0.149414L47.2922 0.145508L132.066 0.146484L159.824 0.138672C165.242 0.137785 171.004 0.0368192 176.388 0.220703C199.258 0.981506 220.871 10.8775 236.388 27.6953C248.666 40.8854 256.491 57.5988 258.759 75.4756C259.234 79.2057 259.577 82.4762 259.445 86.2207C257.902 88.3296 253.81 92.1967 251.761 94.2373L238.508 107.467L191.385 154.631L181 164.979C178.644 167.33 175.576 170.179 173.704 172.854L259.515 172.823L259.527 259.472C239.445 259.087 218.573 259.352 198.416 259.361L182.244 259.401C179.647 259.408 175.298 259.553 172.908 259.229C169.864 256.421 166.646 253.07 163.695 250.124L147.208 233.637C127.142 213.584 106.928 192.981 86.6291 173.22L86.6418 259.468C73.8499 259.194 60.5796 259.359 47.7609 259.359C31.8649 259.304 15.9681 259.334 0.0724443 259.449C0.261371 257.579 0.125693 253.601 0.121272 251.543L0.118343 236.431L0.11346 196.806C0.109702 189.09 -0.0688427 180.71 0.242366 173.063C2.35059 170.354 7.0319 165.966 9.59881 163.417L25.5324 147.509L62.4904 110.57C70.5494 102.61 78.5265 94.5671 86.4211 86.4434C83.8014 86.6854 79.2746 86.5617 76.5549 86.5615L58.9523 86.5576L0.20721 86.6035C-0.356649 65.4227 0.444868 43.9321 0.121272 22.7217C0.00699665 15.2365 0.0258954 7.47987 0.234554 0ZM86.7697 86.5723C86.2452 96.6121 86.6343 109.917 86.6232 120.141C86.6049 137.502 86.4465 155.265 86.6779 172.603C89.434 172.973 94.5764 172.852 97.5119 172.852L115.314 172.84C134.481 172.833 153.912 173.019 173.054 172.821L173.052 86.5791L86.7697 86.5723Z" fill="white"/>
-</svg><span class="word">Reactable</span><nav><a href="/#studio">Studio</a><a href="/pro">Pro</a><a href="/dashboard">Dashboard</a><a href="/download/Reactable.dmg">Download</a></nav></header>
-<div class="hero"><div class="coin">&#10022;</div>
-<div class="kicker">Reactable Pro</div>
-<h1 style="margin-top:14px">Next-generation<br/><em>content intelligence.</em></h1>
-<p class="sub">The recorder is free forever. Pro connects your accounts and turns the studio into a machine that researches, assembles, and ships.</p>
-<div class="price">$20<span>/month</span></div>
-<div class="cta"><a class="btn light" href="/api/billing/checkout">Go Pro</a><a class="btn ghost" href="/dashboard">Open dashboard</a></div>
-<p class="fine">Managed by Polar &middot; cancel anytime from your dashboard</p></div>
-<div class="grid">
-  <div class="cell"><div class="ic">&#9654;</div><h3>Post to YouTube</h3><p>Finished takes go straight to your channel from the agent — titles, descriptions, unlisted previews.</p></div>
-  <div class="cell"><div class="ic">&#8734;</div><h3>Meta campaign intelligence</h3><p>Pull your ad accounts, campaigns, and last-30-day performance into the studio. Know what works before you record.</p></div>
-  <div class="cell"><div class="ic">&#9729;</div><h3>Google Drive import</h3><p>Footage and assets flow from Drive into your project, thumbnailed and ready on the stage.</p></div>
-  <div class="cell"><div class="ic">&#10022;</div><h3>Brand &amp; consumer research</h3><p>Study any creator&rsquo;s content — react, remix, or make your own. The research engine is the secret sauce.</p></div>
-  <div class="cell"><div class="ic">&#9889;</div><h3>Agent credits included</h3><p>Hosted MiniMax-class inference through the Reactable gateway, metered by an atomic ledger. Top up any time.</p></div>
-  <div class="cell"><div class="ic">&#9673;</div><h3>Everything synced</h3><p>Plan, credits, and connections live on your account — the app, CLI, and web all read the same truth.</p></div>
+</svg><span class="word">Reactable</span><nav><a href="/#studio">Studio</a><a href="/dashboard">Dashboard</a><a href="/download/Reactable.dmg">Download</a></nav></header>
+
+<div class="hero">
+  <div>
+    <div class="kicker">Reactable Pro</div>
+    <h1>The recorder is free.<br/><em>The machine is Pro.</em></h1>
+    <p class="sub">Pro connects your channels, your ad account, and a research engine to the agent that already lives in your studio — so "make the video" becomes one sentence.</p>
+    <div class="cta"><a class="btn light" href="/api/billing/checkout">Go Pro</a><span class="price">$20<span>/month · cancel anytime</span></span></div>
+  </div>
+  <div class="coin">&#10022;</div>
 </div>
-<p class="packs">Need more inference? Credit packs: 5,000 for $10 &middot; 15,000 for $25 — grants land automatically.</p>
+
+<div class="feat">
+  <div>
+    <div class="fk"><svg class="ti" fill="currentColor" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>YouTube</title><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg> Publish by asking</div>
+    <h2>"Post yesterday's take to YouTube."</h2>
+    <p>The agent renders the cut, writes the title and description from your notes, and uploads it unlisted for review. You approve, it flips public. No export screen, no browser tab.</p>
+  </div>
+  <div class="shot"><div class="bar"><i></i><i></i><i></i></div>
+    <div class="msg user">post yesterday's take to youtube, unlisted</div>
+    <div><span class="chip ok">&#10003; takes render take-0707 · 16:9</span><span class="chip ok">&#10003; captions + filler removal</span><span class="chip ok">&#10003; youtube.upload · unlisted</span></div>
+    <div class="msg">Up. <b style="color:var(--ink)">"Media formats, on a real stage"</b> — 2:41, unlisted for your review: youtu.be/xK…9Q</div>
+  </div>
+</div>
+
+<div class="feat rev">
+  <div class="shot"><div class="bar"><i></i><i></i><i></i></div>
+    <div class="trow"><span>Campaign</span><span>Spend</span><span>CPM</span></div>
+    <div class="trow"><b>UGC hook v3</b><span>$1,284</span><b class="up">$7.90</b></div>
+    <div class="trow"><b>Founder demo</b><span>$942</span><span>$11.20</span></div>
+    <div class="trow"><b>Reaction cut</b><span>$611</span><span>$9.45</span></div>
+    <div class="msg" style="margin-top:12px">Hook v3 is your winner — want a stage deck built around that opening?</div>
+  </div>
+  <div>
+    <div class="fk"><svg class="ti" fill="currentColor" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>Meta</title><path d="M6.915 4.03c-1.968 0-3.683 1.28-4.871 3.113C.704 9.208 0 11.883 0 14.449c0 .706.07 1.369.21 1.973a6.624 6.624 0 0 0 .265.86 5.297 5.297 0 0 0 .371.761c.696 1.159 1.818 1.927 3.593 1.927 1.497 0 2.633-.671 3.965-2.444.76-1.012 1.144-1.626 2.663-4.32l.756-1.339.186-.325c.061.1.121.196.183.3l2.152 3.595c.724 1.21 1.665 2.556 2.47 3.314 1.046.987 1.992 1.22 3.06 1.22 1.075 0 1.876-.355 2.455-.843a3.743 3.743 0 0 0 .81-.973c.542-.939.861-2.127.861-3.745 0-2.72-.681-5.357-2.084-7.45-1.282-1.912-2.957-2.93-4.716-2.93-1.047 0-2.088.467-3.053 1.308-.652.57-1.257 1.29-1.82 2.05-.69-.875-1.335-1.547-1.958-2.056-1.182-.966-2.315-1.303-3.454-1.303zm10.16 2.053c1.147 0 2.188.758 2.992 1.999 1.132 1.748 1.647 4.195 1.647 6.4 0 1.548-.368 2.9-1.839 2.9-.58 0-1.027-.23-1.664-1.004-.496-.601-1.343-1.878-2.832-4.358l-.617-1.028a44.908 44.908 0 0 0-1.255-1.98c.07-.109.141-.224.211-.327 1.12-1.667 2.118-2.602 3.358-2.602zm-10.201.553c1.265 0 2.058.791 2.675 1.446.307.327.737.871 1.234 1.579l-1.02 1.566c-.757 1.163-1.882 3.017-2.837 4.338-1.191 1.649-1.81 1.817-2.486 1.817-.524 0-1.038-.237-1.383-.794-.263-.426-.464-1.13-.464-2.046 0-2.221.63-4.535 1.66-6.088.454-.687.964-1.226 1.533-1.533a2.264 2.264 0 0 1 1.088-.285z"/></svg> Meta campaign intelligence</div>
+    <h2>Know what works<br/>before you record.</h2>
+    <p>Your ad accounts, campaigns, and last-30-day performance, readable by the agent. It tells you which creative is winning and drafts the next take around it.</p>
+  </div>
+</div>
+
+<div class="feat">
+  <div>
+    <div class="fk"><svg class="ti" fill="currentColor" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>Google Drive</title><path d="M12.01 1.485c-2.082 0-3.754.02-3.743.047.01.02 1.708 3.001 3.774 6.62l3.76 6.574h3.76c2.081 0 3.753-.02 3.742-.047-.005-.02-1.708-3.001-3.775-6.62l-3.76-6.574zm-4.76 1.73a789.828 789.861 0 0 0-3.63 6.319L0 15.868l1.89 3.298 1.885 3.297 3.62-6.335 3.618-6.33-1.88-3.287C8.1 4.704 7.255 3.22 7.25 3.214zm2.259 12.653-.203.348c-.114.198-.96 1.672-1.88 3.287a423.93 423.948 0 0 1-1.698 2.97c-.01.026 3.24.042 7.222.042h7.244l1.796-3.157c.992-1.734 1.85-3.23 1.906-3.323l.104-.167h-7.249z"/></svg> Drive in, assets ready</div>
+    <h2>Footage flows to the stage.</h2>
+    <p>Point at a file in Google Drive and it lands in your project's assets — thumbnailed in the panel, addressable by the agent, ready to drop into a deck.</p>
+  </div>
+  <div class="shot"><div class="bar"><i></i><i></i><i></i></div>
+    <div class="fchip"><svg class="ti" fill="currentColor" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>Google Drive</title><path d="M12.01 1.485c-2.082 0-3.754.02-3.743.047.01.02 1.708 3.001 3.774 6.62l3.76 6.574h3.76c2.081 0 3.753-.02 3.742-.047-.005-.02-1.708-3.001-3.775-6.62l-3.76-6.574zm-4.76 1.73a789.828 789.861 0 0 0-3.63 6.319L0 15.868l1.89 3.298 1.885 3.297 3.62-6.335 3.618-6.33-1.88-3.287C8.1 4.704 7.255 3.22 7.25 3.214zm2.259 12.653-.203.348c-.114.198-.96 1.672-1.88 3.287a423.93 423.948 0 0 1-1.698 2.97c-.01.026 3.24.042 7.222.042h7.244l1.796-3.157c.992-1.734 1.85-3.23 1.906-3.323l.104-.167h-7.249z"/></svg><b>b-roll-warehouse.mp4</b><span class="to">&rarr; assets/</span></div>
+    <div class="fchip"><svg class="ti" fill="currentColor" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>Google Drive</title><path d="M12.01 1.485c-2.082 0-3.754.02-3.743.047.01.02 1.708 3.001 3.774 6.62l3.76 6.574h3.76c2.081 0 3.753-.02 3.742-.047-.005-.02-1.708-3.001-3.775-6.62l-3.76-6.574zm-4.76 1.73a789.828 789.861 0 0 0-3.63 6.319L0 15.868l1.89 3.298 1.885 3.297 3.62-6.335 3.618-6.33-1.88-3.287C8.1 4.704 7.255 3.22 7.25 3.214zm2.259 12.653-.203.348c-.114.198-.96 1.672-1.88 3.287a423.93 423.948 0 0 1-1.698 2.97c-.01.026 3.24.042 7.222.042h7.244l1.796-3.157c.992-1.734 1.85-3.23 1.906-3.323l.104-.167h-7.249z"/></svg><b>brand-lut-v2.cube</b><span class="to">&rarr; assets/</span></div>
+    <div class="fchip"><svg class="ti" fill="currentColor" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>Google Drive</title><path d="M12.01 1.485c-2.082 0-3.754.02-3.743.047.01.02 1.708 3.001 3.774 6.62l3.76 6.574h3.76c2.081 0 3.753-.02 3.742-.047-.005-.02-1.708-3.001-3.775-6.62l-3.76-6.574zm-4.76 1.73a789.828 789.861 0 0 0-3.63 6.319L0 15.868l1.89 3.298 1.885 3.297 3.62-6.335 3.618-6.33-1.88-3.287C8.1 4.704 7.255 3.22 7.25 3.214zm2.259 12.653-.203.348c-.114.198-.96 1.672-1.88 3.287a423.93 423.948 0 0 1-1.698 2.97c-.01.026 3.24.042 7.222.042h7.244l1.796-3.157c.992-1.734 1.85-3.23 1.906-3.323l.104-.167h-7.249z"/></svg><b>vo-script-draft.md</b><span class="to">&rarr; assets/</span></div>
+  </div>
+</div>
+
+<div class="feat rev">
+  <div class="shot"><div class="bar"><i></i><i></i><i></i></div>
+    <div class="ledg"><div class="big">4,997 <span style="font:400 13px 'Spline Sans Mono',monospace;color:var(--dim)">credits</span></div>
+      <div class="trow"><span>agent chat · grounded reply</span><span>-3</span></div>
+      <div class="trow"><span>deck draft · 3 slides</span><span>-11</span></div>
+      <div class="trow"><span>credit pack · 5,000</span><b class="up">+5,000</b></div>
+    </div>
+  </div>
+  <div>
+    <div class="fk"><span class="mini" style="width:18px;height:18px;font-size:9px">&#10022;</span> Hosted brain, honest meter</div>
+    <h2>Credits you can read.</h2>
+    <p>Pro inference runs through the Reactable gateway on an atomic ledger — every charge itemized, fail-closed at zero, topped up in packs of 5,000 ($10) or 15,000 ($25). Plus brand and consumer research on any creator's content: react, remix, or make your own.</p>
+  </div>
+</div>
+
+<div class="plans">
+  <div class="plan">
+    <h3>Free</h3><div class="pp">$0<span> forever</span></div>
+    <ul>
+      <li><b>The full recorder</b> — stage, camera, clean voice, sync</li>
+      <li><b>Local agent</b> on your own hardware</li>
+      <li><b>Auto-zoom, captions,</b> filler removal, multi-aspect export</li>
+      <li><b>Bring-your-own keys</b> for Pexels, Unsplash, ElevenLabs, FAL</li>
+    </ul>
+  </div>
+  <div class="plan pro">
+    <h3><span class="mini">&#10022;</span> Pro</h3><div class="pp">$20<span>/month</span></div>
+    <ul>
+      <li><b>Everything in Free</b>, plus the connected machine:</li>
+      <li><b>Post to YouTube</b> straight from the agent</li>
+      <li><b>Meta campaign intelligence</b> — accounts, spend, winners</li>
+      <li><b>Google Drive import</b> into project assets</li>
+      <li><b>Brand &amp; consumer research</b> on any creator's content</li>
+      <li><b>Gateway credits included</b> — hosted inference, atomic ledger</li>
+    </ul>
+    <div style="margin-top:22px"><a class="btn light" href="/api/billing/checkout">Go Pro</a> <a class="btn ghost" style="margin-left:8px" href="/dashboard">Open dashboard</a></div>
+  </div>
+</div>
+<p class="fine">Billing by Polar &middot; manage or cancel from your <a href="/dashboard">dashboard</a> &middot; your recordings never leave your Mac</p>
 </div></body></html>
