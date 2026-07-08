@@ -53,3 +53,29 @@ ad accounts, Drive accounts. Design:
 - Dashboard: provider row expands to labeled account list, per-account
   disconnect ✕, persistent "+ Add" button with the real brand mark.
 - Nexus connector args gain "account": label-or-id matcher.
+
+## Dashboard IA (locked 2026-07-08) — each section is a PAGE
+Shared shell: sidebar (real routes, not anchors) + session gate. Pages:
+- /dashboard — Overview: account pulse. Plan card, credit meter (compact),
+  connection health dots, last 5 published/scheduled takes, quick actions.
+- /dashboard/usage — the meter in full: balance, burn-rate sparkline,
+  itemized ledger w/ filters (chat/render/research), per-feature breakdown,
+  pack top-ups; later mirrors into Polar usage-based meters.
+- /dashboard/connections — per-provider panels: labeled accounts, GRANTED
+  SCOPES as chips per connection (captured from OAuth token response
+  `scope` at callback, stored on the Connection), token health/expiry,
+  "expand access" = incremental re-auth requesting more scopes, per-account
+  disconnect, + Add. This page IS scope management.
+- /dashboard/publishing — the queue: uploads with state
+  (draft/scheduled/unlisted/public), edit title/description, reschedule or
+  cancel (YouTube videos.update / publishAt), per-video link + thumbnail.
+  Worker store: pub:<email> list {videoId, connId, title, state, publishAt}.
+  Written by the agent's youtube.upload verb; managed here.
+- /dashboard/analytics — the "know what works" promise: YouTube Analytics
+  (views/watch-time per published take) + Meta insights (spend/CPM/winners)
+  side by side; date-preset switcher; agent-suggested next take.
+- /dashboard/billing — plan, Polar invoices/portal, packs, payment state.
+Implementation: worker serves /dashboard/* static pages sharing one layout
+(header/sidebar partial duplicated; no framework), each page fetches its own
+APIs. New APIs needed: /api/publishing/list|update|cancel,
+/api/analytics/youtube|meta, scopes stored on Connection at callback.
