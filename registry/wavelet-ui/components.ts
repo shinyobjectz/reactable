@@ -446,6 +446,9 @@ export const COMPONENTS: UIComponent[] = [
   },
 ];
 
+import { WAVE2 } from "./wave2.ts";
+COMPONENTS.push(...WAVE2);
+
 export const byName = new Map(COMPONENTS.map((c) => [c.name, c]));
 export { demoPage } from "./lib/motion.ts";
 export { springKF };

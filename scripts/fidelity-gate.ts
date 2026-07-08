@@ -127,7 +127,7 @@ for (const { file, dir } of comps) {
   run([
     CHROME, "--headless=new", `--screenshot=${chromePng}`, `--window-size=${W},${H}`,
     "--hide-scrollbars", "--force-device-scale-factor=1", "--default-background-color=00000000",
-    "--virtual-time-budget=10000", `file://${norm}`,
+    "--virtual-time-budget=3000" /* = wavelet compare frame: render_seq frames are t=0..duration-1/fps, last = 3s — mismatch phase-shifts looping comps */, `file://${norm}`,
   ]);
 
   // wavelet render — two passes for the determinism check, LAST frame compared

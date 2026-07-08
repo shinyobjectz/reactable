@@ -160,6 +160,32 @@ A light band sweeps across the text via animated background-position.
 | base | `"#3f3f46"` | base color |
 | highlight | `"#ffffff"` | sweep color |
 
+### short-slide-right
+The whole line glides rightward into place while words fade in sequence.
+
+| prop | default | doc |
+|---|---|---|
+| text | `"Ship it today"` | content to animate |
+| fontSize | `72` | px |
+| color | `"#f4f4f5"` | text color |
+| fontWeight | `600` | font weight |
+| speed | `1` | playback multiplier |
+| distance | `24` | slide px |
+| staggerDelay | `3` | frames between words |
+
+### slot-machine-roll
+Characters roll vertically into place like slot reels.
+
+| prop | default | doc |
+|---|---|---|
+| text | `"Ship it today"` | content to animate |
+| fontSize | `72` | px |
+| color | `"#f4f4f5"` | text color |
+| fontWeight | `600` | font weight |
+| speed | `1` | playback multiplier |
+| staggerDelay | `2` | frames between chars |
+| durationFrames | `14` | roll length |
+
 ## reveal
 
 ### micro-scale-fade
@@ -202,4 +228,104 @@ One block fades away as the next fades through it — two-phase swap.
 | color | `"#f4f4f5"` | text color |
 | fontWeight | `600` | font weight |
 | speed | `1` | playback multiplier |
+
+### shared-axis-y
+Material shared-axis vertical swap — outgoing words lift away, incoming rise in, per-word staggers.
+
+| prop | default | doc |
+|---|---|---|
+| from | `"Before state"` | outgoing text |
+| to | `"After state"` | incoming text |
+| text | `"Ship it today"` | content to animate |
+| fontSize | `72` | px |
+| color | `"#f4f4f5"` | text color |
+| fontWeight | `600` | font weight |
+| speed | `1` | playback multiplier |
+
+### shared-axis-z
+Material shared-axis depth swap — outgoing grows and fades, incoming settles from slightly small.
+
+| prop | default | doc |
+|---|---|---|
+| from | `"Before state"` | outgoing text |
+| to | `"After state"` | incoming text |
+| text | `"Ship it today"` | content to animate |
+| fontSize | `72` | px |
+| color | `"#f4f4f5"` | text color |
+| fontWeight | `600` | font weight |
+| speed | `1` | playback multiplier |
+
+## ui
+
+### spinner
+Continuous rotating arc — the loading motion atom.
+
+| prop | default | doc |
+|---|---|---|
+| size | `20` | px |
+| color | `"#f4f4f5"` | arc color |
+| strokeWidth | `2.5` | ring thickness px |
+| speed | `1` | playback multiplier |
+
+### typing-indicator
+Dots bobbing in a phased sine wave — chat 'typing…'.
+
+| prop | default | doc |
+|---|---|---|
+| dotCount | `3` | dots |
+| color | `"#a1a1aa"` | dot color |
+| size | `8` | dot px |
+| gap | `5` | px between dots |
+| amplitude | `6` | bob px |
+| cyclesPerSecond | `1.2` | wave speed |
+| speed | `1` | playback multiplier |
+
+### caret
+Blinking text caret block.
+
+| prop | default | doc |
+|---|---|---|
+| height | `40` | px |
+| color | `"#f4f4f5"` | caret color |
+| blinkSeconds | `1` | blink cycle |
+| speed | `1` | playback multiplier |
+
+### skeleton-block
+Loading placeholder with a sweeping highlight band.
+
+| prop | default | doc |
+|---|---|---|
+| width | `320` | px |
+| height | `20` | px |
+| radius | `6` | px |
+| base | `"#26262e"` | base color |
+| highlight | `"#3f3f49"` | band color |
+| sweepSeconds | `1.4` | sweep cycle |
+| speed | `1` | playback multiplier |
+
+## background
+
+### infinite-marquee
+Seamless looping text band (duplicated track, linear drift).
+
+| prop | default | doc |
+|---|---|---|
+| text | `"ship · build · animate · "` | repeated segment |
+| fontSize | `120` | px |
+| color | `"#f4f4f5"` | text color |
+| fontWeight | `900` | weight |
+| pixelsPerFrame | `4` | drift speed |
+| speed | `1` | playback multiplier |
+
+### dynamic-grid
+Slow-drifting line grid backdrop.
+
+| prop | default | doc |
+|---|---|---|
+| cellSize | `40` | px |
+| lineColor | `"#27272a"` | grid lines |
+| background | `"#0a0a0a"` | backdrop |
+| speed | `0.5` | px per frame drift |
+| direction | `"diagonal"` | diagonal|horizontal|vertical |
+| viewport | `[1280,800]` | [w,h] line coverage |
 
