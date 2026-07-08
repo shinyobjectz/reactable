@@ -48,6 +48,13 @@ Native ffmpeg makes this trivial (the wb_encode yuv420p limitation is gone): `--
 **P5 — parked: nexus/cloud lane.**
 Revisit when either (a) render-core is accepted as a trusted host tool (wasmtime subprocess — it's first-party code; tiny-lasers' job is *untrusted* code), or (b) tiny-lasers grows persisted/pre-built transpile cache for big modules. wasip1 CI target keeps the artifact ready. HyperFrames lane unaffected throughout (stays the rich-JS/GSAP finish lane).
 
+## Production bar (status 2026-07-08)
+
+1. **Real-take E2E — BLOCKED ON A RECORDING.** Take compiler is fixture-validated; the moment a real take exists run `reactable takes render <id> --engine wavelet`. No programmatic record trigger exists (bar button = native bridge only; computer-use can't resolve the app) — consider a `record` stage command as a follow-up feature (agent-triggerable recording also serves P3).
+2. **Corpus growth — LIVE.** 9 passing comps + known-gap lane (XFAIL flips red when upstream closes the gap). First expansion immediately caught a real gap: blitz has no CSS multi-column. Rule: every new CSS feature a deck uses gets a comp.
+3. **Host-font seam — DEFAULT.** Chain: --font args → ~/.reactable/fonts/* → wide-coverage system rescue (Arial Unicode) → bundled Geist floor. Multi-font fallback ctx in render-core (all GenericFamily entries populated); ui-* rewrite scoped to CSS contexts (stylo 0.17 treats CSS4 ui-* as named families — verified).
+4. **CI — GREEN.** `.github/workflows/wavelet-gate.yml` runs the differential gate on every render-lane change + workflow_dispatch with a wavelet ref for render-core bumps. First green run: scores match macOS within noise (0.9888–1.0000), perf 606ms/72f@1080p30 on the 2-core runner — cross-OS fidelity datapoint for the Windows lane.
+
 ## Where things live
 
 - **This worktree** (`projects/reactable-wasmvideo`, branch `explore/wavelet-render`): P1′–P3 build site
