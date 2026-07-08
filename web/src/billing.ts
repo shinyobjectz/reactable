@@ -4,6 +4,7 @@
  * reads it live, so plan flips reach the app without re-login.
  */
 import type { Env, UserRecord } from "./types";
+import { ledgerApply } from "./ledger";
 
 const json = (body: unknown, init: ResponseInit = {}) =>
   new Response(JSON.stringify(body), {
@@ -106,9 +107,10 @@ export async function polarWebhook(req: Request, env: Env): Promise<Response> {
         record.plan = "free";
         break;
       case "order.paid": {
-        // Credit packs carry their grant in product metadata.
+        // Credit packs carry their grant in product metadata; the Durable
+        // Object ledger is the atomic truth, the KV record just mirrors it.
         const grant = Number(event.data?.product?.metadata?.credits || 0);
-        if (grant > 0) record.credits += grant;
+        if (grant > 0) record.credits = await ledgerApply(env.LEDGER, email, "grant", grant, `order:${eventId}`);
         break;
       }
       default:

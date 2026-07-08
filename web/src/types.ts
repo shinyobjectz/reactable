@@ -14,6 +14,8 @@ export interface Env {
   POLAR_PRODUCT_PRO?: string;
   POLAR_API?: string;
   SCRAPECREATORS_API_KEY?: string;
+  MINIMAX_GATEWAY_KEY?: string;
+  LEDGER: DurableObjectNamespace;
 }
 
 // Live account state — written by billing webhooks, read by /api/auth/me.

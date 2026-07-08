@@ -30,3 +30,11 @@ id = "ff030257db05481c9436fe9ee6261a1c"
 [[r2_buckets]]
 binding = "DOWNLOADS"
 bucket_name = "reactable-downloads"
+
+[[durable_objects.bindings]]
+name = "LEDGER"
+class_name = "CreditLedger"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["CreditLedger"]

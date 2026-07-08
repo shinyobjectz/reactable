@@ -1,5 +1,8 @@
 import type { Env, CliChallenge, Session } from "./types";
 import { billingCheckout, billingPortal, polarWebhook, userRecord } from "./billing";
+import { gatewayBalance, gatewayChat } from "./gateway";
+import { ledgerBalance } from "./ledger";
+export { CreditLedger } from "./ledger";
 import {
   clearSessionCookie,
   json,
@@ -134,6 +137,7 @@ async function authMe(req: Request, env: Env): Promise<Response> {
   const session = await openSession(env, req);
   if (!session) return json({ ok: true, signedIn: false });
   const record = await userRecord(env, session.email);
+  const credits = await ledgerBalance(env.LEDGER, session.email);
   return json({
     ok: true,
     signedIn: true,
@@ -142,7 +146,7 @@ async function authMe(req: Request, env: Env): Promise<Response> {
       name: session.name,
       picture: session.picture,
       plan: record.plan,
-      credits: record.credits,
+      credits,
     },
     youtube: Boolean(session.youtube?.accessToken),
   });
@@ -248,9 +252,9 @@ async function downloadModel(req: Request, env: Env, key: string): Promise<Respo
 }
 
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
-      return await handle(req, env);
+      return await handle(req, env, ctx);
     } catch (e) {
       console.error("worker fetch", e);
       return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
@@ -258,7 +262,7 @@ export default {
   },
 };
 
-async function handle(req: Request, env: Env): Promise<Response> {
+async function handle(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(req.url);
   const path = url.pathname;
 
@@ -278,6 +282,16 @@ async function handle(req: Request, env: Env): Promise<Response> {
       });
     }
     return billingCheckout(session.email, env);
+  }
+  if (path === "/api/gateway/chat" && req.method === "POST") {
+    const session = await openSession(env, req);
+    if (!session) return json({ ok: false, error: "sign in first" }, { status: 401 });
+    return gatewayChat(session.email, req, env, ctx);
+  }
+  if (path === "/api/gateway/balance" && req.method === "GET") {
+    const session = await openSession(env, req);
+    if (!session) return json({ ok: false, error: "sign in first" }, { status: 401 });
+    return gatewayBalance(session.email, env);
   }
   if (path === "/api/billing/portal" && req.method === "GET") {
     const session = await openSession(env, req);
