@@ -56,20 +56,51 @@ async function verifyWebhook(req: Request, payload: string, secret: string): Pro
   const id = req.headers.get("webhook-id") || "";
   const ts = req.headers.get("webhook-timestamp") || "";
   const sigHeader = req.headers.get("webhook-signature") || "";
-  if (!id || !ts || !sigHeader) return false;
-  // 5-minute tolerance window against replay.
-  if (Math.abs(Date.now() / 1000 - Number(ts)) > 300) return false;
+  if (!id || !ts || !sigHeader) {
+    (globalThis as any).__sigDebug = { stage: "headers", names: [...req.headers.keys()].join(",").slice(0, 200) };
+    return false;
+  }
+  // Generous window: Polar redeliveries keep the original timestamp, and
+  // webhook-id idempotency already defuses true replays.
+  if (Math.abs(Date.now() / 1000 - Number(ts)) > 7 * 86400) return false;
 
+  // Standard Webhooks leaves room for two secret encodings in the wild —
+  // base64 bytes (spec) and raw utf-8 (some providers). Accept either.
+  // Measured against production: Polar signs with the FULL secret string,
+  // whsec_ prefix included, as utf-8 (off the standard-webhooks spec).
+  // Keep the spec interpretations as fallbacks for provider changes.
   const rawSecret = secret.startsWith("whsec_") ? secret.slice(6) : secret;
-  const keyBytes = Uint8Array.from(atob(rawSecret), (c) => c.charCodeAt(0));
-  const key = await crypto.subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${id}.${ts}.${payload}`));
-  const expected = btoa(String.fromCharCode(...new Uint8Array(mac)));
+  const candidates: Uint8Array[] = [
+    new TextEncoder().encode(secret),
+    new TextEncoder().encode(rawSecret),
+  ];
+  try {
+    candidates.push(Uint8Array.from(atob(rawSecret), (c) => c.charCodeAt(0)));
+  } catch {}
 
-  return sigHeader.split(" ").some((part) => {
+  const message = new TextEncoder().encode(`${id}.${ts}.${payload}`);
+  const expected: string[] = [];
+  for (const keyBytes of candidates) {
+    const key = await crypto.subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    const mac = await crypto.subtle.sign("HMAC", key, message);
+    expected.push(btoa(String.fromCharCode(...new Uint8Array(mac))));
+  }
+
+  const match = sigHeader.split(" ").some((part) => {
     const sig = part.includes(",") ? part.split(",")[1] : part;
-    return sig === expected;
+    return expected.includes(sig);
   });
+  if (!match) {
+    // Debug channel: Polar records our response body per delivery.
+    (globalThis as any).__sigDebug = {
+      id,
+      ts,
+      got: sigHeader.slice(0, 24),
+      want: expected.map((e) => e.slice(0, 12)),
+      payloadLen: payload.length,
+    };
+  }
+  return match;
 }
 
 function eventEmail(data: Record<string, any>): string {
@@ -83,7 +114,7 @@ export async function polarWebhook(req: Request, env: Env): Promise<Response> {
   if (!env.POLAR_WEBHOOK_SECRET) return json({ ok: false, error: "webhooks not configured" }, { status: 503 });
   const payload = await req.text();
   if (!(await verifyWebhook(req, payload, env.POLAR_WEBHOOK_SECRET))) {
-    return json({ ok: false, error: "bad signature" }, { status: 401 });
+    return json({ ok: false, error: "bad signature", debug: (globalThis as any).__sigDebug }, { status: 401 });
   }
 
   const eventId = req.headers.get("webhook-id")!;

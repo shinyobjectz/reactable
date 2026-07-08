@@ -312,6 +312,18 @@ async function handle(req: Request, env: Env, ctx: ExecutionContext): Promise<Re
     if (path === "/api/drive/files") return driveList(session.email, req, env);
     if (path === "/api/drive/file") return driveFile(session.email, req, env);
   }
+  // Post-checkout / post-connect landing pages (tiny, self-contained).
+  if ((path === "/pro/welcome" || path === "/connected") && req.method === "GET") {
+    const service = url.searchParams.get("service");
+    const title = path === "/pro/welcome" ? "You're Pro" : `${(service || "Account")[0].toUpperCase()}${(service || "account").slice(1)} connected`;
+    const sub = path === "/pro/welcome"
+      ? "Your plan is active. Head back to the Reactable app — the coin's waiting."
+      : "All set. You can close this tab and go back to the Reactable app.";
+    return new Response(
+      `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} — Reactable</title><body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#141414;color:#e7e7e7;font:15px/1.5 ui-sans-serif,system-ui"><div style="text-align:center;max-width:420px;padding:24px"><div style="font-size:34px;margin-bottom:10px">✦</div><h1 style="font-size:20px;margin:0 0 8px">${title}</h1><p style="color:#9a9a9a;margin:0">${sub}</p></div></body>`,
+      { headers: { "content-type": "text/html; charset=utf-8" } },
+    );
+  }
   // Ops: credit grants, keyed by ADMIN_KEY (wrangler secret) — no UI.
   if (path === "/api/admin/grant" && req.method === "POST") {
     const auth = req.headers.get("authorization") || "";
