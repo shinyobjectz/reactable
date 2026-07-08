@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Projects panel — switcher + asset browser</title>
+<meta property="og:title" content="Projects panel — switcher + asset browser"><meta property="og:type" content="website"><meta name="description" content="One project switcher pinned at the top; below it, search over the project's media: takes and assets (code directories abstracted away). Each item takes a"><meta property="og:description" content="One project switcher pinned at the top; below it, search over the project's media: takes and assets (code directories abstracted away). Each item takes a">
+<style>body{margin:0;font:16px/1.6 system-ui,sans-serif;color:#1a1a1a}
+h1,h2,h3{line-height:1.25;margin:1.6em 0 .5em} code{background:#f4f4f5;padding:.1em .3em;border-radius:3px;font-size:.9em}
+.unit{margin:1.2em 0;border:1px solid #e4e4e7;border-radius:8px;overflow:hidden}
+.unit figcaption{background:#fafafa;padding:.4em .8em;font-size:.85em;border-bottom:1px solid #e4e4e7}
+.unit .kind{display:inline-block;background:#1a1a1a;color:#fff;padding:.05em .5em;border-radius:4px;font-size:.8em;margin-right:.4em}
+.unit pre{margin:0;padding:.8em;overflow-x:auto;background:#fff} pre code{background:none}
+.decl{background:#f4f4f5;padding:.6em;border-radius:6px;font-size:.85em}
+table.data{border-collapse:collapse;width:100%;margin:1.2em 0;font-size:.92em}
+table.data caption{text-align:left;font-weight:600;margin-bottom:.3em}
+table.data th,table.data td{border:1px solid #e4e4e7;padding:.35em .6em;text-align:left}
+table.data thead th{background:#fafafa} table.data .empty{color:#999;font-style:italic}
+table.data caption .cap{font-weight:400;color:#999;font-size:.85em}
+.data-missing{color:#b00;font-size:.9em}
+.unit-output{margin:1em 0;padding:.6em .9em;background:#f0f7ff;border-left:3px solid #4a90d9;border-radius:4px}
+nav.wb-nav{display:flex;gap:.8em;flex-wrap:wrap;padding:.6em 0;margin-bottom:1em;border-bottom:1px solid #e4e4e7;font-size:.9em}
+nav.wb-nav a{color:#555;text-decoration:none} nav.wb-nav a:hover{color:#000}
+</style>
+</head>
+<body>
+<section class="file" id="index-work" data-file="index.work">
+  <style>
+    /* the .work renderer wraps pages in section.file#index-work with a prose
+       max-width — this is an app panel, take the full viewport */
+    #index-work, section.file { all: unset; display: block; width: 100%; max-width: none; margin: 0; padding: 0; }
+    * { box-sizing: border-box; margin: 0; }
+    html, body { height: 100%; background: #141414; color: #e7e7e7; font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; user-select: none; }
+    .wrap { display: flex; flex-direction: column; height: 100vh; min-width: 0; }
+
+    /* header: project selector + status, wraps instead of clipping */
+    .switcher { padding: 6px 8px 4px; }
+    .switch-row { display: flex; gap: 6px; flex-wrap: wrap; min-width: 0; }
+    .switch-row { }
+    .current { flex: 1 1 100%; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 7px 7px 7px 11px; border-radius: 10px; background: #1b1b1b; cursor: pointer; }
+    .current .name { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .current .chev { color: #6f6f6f; flex-shrink: 0; transition: transform .15s; }
+    .current.open .chev { transform: rotate(180deg); }
+    .current:hover .name { color: #fff; }
+
+    .status { position: relative; flex-shrink: 0; }
+    .status > button { display: flex; align-items: center; gap: 6px; padding: 6px 9px; border: 0; border-radius: 999px; background: #262626; color: #c9c9c9; font: 600 10.5px inherit; cursor: pointer; text-transform: capitalize; }
+    .status > button:hover { color: #fff; }
+    .status .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .status .menu { display: none; position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; background: #212121; border-radius: 10px; padding: 4px; min-width: 124px; box-shadow: 0 12px 30px rgba(0,0,0,.5); }
+    .status .menu.open { display: block; }
+    .status .menu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border: 0; border-radius: 7px; background: none; color: #d4d4d4; font: 12px inherit; cursor: pointer; text-transform: capitalize; }
+    .status .menu button:hover { color: #fff; }
+
+    /* pick mode: the panel becomes the project list */
+    .plist { display: none; }
+    body.pick .plist { display: block; flex: 1; overflow-y: auto; padding: 2px 8px 8px; }
+    body.pick .search, body.pick .files, body.pick .drop-hint { display: none !important; }
+    .prow { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 9px; cursor: pointer; min-width: 0; }
+    .prow .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .prow:hover .name { color: #fff; }
+    .prow.new { color: #8a8a8a; }
+    .prow.new:hover { color: #fff; }
+
+    /* search + add */
+    .search { display: flex; gap: 6px; padding: 2px 8px 6px; min-width: 0; }
+    .searchbox { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; padding: 0 10px; border-radius: 10px; background: #1b1b1b; }
+    .searchbox svg { width: 13px; height: 13px; stroke: #6f6f6f; fill: none; stroke-width: 1.8; flex-shrink: 0; }
+    .searchbox input { flex: 1; min-width: 0; padding: 9px 0; border: 0; background: none; color: #fff; font: inherit; outline: none; }
+    .addbtn { flex-shrink: 0; width: 34px; border: 0; border-radius: 10px; background: #1b1b1b; color: #9a9a9a; font-size: 16px; cursor: pointer; }
+    .addbtn:hover { color: #fff; }
+
+    /* files: GRID of cards; hover brightens text only */
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; padding: 4px 0 8px; }
+    .card { border-radius: 10px; overflow: hidden; background: #1b1b1b; cursor: default; min-width: 0; }
+    .card .thumb { aspect-ratio: 16/10; background: #202020; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .card .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .card .thumb svg { width: 22px; height: 22px; stroke: #4a4a4a; fill: none; stroke-width: 1.5; }
+    .card .meta { display: flex; align-items: center; gap: 6px; padding: 7px 8px; min-width: 0; }
+    .card .fname { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11.5px; color: #c9c9c9; }
+    .card:hover .fname { color: #fff; }
+    .card .more { border: 0; background: none; color: #565656; cursor: pointer; font-size: 13px; flex-shrink: 0; }
+    .card .more:hover { color: #fff; }
+    .dlg { position: fixed; inset: 0; z-index: 80; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; }
+    .dlg-box { width: min(300px, 86vw); background: #222; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 18px 50px rgba(0,0,0,.6); }
+    .dlg-t { font-weight: 600; }
+    .dlg-s { color: #8a8a8a; font-size: 12px; }
+    .dlg-skip { display: flex; align-items: center; gap: 7px; color: #9a9a9a; font-size: 12px; cursor: pointer; }
+    .dlg-row { display: flex; gap: 8px; justify-content: flex-end; }
+    .dlg-row button { border: 0; border-radius: 8px; padding: 8px 14px; font: 600 12px inherit; cursor: pointer; }
+    .dlg-row .c { background: #2c2c2c; color: #d4d4d4; }
+    .dlg-row .del { background: #dc2626; color: #fff; }
+    .dlg-in { width: 100%; padding: 10px 12px; border: 0; border-radius: 9px; background: #141414; color: #fff; font: 12.5px ui-monospace, monospace; outline: none; }
+    .addmenu, .ctxmenu { position: fixed; z-index: 60; background: #222; border-radius: 10px; padding: 4px; min-width: 150px; box-shadow: 0 14px 34px rgba(0,0,0,.55); display: none; }
+    .addmenu.open, .ctxmenu.open { display: block; }
+    .addmenu button, .ctxmenu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: 0; border-radius: 7px; background: none; color: #d4d4d4; font: 12px inherit; cursor: pointer; }
+    .addmenu button:hover, .ctxmenu button:hover { color: #fff; background: #2b2b2b; }
+    /* files: text/icon hover only — backgrounds never change */
+    .files { flex: 1; min-height: 0; overflow-y: auto; padding: 0 8px 8px; display: flex; flex-direction: column; }
+    .group { font: 600 10px/1 ui-monospace, monospace; letter-spacing: .1em; text-transform: uppercase; color: #6f6f6f; padding: 10px 4px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fitem { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; min-width: 0; }
+    .fitem svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: .6; flex-shrink: 0; }
+    .fitem .fname { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; color: #c9c9c9; }
+    .fitem:hover .fname { color: #fff; }
+    .fitem .sub { color: #5c5c5c; font-size: 10px; flex-shrink: 0; }
+    .fitem .more { border: 0; background: none; color: #565656; cursor: pointer; font-size: 14px; flex-shrink: 0; }
+    .fitem .more:hover { color: #fff; }
+    .note { display: none; padding: 2px 8px 8px 30px; }
+    .note.open { display: block; }
+    .note textarea { width: 100%; min-height: 40px; background: #1b1b1b; border: 0; border-radius: 8px; color: #ddd; font: 12px/1.4 inherit; padding: 7px 9px; resize: vertical; }
+
+    .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; margin: 6px 2px; color: #565656; font-size: 12px; text-align: center; border: 1.5px dashed #2b2b2b; border-radius: 12px; padding: 18px 10px; }
+    .empty button { border: 0; border-radius: 8px; padding: 8px 14px; background: #222; color: #d4d4d4; font: 600 12px inherit; cursor: pointer; }
+    .empty button:hover { color: #fff; }
+    .drop-hint { color: #3d3d3d; font-size: 10.5px; text-align: center; padding: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* tiny widths: dot-only status, tighter paddings, hints go */
+    @media (max-width: 250px) {
+      .status > button { padding: 6px 7px; }
+      .status > button span:last-child { display: none; }
+      .switcher, .search, .files { padding-left: 5px; padding-right: 5px; }
+      .drop-hint { display: none; }
+      .fitem .sub { display: none; }
+    }
+    @media (max-width: 190px) {
+      .addbtn { display: none; }
+      .current { padding: 9px 8px; max-width: calc(100% - 52px); }
+    }
+    /* wide: content scales up instead of stretching one button */
+    @media (min-width: 420px) {
+      .fitem { padding: 9px 10px; }
+      .files { padding: 0 10px 10px; }
+      .switcher, .search { padding-left: 10px; padding-right: 10px; }
+    }
+  </style>
+  <div class="wrap">
+    <div class="switcher">
+      <div class="switch-row">
+        <div class="current" id="current">
+          <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6;opacity:.7;flex-shrink:0"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+          <span class="name" id="cur-name">—</span>
+          <div class="status" id="status">
+            <button id="status-btn"><span class="dot"></span><span id="status-name">idea</span></button>
+            <div class="menu" id="status-menu"></div>
+          </div>
+          <span class="chev">▾</span>
+        </div>
+      </div>
+      <div class="plist" id="plist"></div>
+    </div>
+    <div class="search">
+      <div class="searchbox">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="q" placeholder="Search takes and assets…" />
+      </div>
+      <button class="addbtn" id="add" title="Add media">＋</button>
+    </div>
+    <div class="files" id="files"></div>
+    <div class="drop-hint">Drop files anywhere to add them to assets/</div>
+    <div class="addmenu" id="addmenu">
+      <button data-act="file">Upload file…</button>
+      <button data-act="folder">Add folder…</button>
+      <button data-act="link">Add link…</button>
+    </div>
+    <div class="ctxmenu" id="ctxmenu">
+      <button data-act="reveal">Reveal in Finder</button>
+      <button data-act="note">Add context note</button>
+      <button data-act="copy">Copy path</button>
+      <button data-act="delete" style="color:#f87171">Delete</button>
+    </div>
+  </div>
+  
+</section>
+
+</body></html>

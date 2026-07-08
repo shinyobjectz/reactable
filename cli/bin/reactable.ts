@@ -16,6 +16,7 @@ import {
 } from "../lib/deck.ts";
 import { scaffoldHyperframes, hfDir } from "../lib/hf.ts";
 import { renderWaveletTake } from "../lib/wavelet.ts";
+import { renderWalkthrough } from "../lib/walkthrough.ts";
 import {
   assertProject,
   apiBase,
@@ -969,6 +970,26 @@ try {
   if (cmd === "take") {
     if (sub === "hf" && third === "init") process.exit(cmdTakesHfInit(fourth));
     if (sub === "hf" && third === "render") process.exit(cmdTakesHfRender(fourth));
+  }
+
+  if (cmd === "walkthrough") {
+    if (sub === "render" && third) {
+      try {
+        const out = renderWalkthrough(third, {
+          w: flags.w ? Number(flags.w) : undefined,
+          h: flags.h ? Number(flags.h) : undefined,
+          fps: flags.fps ? Number(flags.fps) : undefined,
+          lossless: Boolean(flags.lossless),
+        });
+        jsonOut({ ok: true, ...out });
+        process.exit(0);
+      } catch (e) {
+        console.error(`walkthrough: ${e instanceof Error ? e.message : e}`);
+        process.exit(1);
+      }
+    }
+    console.error("usage: reactable walkthrough render <dir> [--w N --h N --fps N --lossless]");
+    process.exit(1);
   }
 
   if (cmd === "open") process.exit(cmdOpen(sub, flags.deck ? String(flags.deck) : undefined));
