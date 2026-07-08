@@ -145,6 +145,15 @@ export async function polarWebhook(req: Request, env: Env): Promise<Response> {
       case "subscription.revoked":
         record.plan = "free";
         break;
+      case "order.refunded":
+      case "refund.created": {
+        const clawback = Number(event.data?.product?.metadata?.credits || event.data?.order?.product?.metadata?.credits || 0);
+        if (clawback > 0) {
+          const { ledgerApply } = await import("./ledger");
+          await ledgerApply(env.LEDGER, email, "charge", clawback, `clawback:${eventId}`);
+        }
+        break;
+      }
       case "order.paid": {
         // Credit packs carry their grant in product metadata; the Durable
         // Object ledger is the atomic truth, the KV record just mirrors it.

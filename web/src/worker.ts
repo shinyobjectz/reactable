@@ -355,6 +355,8 @@ async function handle(req: Request, env: Env, ctx: ExecutionContext): Promise<Re
   if (path === "/api/admin/econ" && req.method === "GET") {
     const auth = req.headers.get("authorization") || "";
     if (!env.ADMIN_KEY || auth !== `Bearer ${env.ADMIN_KEY}`) return json({ ok: false, error: "forbidden" }, { status: 403 });
+    const { econAdd } = await import("./econ");
+    await econAdd(env, "admin_hits", 1);
     return json(await econReport(env));
   }
   if (path === "/api/admin/commons-run" && req.method === "POST") {

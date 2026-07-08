@@ -50,6 +50,10 @@ export async function openSession(env: Env, req: Request): Promise<Session | nul
   try {
     const expect = await hmac(env.SESSION_SECRET, payload);
     if (sig !== expect) return null;
+    try {
+      const { ts } = JSON.parse(atob(payload)) as { ts?: number };
+      if (ts && Date.now() - ts > 30 * 86_400_000) return null; // 30-day max age
+    } catch {}
     const json = new TextDecoder().decode(fromBase64Url(payload));
     const { sid } = JSON.parse(json) as { sid?: string };
     if (!sid) return null;

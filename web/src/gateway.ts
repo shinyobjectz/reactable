@@ -32,8 +32,12 @@ function usageFromChunk(parsed: any): number {
 export async function gatewayChat(email: string, req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   if (!env.MINIMAX_GATEWAY_KEY) return json({ ok: false, error: "gateway not configured" }, { status: 503 });
 
-  const balance = await ledgerBalance(env.LEDGER, email);
-  if (balance <= 0) {
+  // Reserve 1 credit upfront through the DO — atomic, so N parallel streams
+  // can only overdraft by the stream count, not unboundedly. Settlement
+  // charges the remainder when usage is known.
+  const balance = await ledgerApply(env.LEDGER, email, "charge", 1, "chat-reserve");
+  if (balance < 0) {
+    await ledgerApply(env.LEDGER, email, "grant", 1, "refund:chat-reserve");
     return json({ ok: false, error: "out of credits", balance, topup: "/api/billing/checkout" }, { status: 402 });
   }
 
@@ -61,10 +65,11 @@ export async function gatewayChat(email: string, req: Request, env: Env, ctx: Ex
   }
 
   const charge = async (tokens: number, ref: string) => {
-    const credits = Math.max(1, Math.ceil((tokens * CREDITS_PER_1K_TOKENS) / 1000));
-    await econAdd(env, "spent:inference", credits);
+    // Settle: total minus the 1-credit reserve already taken.
+    const credits = Math.max(1, Math.ceil((tokens * CREDITS_PER_1K_TOKENS) / 1000)) - 1;
+    await econAdd(env, "spent:inference", credits + 1);
     await econAdd(env, "tokens:inference", Math.round(tokens));
-    return ledgerApply(env.LEDGER, email, "charge", credits, ref);
+    if (credits > 0) return ledgerApply(env.LEDGER, email, "charge", credits, ref);
   };
 
   if (body.stream !== true) {

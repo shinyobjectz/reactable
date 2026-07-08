@@ -52,10 +52,26 @@ export async function researchRaw(email: string, req: Request, env: Env, ctx: Ex
   }
 
   const cost = costFor(path, url.searchParams);
+  // Charge UPFRONT through the DO (atomic — parallel bursts can't outrun the
+  // balance); refunded below if upstream fails.
   const balance = await ledgerBalance(env.LEDGER, email);
   if (balance < cost) {
     return json({ ok: false, error: "out of credits", balance, topup: "/dashboard/usage" }, { status: 402 });
   }
+  const ref = `research:${path.split("/").slice(1, 4).join("/")}`;
+  const after = await ledgerApply(env.LEDGER, email, "charge", cost, ref);
+  if (after < -50) {
+    // Burst raced past zero — refund and refuse (fail-closed backstop).
+    await ledgerApply(env.LEDGER, email, "grant", cost, `refund:${ref}`);
+    return json({ ok: false, error: "out of credits", topup: "/dashboard/usage" }, { status: 402 });
+  }
+
+  // Rate backstop independent of credits: 120 research calls / hour / user.
+  const hour = new Date().toISOString().slice(0, 13);
+  const rlKey = `rl:research:${email.toLowerCase()}:${hour}`;
+  const rl = parseInt((await env.KV.get(rlKey)) || "0", 10);
+  if (rl > 120) return json({ ok: false, error: "rate limit — try again shortly" }, { status: 429 });
+  await env.KV.put(rlKey, String(rl + 1), { expirationTtl: 7200 });
 
   const target = new URL(UPSTREAM + path);
   for (const [k, v] of url.searchParams) {
@@ -67,10 +83,9 @@ export async function researchRaw(email: string, req: Request, env: Env, ctx: Ex
   });
   const body = await upstream.text();
 
-  // Charge only successful pulls; a 4xx/5xx upstream shouldn't cost the user.
-  if (upstream.ok) {
-    ctx.waitUntil(
-      (async () => {
+  ctx.waitUntil(
+    (async () => {
+      if (upstream.ok) {
         await econAdd(env, "spent:research", cost);
         await econAdd(env, "calls:research", 1);
         try {
@@ -79,10 +94,12 @@ export async function researchRaw(email: string, req: Request, env: Env, ctx: Ex
             await env.KV.put("econ:sc_remaining", String(parsed.credits_remaining));
           }
         } catch {}
-        await ledgerApply(env.LEDGER, email, "charge", cost, `research:${path.split("/").slice(1, 4).join("/")}`);
-      })(),
-    );
-  }
+      } else {
+        // Failed pulls are free: refund the upfront charge.
+        await ledgerApply(env.LEDGER, email, "grant", cost, `refund:${ref}`);
+      }
+    })(),
+  );
 
   return new Response(body, {
     status: upstream.status,

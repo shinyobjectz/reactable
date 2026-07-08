@@ -1,0 +1,56 @@
+# Risk surface — fraud & API safety
+
+Threat model over the shipped system, with what's ENFORCED vs ACCEPTED vs
+DEFERRED. Reviewed 2026-07-08.
+
+## Money & credits
+
+| risk | status |
+|---|---|
+| Webhook forgery mints credits | ENFORCED: Standard-Webhooks signature (measured against Polar's real signing), webhook-id idempotency, 7d window |
+| Chargeback/refund keeps credits | ENFORCED: order.refunded/refund.created → ledger clawback, idempotent by event id |
+| Parallel-burst overdraft (N requests pass one balance check) | ENFORCED: charges are UPFRONT and atomic through the DO — research charges full cost before upstream (refund on failure), gateway reserves 1cr at accept then settles; overdraft bounded by concurrent stream count, next call fails closed |
+| Allowance farming | N/A: allowance requires plan=pro (paid); owner grants are admin-only |
+| Admin key abuse (grants) | ENFORCED: bearer secret (ROTATED 2026-07-08 after chat transit), admin_hits counter in econ; ACCEPTED: single static key — upgrade to per-action tokens if a second operator ever exists |
+
+## API surface
+
+| risk | status |
+|---|---|
+| Research proxy as SSRF | ENFORCED: fixed upstream host + endpoint prefix allowlist; no arbitrary URLs |
+| Research proxy resold / hammered | ENFORCED: pro gate + credit metering (economic cap) + 120 calls/hr/user rate backstop (KV) |
+| Gateway resold as cheap LLM | ACCEPTED: it's metered at 2–3× COGS — resellers are just customers; max_tokens capped 8192 |
+| Meta graph proxy abuse | ENFORCED: GET-only, path regex allowlist (adaccounts/campaigns/adsets/ads/insights) |
+| Drive file exfil via proxy | ENFORCED: per-user sealed tokens; drive.file scope = only files the user picked |
+| Device-flow brute force | ACCEPTED: 128-bit codes, 10-min TTL, single-use; add per-IP limit if abuse appears |
+| Stolen session = full account | ENFORCED: 30-day max session age (new); MITIGATE next: revocation list on sign-out (G2 hardening) |
+| Admin endpoints timing attacks | ACCEPTED: string compare over network noise; negligible |
+
+## Secrets
+
+| risk | status |
+|---|---|
+| Vendor keys in clients | ENFORCED: SC/MiniMax/Polar/OAuth secrets are wrangler-only; integration tokens AES-GCM-sealed in KV; BYO keys local 0600 |
+| Keys transited this chat | ROTATION LEDGER: ADMIN_KEY rotated ✓; STILL OWED: Polar org token, SC key, MiniMax key, Meta app secret — rotate + re-put secrets |
+| auth.json theft on device | ACCEPTED (local-device compromise = game over anyway); 0600 + 30d expiry bounds it |
+
+## Data / commons
+
+| risk | status |
+|---|---|
+| Taxonomy poisoning via seeding | DEFERRED SAFELY: anonymized seeding not implemented; when it lands — opt-in, curated review before entering taxonomy, never auto |
+| Budget counter races | ACCEPTED: telemetry KV races lose counts, hard cap still bounds spend within +3/topic |
+| Commons scraped by non-payers | ENFORCED: pro-gated endpoint; ACCEPTED: a paying customer can mirror it — that's any data product |
+
+## Local app sandbox (prior art, unchanged)
+
+bash allowlist (reactable/bun run/ffmpeg/scripts), realpath symlink checks,
+scrubbed env, project-scoped read/write/list, connector keys never in
+transcripts (server-side injection).
+
+## Standing checks
+
+- /api/admin/econ verdict (margins, budget, token drift, sc runway).
+- Any new metered action MUST charge upfront-atomic (the pattern is in
+  research.ts) — post-hoc charging is the overdraft bug, never reintroduce.
+- Rotation cadence: quarterly or on any suspected transit, whichever first.
