@@ -1,0 +1,58 @@
+# Differential fidelity gate for the wavelet render lane. Runs whenever the
+# render verb, take/walkthrough compilers, gate, or corpus change — and on
+# demand (workflow_dispatch) after a render-core (wavelet repo) bump.
+# render-core is a cross-repo path dep; the workflow recreates the local
+# sibling layout and pins the wavelet ref below.
+name: wavelet-gate
+on:
+  workflow_dispatch:
+    inputs:
+      wavelet_ref:
+        description: wavelet repo ref (render-core source)
+        default: explore/wavelet-render-core
+  push:
+    paths:
+      - "tools/**"
+      - "cli/lib/wavelet.ts"
+      - "cli/lib/walkthrough.ts"
+      - "tests/fidelity/**"
+      - "scripts/fidelity-gate.ts"
+      - ".github/workflows/wavelet-gate.yml"
+
+env:
+  WAVELET_REF: ${{ github.event.inputs.wavelet_ref || 'explore/wavelet-render-core' }}
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Recreate the local sibling layout the tools/Cargo.toml path dep expects:
+      # <repo>/tools -> ../../../../workbooks-wasmvideo/nexus/wasm-video/...
+      - name: Checkout wavelet (render-core)
+        run: |
+          git clone --depth 1 --branch "$WAVELET_REF" \
+            https://github.com/workbooks-sh/wavelet \
+            "$HOME/workbooks-wasmvideo/nexus/wasm-video"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: oven-sh/setup-bun@v2
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tools
+      - name: Build reactable-tools
+        run: cargo build --release --manifest-path tools/Cargo.toml
+      - name: Run fidelity gate
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+          PERF_BUDGET_MS: "6000"
+        run: bun scripts/fidelity-gate.ts
+      - name: Upload report + diffs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fidelity-gate
+          path: |
+            tests/fidelity/REPORT.md
+            tests/fidelity/.gate/*.chrome.png

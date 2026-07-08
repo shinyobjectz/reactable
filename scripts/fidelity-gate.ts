@@ -22,7 +22,10 @@ import { join, resolve } from "node:path";
 const ROOT = resolve(import.meta.dir, "..");
 const CORPUS = join(ROOT, "tests", "fidelity");
 const WORK = join(CORPUS, ".gate");
-const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const CHROME =
+  process.env.CHROME_BIN ??
+  ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome", "/usr/bin/chromium-browser"].find(existsSync) ??
+  "";
 const TOOLS = [
   join(ROOT, "tools", "target", "release", "reactable-tools"),
   join(ROOT, "dist", "reactable-tools"),
@@ -48,7 +51,7 @@ const DEFAULT_THRESHOLD = 0.95;
 const KNOWN_GAPS: Record<string, string> = {
   "known-gap-multicol": "blitz 0.3-alpha has no CSS multi-column layout",
 };
-const PERF_BUDGET_MS = 1500; // 72 frames @ 1920x1080
+const PERF_BUDGET_MS = Number(process.env.PERF_BUDGET_MS ?? 1500); // 72 frames @ 1920x1080 (override for slower CI runners)
 
 function run(cmd: string[], quiet = true): { ok: boolean; out: string } {
   const p = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "pipe" });
@@ -91,8 +94,8 @@ if (!TOOLS) {
   console.error("gate: reactable-tools binary missing (cargo build --release in tools/)");
   process.exit(2);
 }
-if (!existsSync(CHROME)) {
-  console.error("gate: Chrome not found at", CHROME);
+if (!CHROME || !existsSync(CHROME)) {
+  console.error("gate: Chrome not found (set CHROME_BIN)");
   process.exit(2);
 }
 mkdirSync(WORK, { recursive: true });
