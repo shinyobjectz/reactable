@@ -1,0 +1,92 @@
+# Settings — tabbed preferences (replaces the native gear menu)
+
+client :settings do
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    html, body { height: 100%; background: #141414; color: #e7e7e7; font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; user-select: none; }
+    .wrap { display: flex; flex-direction: column; height: 100%; }
+    .tabs { display: flex; gap: 4px; padding: 10px 12px 0; }
+    .tab { padding: 7px 14px; border: 0; border-radius: 8px 8px 0 0; background: transparent; color: #8a8a8a; cursor: pointer; font: 600 12px inherit; }
+    .tab.on { background: #1d1d1d; color: #fff; }
+    .body { flex: 1; overflow-y: auto; background: #1d1d1d; margin: 0 12px 12px; border-radius: 0 10px 10px 10px; padding: 12px; }
+    .row { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px; color: #d4d4d4; cursor: pointer; }
+    .row:hover { background: #262626; }
+    .row .chev { margin-left: auto; color: #565656; }
+    .tool { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px; }
+    .tool:hover { background: #242424; }
+    .tool .name { flex: 1; }
+    .more { border: 0; background: none; color: #6f6f6f; cursor: pointer; font-size: 15px; }
+    .more:hover { color: #fff; }
+    .tgl { position: relative; width: 30px; height: 17px; border-radius: 999px; background: #2f2f2f; border: 0; cursor: pointer; }
+    .tgl::after { content: ''; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: #8a8a8a; transition: transform .15s, background .15s; }
+    .tgl.on { background: #e7e7e7; }
+    .tgl.on::after { transform: translateX(13px); background: #141414; }
+    .prompt { display: none; padding: 4px 10px 10px 34px; }
+    .prompt.open { display: block; }
+    .prompt textarea { width: 100%; min-height: 44px; background: #141414; border: 0; border-radius: 8px; color: #ddd; font: 12px/1.4 inherit; padding: 7px 9px; resize: vertical; }
+  </style>
+  <div class="wrap">
+    <div class="tabs" id="tabs"></div>
+    <div class="body" id="body"></div>
+  </div>
+  <script>
+    const send = (a, p = {}) => window.webkit?.messageHandlers?.reactable?.postMessage({ action: a, payload: p });
+    const TOOLS = [
+      ['voice-enhance', 'Voice enhancing'], ['silence-detect', 'Silence detection'],
+      ['transcribe', 'Transcription'], ['captions', 'Captions'], ['remove-filler', 'Filler removal'],
+    ];
+    const cfg = JSON.parse(localStorage.getItem('agent-tools') || '{}');
+    const save = () => localStorage.setItem('agent-tools', JSON.stringify(cfg));
+
+    const TABS = {
+      Account() {
+        const rows = [
+          ['Top up credits', 'https://platform.minimax.io'],
+          ['Connect YouTube (reactable youtube connect)', ''],
+          ['Pexels API key', 'https://www.pexels.com/api/'],
+          ['Unsplash API key', 'https://unsplash.com/developers'],
+          ['ElevenLabs API key', 'https://elevenlabs.io/app/settings/api-keys'],
+        ];
+        return rows.map(([label, url]) => {
+          const d = document.createElement('div');
+          d.className = 'row';
+          d.innerHTML = `<span>${label}</span><span class="chev">›</span>`;
+          if (url) d.onclick = () => send('settings.link', { url });
+          return d;
+        });
+      },
+      Tools() {
+        return TOOLS.flatMap(([id, name]) => {
+          const c = (cfg[id] = cfg[id] || { on: true, prompt: '' });
+          const row = document.createElement('div');
+          row.className = 'tool';
+          row.innerHTML = `<span class="name">${name}</span><button class="more">⋯</button><button class="tgl${c.on ? ' on' : ''}"></button>`;
+          const p = document.createElement('div');
+          p.className = 'prompt';
+          p.innerHTML = `<textarea placeholder="Guidance for the agent…">${c.prompt || ''}</textarea>`;
+          row.querySelector('.tgl').onclick = (e) => { c.on = !c.on; e.target.classList.toggle('on', c.on); save(); };
+          row.querySelector('.more').onclick = () => p.classList.toggle('open');
+          p.querySelector('textarea').oninput = (e) => { c.prompt = e.target.value; save(); };
+          return [row, p];
+        });
+      },
+    };
+    let active = 'Account';
+    function render() {
+      const tabs = document.getElementById('tabs');
+      tabs.innerHTML = '';
+      for (const name of Object.keys(TABS)) {
+        const b = document.createElement('button');
+        b.className = 'tab' + (name === active ? ' on' : '');
+        b.textContent = name;
+        b.onclick = () => { active = name; render(); };
+        tabs.appendChild(b);
+      }
+      const body = document.getElementById('body');
+      body.innerHTML = '';
+      TABS[active]().forEach((el) => body.appendChild(el));
+    }
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') send('settings.close'); });
+    render();
+  </script>
+end

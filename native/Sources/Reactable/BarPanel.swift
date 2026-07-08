@@ -279,6 +279,9 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
                 resizeToContentWidth(CGFloat(w))
             }
         case "bar.menu.settings":
+            bridge.bridgeOpenSettings()
+            return
+        case "bar.menu.settings.legacy":
             showSettingsMenu(anchor: payload)
         case "bar.menu.projects":
             showProjectsMenu(anchor: payload)

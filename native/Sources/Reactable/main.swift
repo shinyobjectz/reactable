@@ -8,6 +8,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     private var palette: PaletteWindowController?
     private var stageManager: StageManagerPanel?
     private var projectsBoard: ProjectsBoardPanel?
+    private var settingsPanel: SettingsPanel?
     private var cachedSlides: [[String: Any]] = []
     // The rundown: the deck of the video. Defaults to the current deck's
     // slides; the manager edits it; the DOCK ARROWS are the only navigation.
@@ -708,6 +709,11 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         UserDefaults.standard.set(on, forKey: "reactable.systemAudioOn")
         syncBar()
         prewarmCapture()  // stream audio flag changed — warm stream is stale
+    }
+
+    func bridgeOpenSettings() {
+        if settingsPanel == nil { settingsPanel = SettingsPanel(port: port) }
+        settingsPanel?.toggle()
     }
 
     func bridgeOpenProjectsBoard() {
