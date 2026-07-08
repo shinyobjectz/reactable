@@ -21,6 +21,7 @@ export interface Env {
   META_APP_ID?: string;
   META_APP_SECRET?: string;
   ADMIN_KEY?: string;
+  GEMINI_API_KEY?: string;
 }
 
 // Live account state — written by billing webhooks, read by /api/auth/me.

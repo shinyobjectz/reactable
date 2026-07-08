@@ -3,6 +3,7 @@ import { billingCheckout, billingPortal, polarWebhook, userRecord } from "./bill
 import { gatewayBalance, gatewayChat, gatewayUsage } from "./gateway";
 import { researchRaw } from "./research";
 import { commonsSnapshot, commonsTrends } from "./commons";
+import { gatewayVideo, gatewayVideoStatus } from "./video";
 import { econReport } from "./econ";
 import { driveCallback, driveConnect, driveDisconnect, driveFile, driveList, driveStatus } from "./drive";
 import { metaCallback, metaConnect, metaDisconnect, metaGraph, metaStatus } from "./meta";
@@ -412,6 +413,18 @@ async function handle(req: Request, env: Env, ctx: ExecutionContext): Promise<Re
     const next = items.map((v) => (v.videoId === id ? { ...v, state: "canceled" } : v));
     await env.KV.put(k, JSON.stringify(next));
     return json({ ok: true });
+  }
+  if (path === "/api/gateway/video" && req.method === "POST") {
+    const session = await openSession(env, req);
+    if (!session) return json({ ok: false, error: "sign in first" }, { status: 401 });
+    const record = await userRecord(env, session.email);
+    if (record.plan !== "pro") return json({ ok: false, error: "Video models are part of Pro", upgrade: "/pro" }, { status: 402 });
+    return gatewayVideo(session.email, req, env, ctx);
+  }
+  if (path === "/api/gateway/video/status" && req.method === "GET") {
+    const session = await openSession(env, req);
+    if (!session) return json({ ok: false, error: "sign in first" }, { status: 401 });
+    return gatewayVideoStatus(req, env);
   }
   if (path === "/api/gateway/usage" && req.method === "GET") {
     const session = await openSession(env, req);

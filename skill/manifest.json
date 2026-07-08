@@ -16,76 +16,183 @@
   ],
   "verbIndex": [
     {
-      "verbs": ["decks", "decks new", "decks slide", "decks script", "plan"],
+      "verbs": [
+        "decks",
+        "decks new",
+        "decks slide",
+        "decks script",
+        "plan"
+      ],
       "reference": "verbs/decks.md",
       "relatedSkills": []
     },
     {
-      "verbs": ["stage open", "stage load", "stage status", "record"],
+      "verbs": [
+        "stage open",
+        "stage load",
+        "stage status",
+        "record"
+      ],
       "reference": "verbs/stage.md",
       "relatedSkills": []
     },
     {
-      "verbs": ["takes render", "takes edit"],
+      "verbs": [
+        "takes render",
+        "takes edit"
+      ],
       "reference": "verbs/post-ffmpeg.md",
       "relatedSkills": [],
-      "tools": ["ffmpeg"]
+      "tools": [
+        "ffmpeg"
+      ]
     },
     {
-      "verbs": ["takes hf init", "takes hf render"],
+      "verbs": [
+        "takes hf init",
+        "takes hf render"
+      ],
       "reference": "verbs/post-hyperframes.md",
-      "relatedSkills": ["hyperframes", "hyperframes-cli", "gsap"]
+      "relatedSkills": [
+        "hyperframes",
+        "hyperframes-cli",
+        "gsap"
+      ]
     },
     {
-      "verbs": ["youtube connect", "youtube search", "youtube proxy"],
+      "verbs": [
+        "youtube connect",
+        "youtube search",
+        "youtube proxy"
+      ],
       "reference": "verbs/youtube.md",
       "relatedSkills": []
     },
     {
-      "verbs": ["tools doctor", "tools build", "tools install hyperframes"],
+      "verbs": [
+        "tools doctor",
+        "tools build",
+        "tools install hyperframes"
+      ],
       "reference": "verbs/setup.md",
-      "relatedSkills": ["hyperframes", "hyperframes-cli"],
-      "tools": ["ffmpeg", "hyperframes", "reactable-tools"]
+      "relatedSkills": [
+        "hyperframes",
+        "hyperframes-cli"
+      ],
+      "tools": [
+        "ffmpeg",
+        "hyperframes",
+        "reactable-tools"
+      ]
     },
     {
-      "verbs": ["har capture", "har list", "har replay"],
+      "verbs": [
+        "har capture",
+        "har list",
+        "har replay"
+      ],
       "reference": "verbs/har-blitz.md",
-      "tools": ["har-cache", "blitz"]
+      "tools": [
+        "har-cache",
+        "blitz"
+      ]
     },
     {
-      "verbs": ["takes transcribe", "edit remove-filler", "edit trim-silence", "edit captions"],
+      "verbs": [
+        "takes transcribe",
+        "edit remove-filler",
+        "edit trim-silence",
+        "edit captions"
+      ],
       "reference": "verbs/speech-edit.md",
-      "tools": ["moonshine", "whisper", "vad"]
+      "tools": [
+        "moonshine",
+        "whisper",
+        "vad"
+      ]
     },
     {
-      "verbs": ["tts speak", "tts doctor"],
+      "verbs": [
+        "tts speak",
+        "tts doctor"
+      ],
       "reference": "verbs/kokoro-tts.md",
-      "tools": ["kokoro"]
+      "tools": [
+        "kokoro"
+      ]
     },
     {
-      "verbs": ["composite apply", "composite presets", "edit layout"],
+      "verbs": [
+        "composite apply",
+        "composite presets",
+        "edit layout"
+      ],
       "reference": "verbs/compositing.md",
-      "tools": ["ffmpeg", "hyperframes"]
+      "tools": [
+        "ffmpeg",
+        "hyperframes"
+      ]
     },
     {
-      "verbs": ["camera target", "camera rig", "composite cursor"],
+      "verbs": [
+        "camera target",
+        "camera rig",
+        "composite cursor"
+      ],
       "reference": "verbs/camera-dom.md",
-      "tools": ["gsap", "hyperframes"]
+      "tools": [
+        "gsap",
+        "hyperframes"
+      ]
     },
     {
-      "verbs": ["synth take", "shorts cut"],
+      "verbs": [
+        "synth take",
+        "shorts cut"
+      ],
       "reference": "verbs/agent-synthetic.md",
-      "tools": ["kokoro", "stage", "hyperframes"]
+      "tools": [
+        "kokoro",
+        "stage",
+        "hyperframes"
+      ]
     },
     {
-      "verbs": ["agent chat", "agent status", "projects new"],
+      "verbs": [
+        "agent chat",
+        "agent status",
+        "projects new"
+      ],
       "reference": "verbs/local-agent.md",
-      "tools": ["gemma-mlx", "reactable-tools"]
+      "tools": [
+        "gemma-mlx",
+        "reactable-tools"
+      ]
     },
     {
-      "verbs": ["skills install", "doctor"],
+      "verbs": [
+        "skills install",
+        "doctor"
+      ],
       "reference": "verbs/setup.md",
-      "relatedSkills": ["hyperframes", "hyperframes-cli"]
+      "relatedSkills": [
+        "hyperframes",
+        "hyperframes-cli"
+      ]
+    },
+    {
+      "verbs": [
+        "video index",
+        "video find",
+        "video at",
+        "video tracks",
+        "video pass",
+        "video sweep"
+      ],
+      "reference": "verbs/video-intel.md",
+      "relatedSkills": [
+        "takes-post"
+      ]
     }
   ],
   "relatedSkills": [
@@ -93,7 +200,7 @@
       "name": "hyperframes",
       "install": "npx hyperframes init",
       "source": "npm",
-      "note": "Bundled in hyperframes npm package — motion graphics post lane"
+      "note": "Bundled in hyperframes npm package \u2014 motion graphics post lane"
     },
     {
       "name": "hyperframes-cli",
@@ -112,61 +219,97 @@
       "status": "host",
       "sidecar": "planned",
       "doctor": "ffmpeg -version",
-      "verbs": ["takes render", "gen-lab-samples"]
+      "verbs": [
+        "takes render",
+        "gen-lab-samples"
+      ]
     },
     "hyperframes": {
       "status": "npm",
       "install": "npm i -g hyperframes",
       "doctor": "npx hyperframes --version",
-      "verbs": ["takes hf init", "takes hf render"]
+      "verbs": [
+        "takes hf init",
+        "takes hf render"
+      ]
     },
     "moonshine": {
       "status": "shipped",
       "sidecar": "rust-mlx",
       "note": "voice-stt + MLX in reactable-tools",
-      "verbs": ["takes transcribe", "edit remove-filler"]
+      "verbs": [
+        "takes transcribe",
+        "edit remove-filler"
+      ]
     },
     "whisper": {
       "status": "fallback",
       "sidecar": "rust",
-      "verbs": ["takes transcribe"]
+      "verbs": [
+        "takes transcribe"
+      ]
     },
     "vad": {
       "status": "shipped",
       "sidecar": "rust",
-      "verbs": ["edit trim-silence", "vad-detect"]
+      "verbs": [
+        "edit trim-silence",
+        "vad-detect"
+      ]
     },
     "background-isolation": {
       "status": "stub",
       "sidecar": "rust",
-      "verbs": ["edit isolate", "edit remove-bg"]
+      "verbs": [
+        "edit isolate",
+        "edit remove-bg"
+      ]
     },
     "har-cache": {
       "status": "shipped",
       "sidecar": "rust",
-      "verbs": ["har capture", "har list", "har replay"]
+      "verbs": [
+        "har capture",
+        "har list",
+        "har replay"
+      ]
     },
     "blitz": {
       "status": "shipped",
       "note": "Nexus Browse.Blitz via POST /reactable/blitz/replay",
-      "verbs": ["har replay", "decks import"]
+      "verbs": [
+        "har replay",
+        "decks import"
+      ]
     },
     "reactable-tools": {
       "status": "shipped",
       "build": "bash scripts/build-tools.sh",
-      "verbs": ["tools doctor", "takes transcribe", "edit", "har"]
+      "verbs": [
+        "tools doctor",
+        "takes transcribe",
+        "edit",
+        "har"
+      ]
     },
     "kokoro": {
       "status": "shipped",
       "sidecar": "rust-mlx",
       "note": "voice-tts + MLX in reactable-tools",
-      "verbs": ["tts speak", "synth take", "shorts cut"]
+      "verbs": [
+        "tts speak",
+        "synth take",
+        "shorts cut"
+      ]
     },
     "gemma-mlx": {
       "status": "optional",
       "build": "REACTABLE_AGENT_BUILD=1 bash scripts/build-tools.sh",
       "model": "google/gemma-3-4b-it",
-      "verbs": ["agent chat", "agent status"]
+      "verbs": [
+        "agent chat",
+        "agent status"
+      ]
     }
   }
 }

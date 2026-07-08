@@ -1899,6 +1899,31 @@ server :reactable_api do
     end
   end
 
+  defp run_connector_tool(%{"provider" => "videogen"} = args) do
+    case reactable_session() do
+      nil ->
+        %{ok: false, error: "video models need a signed-in Reactable account — Settings → Sign in"}
+
+      {base, token} ->
+        payload =
+          %{
+            "model" => args["model"] || "omni-flash",
+            "prompt" => args["prompt"] || "",
+            "seconds" => args["seconds"] || 8,
+            "videoUrl" => args["videoUrl"]
+          }
+          |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+          |> Map.new()
+
+        headers = [{"cookie", "reactable_session=" <> token}, {"content-type", "application/json"}]
+
+        case http_request(:post, base <> "/api/gateway/video", headers, Jason.encode!(payload)) do
+          {:ok, status, body} -> %{ok: status < 300, status: status, body: String.slice(body, 0, 12000)}
+          {:error, e} -> %{ok: false, error: e}
+        end
+    end
+  end
+
   defp run_connector_tool(%{"provider" => "meta"} = args) do
     case reactable_session() do
       nil ->
@@ -2125,7 +2150,7 @@ server :reactable_api do
   # Connector docs only for providers the user has actually connected.
   defp connector_tool_doc do
     providers = connected_providers()
-    providers = if reactable_session(), do: providers ++ ["drive", "meta", "research"], else: providers
+    providers = if reactable_session(), do: providers ++ ["drive", "meta", "research", "videogen"], else: providers
 
     case providers do
       [] ->
