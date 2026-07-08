@@ -413,6 +413,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             if state.hideDesktopIcons { setDesktopIconsVisible(true) }
             if state.hideDockWhileRecording { NSApp.setActivationPolicy(.regular) }
             syncBar()
+            projectsBoard?.pushData()  // the new take shows up in assets
             prewarmCapture()  // warm the stream for the next take
             if state.quickShareAfter, let savedDir {
                 quickShare(takeDir: savedDir)
