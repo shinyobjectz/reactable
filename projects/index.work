@@ -16,15 +16,15 @@ client :projects do
     /* header: project selector + status, wraps instead of clipping */
     .switcher { padding: 6px 8px 4px; }
     .switch-row { display: flex; gap: 6px; flex-wrap: wrap; min-width: 0; }
-    .switch-row { justify-content: space-between; }
-    .current { flex: 0 1 auto; min-width: 90px; max-width: calc(100% - 110px); display: flex; align-items: center; gap: 7px; padding: 9px 10px; border-radius: 10px; background: #1b1b1b; cursor: pointer; }
+    .switch-row { }
+    .current { flex: 1 1 100%; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 7px 7px 7px 11px; border-radius: 10px; background: #1b1b1b; cursor: pointer; }
     .current .name { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .current .chev { color: #6f6f6f; flex-shrink: 0; transition: transform .15s; }
     .current.open .chev { transform: rotate(180deg); }
     .current:hover .name { color: #fff; }
 
     .status { position: relative; flex-shrink: 0; }
-    .status > button { display: flex; align-items: center; gap: 6px; height: 100%; min-height: 34px; padding: 0 10px; border: 0; border-radius: 10px; background: #1b1b1b; color: #c9c9c9; font: 600 11px inherit; cursor: pointer; text-transform: capitalize; }
+    .status > button { display: flex; align-items: center; gap: 6px; padding: 6px 9px; border: 0; border-radius: 999px; background: #262626; color: #c9c9c9; font: 600 10.5px inherit; cursor: pointer; text-transform: capitalize; }
     .status > button:hover { color: #fff; }
     .status .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
     .status .menu { display: none; position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; background: #212121; border-radius: 10px; padding: 4px; min-width: 124px; box-shadow: 0 12px 30px rgba(0,0,0,.5); }
@@ -71,6 +71,7 @@ client :projects do
 
     /* tiny widths: dot-only status, tighter paddings, hints go */
     @media (max-width: 250px) {
+      .status > button { padding: 6px 7px; }
       .status > button span:last-child { display: none; }
       .switcher, .search, .files { padding-left: 5px; padding-right: 5px; }
       .drop-hint { display: none; }
@@ -91,12 +92,13 @@ client :projects do
     <div class="switcher">
       <div class="switch-row">
         <div class="current" id="current">
-          <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6;opacity:.7"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
-          <span class="name" id="cur-name">—</span><span class="chev">▾</span>
-        </div>
-        <div class="status" id="status">
-          <button id="status-btn"><span class="dot"></span><span id="status-name">idea</span></button>
-          <div class="menu" id="status-menu"></div>
+          <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6;opacity:.7;flex-shrink:0"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+          <span class="name" id="cur-name">—</span>
+          <div class="status" id="status">
+            <button id="status-btn"><span class="dot"></span><span id="status-name">idea</span></button>
+            <div class="menu" id="status-menu"></div>
+          </div>
+          <span class="chev">▾</span>
         </div>
       </div>
       <div class="plist" id="plist"></div>
@@ -143,7 +145,8 @@ client :projects do
         };
         menu.appendChild(b);
       }
-      document.getElementById('status-btn').onclick = () => menu.classList.toggle('open');
+      document.getElementById('status-btn').onclick = (e) => { e.stopPropagation(); menu.classList.toggle('open'); };
+      menu.onclick = (e) => e.stopPropagation();
       const list = document.getElementById('plist');
       list.innerHTML = '';
       for (const p of data.projects) {
