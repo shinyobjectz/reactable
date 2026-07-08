@@ -1,0 +1,54 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Reactable Pro — next-generation content intelligence</title><link rel="preconnect" href="https://fonts.googleapis.com"/><link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,600;9..144,700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet"/><style>
+  :root { --ink:#e9e7e2; --dim:#8f8d88; --faint:#4a4947; --bg:#101010; --line:#232220; --metal:linear-gradient(135deg,#b9b9bd,#f2f2f4 38%,#97979d 62%,#dedee2); }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--ink); font:15px/1.6 "Spline Sans Mono", ui-monospace, monospace; -webkit-font-smoothing:antialiased; }
+  body::before { content:''; position:fixed; inset:0; pointer-events:none; background:radial-gradient(60% 42% at 50% -6%, rgba(255,255,255,.07), transparent 70%); }
+  .wrap { max-width:1060px; margin:0 auto; padding:0 28px; position:relative; }
+  header { display:flex; align-items:center; gap:12px; padding:26px 0; }
+  .mark { width:22px; height:22px; } .mark path { fill:var(--ink); }
+  .word { font:600 17px Fraunces, serif; }
+  nav { margin-left:auto; display:flex; gap:24px; align-items:center; font-size:13px; }
+  nav a { color:var(--dim); text-decoration:none; } nav a:hover { color:var(--ink); }
+  .btn { text-decoration:none; padding:14px 26px; border-radius:12px; font-size:14px; display:inline-flex; align-items:center; gap:9px; }
+  .btn.light { background:var(--ink); color:#101010; font-weight:500; }
+  .btn.ghost { border:1px solid var(--line); color:var(--ink); position:relative; overflow:hidden; }
+  .btn.ghost::after { content:''; position:absolute; top:0; bottom:0; left:-60%; width:40%; background:linear-gradient(105deg,transparent,rgba(255,255,255,.13),transparent); transform:skewX(-18deg); animation:shine 3.4s ease-in-out infinite; }
+  @keyframes shine { 0%,55%{left:-60%} 85%,100%{left:130%} }
+  .apl { width:15px; height:15px; margin-top:-2px; }
+  .coin { width:46px; height:46px; border-radius:50%; background:var(--metal); border:1px solid #6f6f74; box-shadow:inset 0 2px 3px rgba(255,255,255,.9), inset 0 -3px 4px rgba(0,0,0,.45), 0 6px 24px rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; color:#5c5c62; font-size:21px; text-shadow:0 -1px 1px rgba(0,0,0,.6),0 1px 1px #fff; }
+  .kicker { color:var(--faint); font-size:12px; letter-spacing:.22em; text-transform:uppercase; }
+
+  .hero { text-align:center; padding:76px 0 40px; }
+  .hero .coin { margin:0 auto 30px; width:58px; height:58px; font-size:26px; animation:drop .9s cubic-bezier(.2,1.4,.4,1) both; }
+  @keyframes drop { from { opacity:0; transform:translateY(-30px) rotate(-18deg); } }
+  h1 { font:300 clamp(38px,6vw,68px)/1.06 Fraunces, serif; } h1 em { font-style:italic; font-weight:600; }
+  .sub { max-width:560px; margin:22px auto 0; color:var(--dim); }
+  .price { font:600 46px Fraunces, serif; margin:34px 0 4px; } .price span { font:400 14px "Spline Sans Mono", monospace; color:var(--dim); }
+  .cta { display:flex; gap:14px; justify-content:center; margin:30px 0 8px; }
+  .fine { color:var(--faint); font-size:12px; }
+  .grid { display:grid; gap:1px; background:var(--line); border:1px solid var(--line); border-radius:16px; overflow:hidden; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); margin:70px 0; }
+  .cell { background:#141414; padding:30px 28px 34px; } .cell:hover { background:#171716; }
+  .cell h3 { font:600 19px Fraunces, serif; margin:14px 0 8px; } .cell p { color:var(--dim); font-size:13px; }
+  .cell .ic { font-size:19px; color:var(--dim); }
+  .packs { text-align:center; color:var(--dim); font-size:13px; padding-bottom:90px; }
+</style></head><body><div class="wrap"><header><svg class="mark" width="260" height="260" viewBox="0 0 260 260" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M0.234554 0C3.01842 0.358903 12.2517 0.14986 15.6428 0.149414L47.2922 0.145508L132.066 0.146484L159.824 0.138672C165.242 0.137785 171.004 0.0368192 176.388 0.220703C199.258 0.981506 220.871 10.8775 236.388 27.6953C248.666 40.8854 256.491 57.5988 258.759 75.4756C259.234 79.2057 259.577 82.4762 259.445 86.2207C257.902 88.3296 253.81 92.1967 251.761 94.2373L238.508 107.467L191.385 154.631L181 164.979C178.644 167.33 175.576 170.179 173.704 172.854L259.515 172.823L259.527 259.472C239.445 259.087 218.573 259.352 198.416 259.361L182.244 259.401C179.647 259.408 175.298 259.553 172.908 259.229C169.864 256.421 166.646 253.07 163.695 250.124L147.208 233.637C127.142 213.584 106.928 192.981 86.6291 173.22L86.6418 259.468C73.8499 259.194 60.5796 259.359 47.7609 259.359C31.8649 259.304 15.9681 259.334 0.0724443 259.449C0.261371 257.579 0.125693 253.601 0.121272 251.543L0.118343 236.431L0.11346 196.806C0.109702 189.09 -0.0688427 180.71 0.242366 173.063C2.35059 170.354 7.0319 165.966 9.59881 163.417L25.5324 147.509L62.4904 110.57C70.5494 102.61 78.5265 94.5671 86.4211 86.4434C83.8014 86.6854 79.2746 86.5617 76.5549 86.5615L58.9523 86.5576L0.20721 86.6035C-0.356649 65.4227 0.444868 43.9321 0.121272 22.7217C0.00699665 15.2365 0.0258954 7.47987 0.234554 0ZM86.7697 86.5723C86.2452 96.6121 86.6343 109.917 86.6232 120.141C86.6049 137.502 86.4465 155.265 86.6779 172.603C89.434 172.973 94.5764 172.852 97.5119 172.852L115.314 172.84C134.481 172.833 153.912 173.019 173.054 172.821L173.052 86.5791L86.7697 86.5723Z" fill="white"/>
+</svg><span class="word">Reactable</span><nav><a href="/#studio">Studio</a><a href="/pro">Pro</a><a href="/dashboard">Dashboard</a><a href="/download/Reactable.dmg">Download</a></nav></header>
+<div class="hero"><div class="coin">&#10022;</div>
+<div class="kicker">Reactable Pro</div>
+<h1 style="margin-top:14px">Next-generation<br/><em>content intelligence.</em></h1>
+<p class="sub">The recorder is free forever. Pro connects your accounts and turns the studio into a machine that researches, assembles, and ships.</p>
+<div class="price">$20<span>/month</span></div>
+<div class="cta"><a class="btn light" href="/api/billing/checkout">Go Pro</a><a class="btn ghost" href="/dashboard">Open dashboard</a></div>
+<p class="fine">Managed by Polar &middot; cancel anytime from your dashboard</p></div>
+<div class="grid">
+  <div class="cell"><div class="ic">&#9654;</div><h3>Post to YouTube</h3><p>Finished takes go straight to your channel from the agent — titles, descriptions, unlisted previews.</p></div>
+  <div class="cell"><div class="ic">&#8734;</div><h3>Meta campaign intelligence</h3><p>Pull your ad accounts, campaigns, and last-30-day performance into the studio. Know what works before you record.</p></div>
+  <div class="cell"><div class="ic">&#9729;</div><h3>Google Drive import</h3><p>Footage and assets flow from Drive into your project, thumbnailed and ready on the stage.</p></div>
+  <div class="cell"><div class="ic">&#10022;</div><h3>Brand &amp; consumer research</h3><p>Study any creator&rsquo;s content — react, remix, or make your own. The research engine is the secret sauce.</p></div>
+  <div class="cell"><div class="ic">&#9889;</div><h3>Agent credits included</h3><p>Hosted MiniMax-class inference through the Reactable gateway, metered by an atomic ledger. Top up any time.</p></div>
+  <div class="cell"><div class="ic">&#9673;</div><h3>Everything synced</h3><p>Plan, credits, and connections live on your account — the app, CLI, and web all read the same truth.</p></div>
+</div>
+<p class="packs">Need more inference? Credit packs: 5,000 for $10 &middot; 15,000 for $25 — grants land automatically.</p>
+</div></body></html>

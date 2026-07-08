@@ -1,0 +1,83 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Dashboard — Reactable</title><link rel="preconnect" href="https://fonts.googleapis.com"/><link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,600;9..144,700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet"/><style>
+  :root { --ink:#e9e7e2; --dim:#8f8d88; --faint:#4a4947; --bg:#101010; --line:#232220; --metal:linear-gradient(135deg,#b9b9bd,#f2f2f4 38%,#97979d 62%,#dedee2); }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--ink); font:15px/1.6 "Spline Sans Mono", ui-monospace, monospace; -webkit-font-smoothing:antialiased; }
+  body::before { content:''; position:fixed; inset:0; pointer-events:none; background:radial-gradient(60% 42% at 50% -6%, rgba(255,255,255,.07), transparent 70%); }
+  .wrap { max-width:1060px; margin:0 auto; padding:0 28px; position:relative; }
+  header { display:flex; align-items:center; gap:12px; padding:26px 0; }
+  .mark { width:22px; height:22px; } .mark path { fill:var(--ink); }
+  .word { font:600 17px Fraunces, serif; }
+  nav { margin-left:auto; display:flex; gap:24px; align-items:center; font-size:13px; }
+  nav a { color:var(--dim); text-decoration:none; } nav a:hover { color:var(--ink); }
+  .btn { text-decoration:none; padding:14px 26px; border-radius:12px; font-size:14px; display:inline-flex; align-items:center; gap:9px; }
+  .btn.light { background:var(--ink); color:#101010; font-weight:500; }
+  .btn.ghost { border:1px solid var(--line); color:var(--ink); position:relative; overflow:hidden; }
+  .btn.ghost::after { content:''; position:absolute; top:0; bottom:0; left:-60%; width:40%; background:linear-gradient(105deg,transparent,rgba(255,255,255,.13),transparent); transform:skewX(-18deg); animation:shine 3.4s ease-in-out infinite; }
+  @keyframes shine { 0%,55%{left:-60%} 85%,100%{left:130%} }
+  .apl { width:15px; height:15px; margin-top:-2px; }
+  .coin { width:46px; height:46px; border-radius:50%; background:var(--metal); border:1px solid #6f6f74; box-shadow:inset 0 2px 3px rgba(255,255,255,.9), inset 0 -3px 4px rgba(0,0,0,.45), 0 6px 24px rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; color:#5c5c62; font-size:21px; text-shadow:0 -1px 1px rgba(0,0,0,.6),0 1px 1px #fff; }
+  .kicker { color:var(--faint); font-size:12px; letter-spacing:.22em; text-transform:uppercase; }
+
+  h1 { font:300 34px Fraunces, serif; margin:26px 0 6px; } h1 em { font-style:italic; font-weight:600; }
+  .sub { color:var(--dim); font-size:13px; }
+  .grid { display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); margin:36px 0 80px; }
+  .card { border:1px solid var(--line); border-radius:16px; background:#141414; padding:24px; }
+  .card h2 { font:600 17px Fraunces, serif; margin-bottom:16px; display:flex; align-items:center; gap:9px; }
+  .big { font:600 38px Fraunces, serif; } .big span { font:400 13px "Spline Sans Mono", monospace; color:var(--dim); }
+  .row { display:flex; align-items:center; gap:10px; padding:11px 0; border-top:1px solid var(--line); font-size:13.5px; }
+  .row:first-of-type { border-top:0; }
+  .dot { width:8px; height:8px; border-radius:50%; background:#3a3a38; flex-shrink:0; }
+  .dot.on { background:#7dd08b; }
+  .row a { margin-left:auto; color:var(--dim); text-decoration:none; font-size:12.5px; }
+  .row a:hover { color:var(--ink); }
+  .card .act { display:inline-flex; margin-top:16px; font-size:13px; color:var(--ink); text-decoration:none; border:1px solid var(--line); border-radius:10px; padding:9px 16px; gap:8px; align-items:center; }
+  .card .act:hover { border-color:#3a3a38; }
+  .coin.mini { width:20px; height:20px; font-size:10px; box-shadow:inset 0 1px 1.5px rgba(255,255,255,.85), inset 0 -1.5px 2px rgba(0,0,0,.4); }
+  #gate { text-align:center; padding:120px 0; color:var(--dim); }
+  #app { display:none; }
+</style></head><body><div class="wrap"><header><svg class="mark" width="260" height="260" viewBox="0 0 260 260" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M0.234554 0C3.01842 0.358903 12.2517 0.14986 15.6428 0.149414L47.2922 0.145508L132.066 0.146484L159.824 0.138672C165.242 0.137785 171.004 0.0368192 176.388 0.220703C199.258 0.981506 220.871 10.8775 236.388 27.6953C248.666 40.8854 256.491 57.5988 258.759 75.4756C259.234 79.2057 259.577 82.4762 259.445 86.2207C257.902 88.3296 253.81 92.1967 251.761 94.2373L238.508 107.467L191.385 154.631L181 164.979C178.644 167.33 175.576 170.179 173.704 172.854L259.515 172.823L259.527 259.472C239.445 259.087 218.573 259.352 198.416 259.361L182.244 259.401C179.647 259.408 175.298 259.553 172.908 259.229C169.864 256.421 166.646 253.07 163.695 250.124L147.208 233.637C127.142 213.584 106.928 192.981 86.6291 173.22L86.6418 259.468C73.8499 259.194 60.5796 259.359 47.7609 259.359C31.8649 259.304 15.9681 259.334 0.0724443 259.449C0.261371 257.579 0.125693 253.601 0.121272 251.543L0.118343 236.431L0.11346 196.806C0.109702 189.09 -0.0688427 180.71 0.242366 173.063C2.35059 170.354 7.0319 165.966 9.59881 163.417L25.5324 147.509L62.4904 110.57C70.5494 102.61 78.5265 94.5671 86.4211 86.4434C83.8014 86.6854 79.2746 86.5617 76.5549 86.5615L58.9523 86.5576L0.20721 86.6035C-0.356649 65.4227 0.444868 43.9321 0.121272 22.7217C0.00699665 15.2365 0.0258954 7.47987 0.234554 0ZM86.7697 86.5723C86.2452 96.6121 86.6343 109.917 86.6232 120.141C86.6049 137.502 86.4465 155.265 86.6779 172.603C89.434 172.973 94.5764 172.852 97.5119 172.852L115.314 172.84C134.481 172.833 153.912 173.019 173.054 172.821L173.052 86.5791L86.7697 86.5723Z" fill="white"/>
+</svg><span class="word">Reactable</span><nav><a href="/#studio">Studio</a><a href="/pro">Pro</a><a href="/dashboard">Dashboard</a><a href="/download/Reactable.dmg">Download</a></nav></header>
+<div id="gate">Checking your session&hellip;</div>
+<div id="app">
+  <h1>Your <em>studio account.</em></h1>
+  <p class="sub" id="who">&nbsp;</p>
+  <div class="grid">
+    <div class="card"><h2><span class="coin mini">&#10022;</span> Plan</h2>
+      <div class="big" id="plan">&mdash;</div>
+      <a class="act" id="plan-act" href="/api/billing/checkout">Go Pro</a></div>
+    <div class="card"><h2>&#9889; Credits</h2>
+      <div class="big" id="credits">&mdash;<span> gateway credits</span></div>
+      <a class="act" href="/api/billing/checkout">Top up</a></div>
+    <div class="card"><h2>&#9673; Connections</h2>
+      <div class="row"><span class="dot" id="d-yt"></span>YouTube<a href="/api/youtube/connect">Connect</a></div>
+      <div class="row"><span class="dot" id="d-meta"></span>Meta ads<a href="/api/meta/connect">Connect</a></div>
+      <div class="row"><span class="dot" id="d-drive"></span>Google Drive<a href="/api/drive/connect">Connect</a></div></div>
+    <div class="card"><h2>&#8595; App</h2>
+      <p class="sub">Reactable for Mac — the stage, the recorder, the agent.</p>
+      <a class="act" href="/download/Reactable.dmg"><svg class="apl" fill="currentColor" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>Apple</title><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg> Download</a>
+      <a class="act" style="margin-left:8px" href="/api/billing/portal">Billing portal</a>
+      <a class="act" style="margin-left:8px" href="/api/auth/logout">Sign out</a></div>
+  </div>
+</div>
+<script>
+(async () => {
+  const me = await (await fetch('/api/auth/me')).json();
+  if (!me.signedIn) { location.href = '/api/auth/login?next=/dashboard'; return; }
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('who').textContent = me.user.email;
+  const pro = (me.user.plan || '') === 'pro';
+  document.getElementById('plan').innerHTML = pro ? 'Pro <span>$20/mo</span>' : 'Free';
+  if (pro) { const a = document.getElementById('plan-act'); a.textContent = 'Manage'; a.href = '/api/billing/portal'; }
+  document.getElementById('credits').innerHTML = (me.user.credits ?? 0).toLocaleString() + '<span> gateway credits</span>';
+  document.getElementById('d-yt').classList.toggle('on', !!me.youtube);
+  for (const s of ['meta', 'drive']) {
+    fetch(`/api/${s}/status`).then(r => r.json()).then(d => {
+      document.getElementById('d-' + s).classList.toggle('on', !!d.connected);
+    }).catch(() => {});
+  }
+})();
+</script>
+</div></body></html>

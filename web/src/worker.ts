@@ -275,12 +275,12 @@ async function handle(req: Request, env: Env, ctx: ExecutionContext): Promise<Re
   if (path === "/api/auth/logout" && req.method === "GET") return authLogout(req, env);
   if (path === "/api/auth/cli/start" && req.method === "POST") return cliStart(req, env);
   if (path === "/api/webhooks/polar" && req.method === "POST") return polarWebhook(req, env);
-  if ((path === "/api/billing/checkout" || path === "/pro") && req.method === "GET") {
+  if (path === "/api/billing/checkout" && req.method === "GET") {
     const session = await openSession(env, req);
     if (!session) {
       return new Response(null, {
         status: 302,
-        headers: { location: `/api/auth/login?next=${encodeURIComponent("/pro")}` },
+        headers: { location: `/api/auth/login?next=${encodeURIComponent("/api/billing/checkout")}` },
       });
     }
     return billingCheckout(session.email, env);
