@@ -31,6 +31,9 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
     private var tabBar: TabBarView?
     private var stripTitle: NSTextField?
     private var savedFrame: NSRect?
+    private var rootView: NSView?
+    private var dragStrip: DragStripView?
+    var dockHost: DockGroupController?
     private let defaultContent = NSSize(width: 1280, height: 720)
     var onEvent: ((String, [String: Any]) -> Void)?
 
@@ -39,14 +42,19 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
     var openSurfaces: [StageSurface] { surfaces }
     private var activeIndex = 0
 
-    var captureWindow: NSWindow? { window?.isVisible == true ? window : nil }
+    /// The window that hosts the stage content right now — the panel's own
+    /// float OR the dock group it's docked into. Capture binds to this.
+    var captureWindow: NSWindow? {
+        guard let host = webView?.window, host.isVisible else { return nil }
+        return host
+    }
 
     /// The deck content region (webview) in window points, TOP-LEFT origin —
     /// the capture crop so recordings exclude the drag strip and frame chrome.
     var deckContentRect: CGRect? {
-        guard let webView, let window else { return nil }
+        guard let webView, let host = webView.window else { return nil }
         let f = webView.convert(webView.bounds, to: nil)
-        let winH = window.frame.height
+        let winH = host.frame.height
         return CGRect(
             x: f.origin.x,
             y: winH - (f.origin.y + f.height),
@@ -120,12 +128,22 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
     }
 
     func open() {
+        if let dockHost {
+            dockHost.reveal()
+            return
+        }
         if window == nil { createWindow() }
         guard let win = window else { return }
         showWindow(win)
     }
 
     func hide() {
+        if dockHost != nil {
+            // Scenes need the stage out of the shot — leave the group, stay hidden.
+            fputs("reactable: undocking stage to hide\n", stderr)
+            DockController.shared.undock(self, show: false)
+            return
+        }
         guard let win = window, win.isVisible else { return }
         fputs("reactable: hiding stage\n", stderr)
         savedFrame = win.frame
@@ -145,9 +163,13 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
     }
 
     var isOpen: Bool { window != nil }
-    var isVisible: Bool { window?.isVisible ?? false }
+    var isVisible: Bool {
+        if let dockHost { return dockHost.window.isVisible }
+        return window?.isVisible ?? false
+    }
 
     func keepVisible() {
+        guard dockHost == nil else { return }  // the group keeps itself visible
         guard window?.isVisible == true else { return }
         window?.orderFrontRegardless()
     }
@@ -192,10 +214,12 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         let root = NSView()
         root.translatesAutoresizingMaskIntoConstraints = false
         win.contentView = root
+        rootView = root
 
         let dragStrip = DragStripView()
         dragStrip.translatesAutoresizingMaskIntoConstraints = false
         dragStrip.toolTip = "Drag to move stage"
+        self.dragStrip = dragStrip
 
         let tabs = TabBarView()
         tabs.translatesAutoresizingMaskIntoConstraints = false
@@ -258,7 +282,6 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         }
         rebuildTabs()
         loadActive()
-        showWindow(win)
     }
 
     private func showWindow(_ win: NSWindow) {
@@ -304,5 +327,53 @@ final class StageWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         webView = nil
         previewFrame = nil
         savedFrame = nil
+        rootView = nil
+        dragStrip = nil
+    }
+}
+
+extension StageWindowController: DockablePanel {
+    var dockKey: String { "stage" }
+    var dockTitle: String { "Stage" }
+    var dockMinSize: NSSize { NSSize(width: 480, height: 320) }
+    var panelWindow: NSWindow? { window }
+
+    func ensureLoaded() {
+        if window == nil { createWindow() }
+    }
+
+    func detachDockBody() -> NSView? {
+        guard let previewFrame else { return nil }
+        previewFrame.removeFromSuperview()
+        return previewFrame
+    }
+
+    /// The tab bar rides into the docked header so surfaces stay switchable.
+    func detachDockAccessory() -> NSView? {
+        guard let tabBar else { return nil }
+        tabBar.removeFromSuperview()
+        return tabBar
+    }
+
+    func reattachDockBody(_ body: NSView, accessory: NSView?) {
+        guard let root = rootView, let dragStrip else { return }
+        body.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(body)
+        NSLayoutConstraint.activate([
+            body.topAnchor.constraint(equalTo: dragStrip.bottomAnchor, constant: Chrome.gapBelowDrag),
+            body.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: Chrome.frameMargin),
+            body.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -Chrome.frameMargin),
+            body.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -Chrome.frameMargin),
+        ])
+        if let accessory {
+            accessory.translatesAutoresizingMaskIntoConstraints = false
+            dragStrip.addSubview(accessory)
+            NSLayoutConstraint.activate([
+                accessory.leadingAnchor.constraint(equalTo: dragStrip.leadingAnchor),
+                accessory.topAnchor.constraint(equalTo: dragStrip.topAnchor),
+                accessory.bottomAnchor.constraint(equalTo: dragStrip.bottomAnchor),
+                accessory.trailingAnchor.constraint(lessThanOrEqualTo: dragStrip.trailingAnchor, constant: -80),
+            ])
+        }
     }
 }

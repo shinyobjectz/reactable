@@ -9,6 +9,8 @@ import WebKit
 final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
     private let port: Int
     private var window: NSWindow?
+    private var shell: PanelShell?
+    var dockHost: DockGroupController?
 
     /// Default-layout placement — set the window frame if it exists.
     func place(frame: NSRect) {
@@ -33,13 +35,21 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
         super.init()
     }
 
-    var isVisible: Bool { window?.isVisible ?? false }
+    var isVisible: Bool {
+        if let dockHost { return dockHost.window.isVisible }
+        return window?.isVisible ?? false
+    }
 
     func toggle() {
         if isVisible { hide() } else { open() }
     }
 
     func open() {
+        if let dockHost {
+            dockHost.reveal()
+            pushData()
+            return
+        }
         if window == nil { createWindow() }
         guard let win = window else { return }
         NSApp.activate(ignoringOtherApps: true)
@@ -48,7 +58,13 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
         pushData()
     }
 
-    func hide() { window?.orderOut(nil) }
+    func hide() {
+        if dockHost != nil {
+            DockController.shared.undock(self, show: false)
+            return
+        }
+        window?.orderOut(nil)
+    }
 
     func pushData() {
         guard let data = dataProvider?() else {
@@ -90,7 +106,7 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
         web.autoresizingMask = [.width, .height]
         web.setValue(false, forKey: "drawsBackground")
         webView = web
-        PanelChrome.install(in: win, content: web, title: "Projects") { [weak self] in self?.hide() }
+        shell = PanelChrome.install(in: win, content: web, title: "Projects") { [weak self] in self?.hide() }
         web.load(URLRequest(url: URL(string: "http://127.0.0.1:\(port)/projects")!))
         window = win
     }
@@ -168,6 +184,23 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
     }
 }
 
+
+extension ProjectsBoardPanel: DockablePanel {
+    var dockKey: String { "projects" }
+    var dockTitle: String { "Projects" }
+    var dockMinSize: NSSize { NSSize(width: 220, height: 260) }
+    var panelWindow: NSWindow? { window }
+
+    func ensureLoaded() {
+        if window == nil { createWindow() }
+    }
+
+    func detachDockBody() -> NSView? { shell?.detachContent() }
+
+    func reattachDockBody(_ body: NSView, accessory: NSView?) {
+        shell?.attachContent()
+    }
+}
 
 // WKWebView that accepts file drags natively (a hitTest-nil overlay never
 // receives them — AppKit routes drag destinations through hitTest).

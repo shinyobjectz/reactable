@@ -17,6 +17,10 @@ final class AgentWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
     }
     private var webView: WKWebView?
     private var savedFrame: NSRect?
+    private var rootView: NSView?
+    private var dragStrip: DragStripView?
+    private var frameView: ContentFrameView?
+    var dockHost: DockGroupController?
 
     init(port: Int, deck: String = "showcase", bridge: ReactableBridgeDelegate?) {
         self.port = port
@@ -26,19 +30,30 @@ final class AgentWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
     }
 
     var isOpen: Bool { window != nil }
-    var isVisible: Bool { window?.isVisible ?? false }
+    var isVisible: Bool {
+        if let dockHost { return dockHost.window.isVisible }
+        return window?.isVisible ?? false
+    }
 
     func toggle() {
         if isVisible { hide() } else { open() }
     }
 
     func open() {
+        if let dockHost {
+            dockHost.reveal()
+            return
+        }
         if window == nil { createWindow() }
         guard let win = window else { return }
         showWindow(win)
     }
 
     func hide() {
+        if dockHost != nil {
+            DockController.shared.undock(self, show: false)
+            return
+        }
         guard let win = window, win.isVisible else { return }
         savedFrame = win.frame
         win.orderOut(nil)
@@ -89,13 +104,16 @@ final class AgentWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         root.layer?.cornerRadius = 14
         root.layer?.masksToBounds = true
         win.contentView = root
+        rootView = root
 
         let dragStrip = DragStripView()
         dragStrip.translatesAutoresizingMaskIntoConstraints = false
         dragStrip.toolTip = "Drag to move agent"
+        self.dragStrip = dragStrip
 
         let frame = ContentFrameView()
         frame.translatesAutoresizingMaskIntoConstraints = false
+        frameView = frame
 
         let config = WKWebViewConfiguration()
         config.userContentController.add(self, name: "reactable")
@@ -174,5 +192,37 @@ final class AgentWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         window = nil
         webView = nil
         savedFrame = nil
+        rootView = nil
+        dragStrip = nil
+        frameView = nil
+    }
+}
+
+extension AgentWindowController: DockablePanel {
+    var dockKey: String { "agent" }
+    var dockTitle: String { "Agent" }
+    var dockMinSize: NSSize { NSSize(width: 320, height: 300) }
+    var panelWindow: NSWindow? { window }
+
+    func ensureLoaded() {
+        if window == nil { createWindow() }
+    }
+
+    func detachDockBody() -> NSView? {
+        guard let frameView else { return nil }
+        frameView.removeFromSuperview()
+        return frameView
+    }
+
+    func reattachDockBody(_ body: NSView, accessory: NSView?) {
+        guard let root = rootView, let dragStrip else { return }
+        body.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(body)
+        NSLayoutConstraint.activate([
+            body.topAnchor.constraint(equalTo: dragStrip.bottomAnchor, constant: Chrome.gapBelowDrag),
+            body.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: Chrome.frameMargin),
+            body.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -Chrome.frameMargin),
+            body.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -Chrome.frameMargin),
+        ])
     }
 }

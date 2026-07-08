@@ -8,49 +8,69 @@ final class SettingsPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
     private let port: Int
     private var window: NSWindow?
     private var webView: WKWebView?
+    private var shell: PanelShell?
+    var dockHost: DockGroupController?
 
     init(port: Int) {
         self.port = port
         super.init()
     }
 
-    var isVisible: Bool { window?.isVisible ?? false }
+    var isVisible: Bool {
+        if let dockHost { return dockHost.window.isVisible }
+        return window?.isVisible ?? false
+    }
 
     func toggle() {
-        if isVisible { window?.orderOut(nil) } else { open() }
+        if isVisible { hide() } else { open() }
+    }
+
+    func hide() {
+        if dockHost != nil {
+            DockController.shared.undock(self, show: false)
+            return
+        }
+        window?.orderOut(nil)
     }
 
     func open() {
-        if window == nil {
-            let size = NSSize(width: 530, height: 560)
-            let win = KeyableWindow(
-                contentRect: NSRect(origin: .zero, size: size),
-                styleMask: [.borderless, .fullSizeContentView, .resizable],
-                backing: .buffered, defer: false
-            )
-            win.delegate = self
-            win.isReleasedWhenClosed = false
-            win.backgroundColor = .clear
-            win.isOpaque = false
-            win.hasShadow = true
-            win.level = .modalPanel
-            FloatingWindow.configure(win)
-            let config = WKWebViewConfiguration()
-            config.userContentController.add(self, name: "reactable")
-            let web = WKWebView(frame: .zero, configuration: config)
-            web.setValue(false, forKey: "drawsBackground")
-            webView = web
-            PanelChrome.install(in: win, content: web, title: "Settings") { [weak self] in
-                self?.window?.orderOut(nil)
-            }
-            web.load(URLRequest(url: URL(string: "http://127.0.0.1:\(port)/settings")!))
-            window = win
+        if let dockHost {
+            dockHost.reveal()
+            return
         }
+        ensureLoaded()
         guard let win = window, let screen = NSScreen.main else { return }
         let f = screen.visibleFrame
         win.setFrameOrigin(NSPoint(x: f.midX - 265, y: f.midY - 240))
         NSApp.activate(ignoringOtherApps: true)
         win.makeKeyAndOrderFront(nil)
+    }
+
+    func ensureLoaded() {
+        guard window == nil else { return }
+        let size = NSSize(width: 530, height: 560)
+        let win = KeyableWindow(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.borderless, .fullSizeContentView, .resizable],
+            backing: .buffered, defer: false
+        )
+        win.delegate = self
+        win.isReleasedWhenClosed = false
+        win.backgroundColor = .clear
+        win.isOpaque = false
+        win.hasShadow = true
+        win.level = .modalPanel
+        FloatingWindow.configure(win)
+        let config = WKWebViewConfiguration()
+        config.userContentController.add(self, name: "reactable")
+        let web = WKWebView(frame: .zero, configuration: config)
+        web.setValue(false, forKey: "drawsBackground")
+        webView = web
+        shell = PanelChrome.install(in: win, content: web, title: "Settings") { [weak self] in
+            self?.hide()
+        }
+        web.load(URLRequest(url: URL(string: "http://127.0.0.1:\(port)/settings")!))
+        window = win
     }
 
     private let apiBase = ProcessInfo.processInfo.environment["REACTABLE_API"] ?? "https://reactable.app"
@@ -195,9 +215,22 @@ final class SettingsPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
                 break
             }
         case "settings.close":
-            window?.orderOut(nil)
+            hide()
         default:
             break
         }
+    }
+}
+
+extension SettingsPanel: DockablePanel {
+    var dockKey: String { "settings" }
+    var dockTitle: String { "Settings" }
+    var dockMinSize: NSSize { NSSize(width: 360, height: 300) }
+    var panelWindow: NSWindow? { window }
+
+    func detachDockBody() -> NSView? { shell?.detachContent() }
+
+    func reattachDockBody(_ body: NSView, accessory: NSView?) {
+        shell?.attachContent()
     }
 }

@@ -94,6 +94,16 @@ private final class BarMenuTarget: NSObject {
     @objc func createProject(_ sender: NSMenuItem) {
         panel?.createProject()
     }
+
+    // Overflow (⋯) menu — the docked bar's progressive disclosure.
+    @objc func camToggled(_ sender: NSMenuItem) { panel?.overflowCamToggle() }
+    @objc func micToggled(_ sender: NSMenuItem) { panel?.overflowMicToggle() }
+    @objc func sysToggled(_ sender: NSMenuItem) { panel?.overflowSysToggle() }
+    @objc func camSourceFromOverflow(_ sender: NSMenuItem) { panel?.overflowCamSource() }
+    @objc func micSourceFromOverflow(_ sender: NSMenuItem) { panel?.overflowMicSource() }
+    @objc func stageManagerFromOverflow(_ sender: NSMenuItem) { panel?.overflowStageManager() }
+    @objc func projectsBoardFromOverflow(_ sender: NSMenuItem) { panel?.overflowProjectsBoard() }
+    @objc func settingsFromOverflow(_ sender: NSMenuItem) { panel?.overflowSettings() }
 }
 
 @MainActor
@@ -105,6 +115,8 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
     private var devicesPayload: [String: Any] = [:]
     private var appState = AppState()
     private let menuTarget = BarMenuTarget()
+    private var overflowAnchor: [String: Any] = [:]
+    var dockHost: DockGroupController?
 
     init(port: Int, bridge: ReactableBridgeDelegate) {
         self.port = port
@@ -113,11 +125,8 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
         menuTarget.panel = self
     }
 
-    func open() {
-        guard panel == nil else {
-            panel?.orderFrontRegardless()
-            return
-        }
+    func ensureLoaded() {
+        guard panel == nil else { return }
 
         let config = WKWebViewConfiguration()
         config.userContentController.add(self, name: "reactable")
@@ -150,25 +159,45 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
 
         centerOnScreen(p)
         web.load(URLRequest(url: URL(string: "http://127.0.0.1:\(port)/bar")!))
-        p.orderFrontRegardless()
+    }
+
+    func open() {
+        if let dockHost {
+            dockHost.reveal()
+            return
+        }
+        ensureLoaded()
+        panel?.orderFrontRegardless()
     }
 
     func close() {
+        if dockHost != nil {
+            DockController.shared.undock(self, show: false)
+        }
         panel?.close()
         panel = nil
         webView = nil
     }
 
     func moveBy(dx: CGFloat, dy: CGFloat) {
-        guard let panel else { return }
+        guard dockHost == nil, let panel else { return }
         var origin = panel.frame.origin
         origin.x += dx
         origin.y -= dy
         panel.setFrameOrigin(origin)
+        // The bar drags itself (web grip), not through WindowDrag — feed the
+        // dock controller so drop zones light up while it moves.
+        DockController.shared.dragMoved(window: panel, mouse: NSEvent.mouseLocation)
+    }
+
+    /// Web grip released after a drag — dock if it ended over a drop zone.
+    func dragEnded() {
+        guard dockHost == nil, let panel else { return }
+        _ = DockController.shared.dragEnded(window: panel, mouse: NSEvent.mouseLocation)
     }
 
     func resizeToContentWidth(_ width: CGFloat) {
-        guard let panel else { return }
+        guard dockHost == nil, let panel else { return }
         let minW: CGFloat = 640
         let maxW: CGFloat = 1200
         let pad: CGFloat = 24
@@ -184,6 +213,7 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
     var isOpen: Bool { panel != nil }
 
     func keepVisible() {
+        guard dockHost == nil else { return }
         panel?.orderFrontRegardless()
     }
 
@@ -219,6 +249,8 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
         switch action {
         case "bar.ready":
             pushState(appState)
+            // A reload while docked must re-learn its docked chrome.
+            if dockHost != nil { dockStateChanged(docked: true) }
         case "record.start":
             bridge.bridgeRecordStart(countdown: payload["countdown"] as? Int ?? 3)
         case "record.pause": bridge.bridgeRecordPause()
@@ -276,10 +308,21 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
             let dx = payload["dx"] as? Double ?? 0
             let dy = payload["dy"] as? Double ?? 0
             moveBy(dx: CGFloat(dx), dy: CGFloat(dy))
+        case "bar.moveEnd":
+            dragEnded()
+        case "bar.tearOut":
+            // Docked grip dragged — pop back out to a float; WindowDrag owns
+            // the rest of the gesture (the web pointer stream dies on reparent).
+            if let host = dockHost {
+                DockController.shared.tearOut(key: dockKey, from: host)
+            }
         case "bar.resize":
             if let w = payload["width"] as? Double {
                 resizeToContentWidth(CGFloat(w))
             }
+        case "bar.menu.overflow":
+            overflowAnchor = payload
+            showOverflowMenu(anchor: payload)
         case "bar.menu.settings":
             bridge.bridgeOpenSettings()
             return
@@ -395,6 +438,39 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
         guard !title.isEmpty else { return }
         bridge?.bridgeCreateProject(title: title)
     }
+
+    /// Docked progressive disclosure: everything the narrow bar hides, in one
+    /// native menu anchored to the ⋯ button.
+    fileprivate func showOverflowMenu(anchor: [String: Any]) {
+        guard let webView, let point = menuPoint(from: anchor, in: webView) else { return }
+        let menu = NSMenu()
+        func item(_ title: String, _ sel: Selector, on: Bool = false) {
+            let it = menu.addItem(withTitle: title, action: sel, keyEquivalent: "")
+            it.target = menuTarget
+            it.state = on ? .on : .off
+        }
+        item("Camera", #selector(BarMenuTarget.camToggled(_:)), on: appState.camOn)
+        item("Camera source…", #selector(BarMenuTarget.camSourceFromOverflow(_:)))
+        item("Microphone", #selector(BarMenuTarget.micToggled(_:)), on: appState.micOn)
+        item("Microphone source…", #selector(BarMenuTarget.micSourceFromOverflow(_:)))
+        item("System audio", #selector(BarMenuTarget.sysToggled(_:)), on: appState.systemAudioOn)
+        menu.addItem(.separator())
+        item("Projects board…", #selector(BarMenuTarget.projectsBoardFromOverflow(_:)))
+        item("Stage Manager…", #selector(BarMenuTarget.stageManagerFromOverflow(_:)))
+        item("Local agent…", #selector(BarMenuTarget.openAgent(_:)))
+        menu.addItem(.separator())
+        item("Settings…", #selector(BarMenuTarget.settingsFromOverflow(_:)))
+        menu.popUp(positioning: nil, at: point, in: webView)
+    }
+
+    fileprivate func overflowCamToggle() { bridge?.bridgeCamToggle(on: !appState.camOn) }
+    fileprivate func overflowMicToggle() { bridge?.bridgeMicToggle(on: !appState.micOn) }
+    fileprivate func overflowSysToggle() { bridge?.bridgeSystemAudioToggle(on: !appState.systemAudioOn) }
+    fileprivate func overflowCamSource() { showCamSourceMenu(anchor: overflowAnchor) }
+    fileprivate func overflowMicSource() { showMicSourceMenu(anchor: overflowAnchor) }
+    fileprivate func overflowStageManager() { bridge?.bridgeOpenStageManager() }
+    fileprivate func overflowProjectsBoard() { bridge?.bridgeOpenProjectsBoard() }
+    fileprivate func overflowSettings() { bridge?.bridgeOpenSettings() }
 
     // Capture-source picker — one menu for the whole capture-target choice,
     // decoupled from stage visibility. Stage / Display / Window / Area / Device.
@@ -642,5 +718,35 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
         let x = f.midX - p.frame.width / 2
         let y = f.maxY - barHeight - 16
         p.setFrameOrigin(NSPoint(x: x, y: y))
+    }
+}
+
+extension BarPanel: DockablePanel {
+    var dockKey: String { "bar" }
+    var dockTitle: String { "Controls" }
+    var dockMinSize: NSSize { NSSize(width: 260, height: barHeight) }
+    var dockFixedHeight: CGFloat? { barHeight }
+    /// The bar keeps its own grip as the tear-out handle — no cell header.
+    var dockShowsHeader: Bool { false }
+    /// A horizontal strip — docks above or below panels, never as a column.
+    var dockAllowedEdges: [DockEdge] { [.top, .bottom] }
+    var panelWindow: NSWindow? { panel }
+
+    func detachDockBody() -> NSView? {
+        guard let webView else { return nil }
+        panel?.contentView = NSView()
+        return webView
+    }
+
+    func reattachDockBody(_ body: NSView, accessory: NSView?) {
+        body.translatesAutoresizingMaskIntoConstraints = true
+        body.autoresizingMask = [.width, .height]
+        panel?.contentView = body
+    }
+
+    /// Docked bar drops its own window chrome (grip, close) and turns on
+    /// width-responsive tiers; floating restores the full strip.
+    func dockStateChanged(docked: Bool) {
+        webView?.evaluateJavaScript("window.ReactableBar?.setDocked(\(docked))")
     }
 }

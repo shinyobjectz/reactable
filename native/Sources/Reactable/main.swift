@@ -27,6 +27,9 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     private var statusMenu: NSMenu?
     private var projectsMenuItem: NSMenuItem?
     private var decksMenuItem: NSMenuItem?
+    private var layoutCombinedItem: NSMenuItem?
+    private var layoutFloatingItem: NSMenuItem?
+    private var layoutChooser: LayoutChooserPanel?
     private var takeRecorder: TakeRecorder?
     private var inputMonitor: InputMonitor?
     private var globalHotkeys: GlobalHotkeys?
@@ -51,6 +54,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         // Belt-and-suspenders: panels stay put even when stage/browser takes focus.
         bar?.keepVisible()
         stage?.keepVisible()
+        DockController.shared.keepVisible()
         if state.camOn { cam?.orderFrontRegardless() }
     }
 
@@ -137,6 +141,16 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         addMenuItem(menu, title: "Show Bar", action: #selector(showBar), key: "b")
         addMenuItem(menu, title: "Local Agent…", action: #selector(openAgent), key: "l")
         addMenuItem(menu, title: "Find Surface…", action: #selector(togglePalette), key: "i")
+        menu.addItem(.separator())
+        let layoutItem = menu.addItem(withTitle: "Layout", action: nil, keyEquivalent: "")
+        let layoutMenu = NSMenu()
+        layoutCombinedItem = layoutMenu.addItem(
+            withTitle: "Combined Window", action: #selector(pickCombinedLayout), keyEquivalent: "")
+        layoutCombinedItem?.target = self
+        layoutFloatingItem = layoutMenu.addItem(
+            withTitle: "Floating Panels", action: #selector(pickFloatingLayout), keyEquivalent: "")
+        layoutFloatingItem?.target = self
+        layoutItem.submenu = layoutMenu
         menu.addItem(.separator())
         projectsMenuItem = menu.addItem(withTitle: "Project", action: nil, keyEquivalent: "")
         projectsMenuItem?.submenu = NSMenu()
@@ -268,6 +282,13 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                 self.projectsBoard?.pushData()
             }
             board.onDelete = { [weak self] p in self?.deleteProjectItem(p) }
+            // Content intel: snapshot once per app-day (verb self no-ops if
+            // today's points exist; budget-bounded; logs to nexus.log).
+            Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { _ in
+                Self.runIntelSnapshot()
+            }
+            Self.runIntelSnapshot()
+
             board.onPreview = { [weak self] p in
                 guard let self else { return }
                 TakePreviewWindow.show(takeDir: self.activeProjectURL.appending(path: p))
@@ -279,7 +300,32 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             board.onDrop = { [weak self] urls in self?.importAssets(urls) }
             projectsBoard = board
             syncBar()
-            arrangeDefaultLayout()
+
+            // Composable panels: register the dockables; block re-docking while
+            // recording (the capture stream is bound to a specific window).
+            DockController.shared.interactionLocked = { [weak self] in self?.state.recording ?? false }
+            if let agent { DockController.shared.register(agent) }
+            if let bar { DockController.shared.register(bar) }
+            DockController.shared.register(mgr)
+            DockController.shared.register(board)
+
+            switch LayoutPreference.saved {
+            case .combined:
+                applyLayout(.combined)
+            case .floating:
+                arrangeDefaultLayout()
+            case nil:
+                // First launch: default floating behind a one-time chooser.
+                arrangeDefaultLayout()
+                let chooser = LayoutChooserPanel { [weak self] mode in
+                    LayoutPreference.save(mode)
+                    self?.applyLayout(mode)
+                    self?.refreshLayoutMenu()
+                }
+                layoutChooser = chooser
+                chooser.present()
+            }
+            refreshLayoutMenu()
         } catch {
             fputs("reactable boot failed: \(error)\n", stderr)
             let alert = NSAlert()
@@ -733,7 +779,10 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     }
 
     func bridgeOpenSettings() {
-        if settingsPanel == nil { settingsPanel = SettingsPanel(port: port) }
+        if settingsPanel == nil {
+            settingsPanel = SettingsPanel(port: port)
+            if let settingsPanel { DockController.shared.register(settingsPanel) }
+        }
         settingsPanel?.toggle()
     }
 
@@ -788,6 +837,73 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                 self.projectsBoard?.pushData()
             }
         }
+    }
+
+    // MARK: - Layout modes (combined window vs floating panels)
+
+    private func applyLayout(_ mode: LayoutMode) {
+        guard !state.recording else {
+            fputs("reactable: layout switch ignored while recording\n", stderr)
+            return
+        }
+        switch mode {
+        case .floating:
+            DockController.shared.explodeAll()
+            arrangeDefaultLayout()
+        case .combined:
+            if stage == nil {
+                let ctrl = StageWindowController(port: port, deck: state.deckSlug, bridge: self)
+                wireStageEvents(ctrl)
+                DockController.shared.register(ctrl)
+                stage = ctrl
+            }
+            var panels: [DockablePanel] = []
+            var fractions: [CGFloat] = []
+            if let projectsBoard { panels.append(projectsBoard); fractions.append(0.2) }
+            if let stage { panels.append(stage); fractions.append(0.52) }
+            if let agent { panels.append(agent); fractions.append(0.28) }
+            // Panels already open ride along instead of getting stranded.
+            if let stageManager, stageManager.isVisible { panels.append(stageManager) }
+            if let settingsPanel, settingsPanel.isVisible { panels.append(settingsPanel) }
+            let group = DockController.shared.gather(panels, frame: combinedFrame(), fractions: fractions)
+            // The control bar rides under the stage by default — tear it out anytime.
+            if let group, let bar, let stage {
+                bar.ensureLoaded()
+                DockController.shared.dock(bar, into: group, edge: .bottom, relativeTo: stage)
+            }
+            projectsBoard?.pushData()
+            stageManager?.pushData()
+            prewarmCapture()  // stage capture now binds to the group window
+        }
+        syncBar()
+    }
+
+    private func combinedFrame() -> NSRect {
+        guard let screen = NSScreen.main else {
+            return NSRect(x: 120, y: 120, width: 1280, height: 800)
+        }
+        let f = screen.visibleFrame
+        let w = min(f.width - 48, 1720)
+        let h = min(f.height - 48, 980)
+        return NSRect(x: f.midX - w / 2, y: f.midY - h / 2, width: w, height: h)
+    }
+
+    private func refreshLayoutMenu() {
+        let mode = LayoutPreference.saved ?? .floating
+        layoutCombinedItem?.state = mode == .combined ? .on : .off
+        layoutFloatingItem?.state = mode == .floating ? .on : .off
+    }
+
+    @objc private func pickCombinedLayout() {
+        LayoutPreference.save(.combined)
+        applyLayout(.combined)
+        refreshLayoutMenu()
+    }
+
+    @objc private func pickFloatingLayout() {
+        LayoutPreference.save(.floating)
+        applyLayout(.floating)
+        refreshLayoutMenu()
     }
 
     /// Default layout: bar top-center, then one row that always fits the
@@ -917,6 +1033,17 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
     }
 
     /// Trash (not hard-delete) a take dir or asset; links leave links.json.
+
+    static func runIntelSnapshot() {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        task.arguments = ["reactable", "intel", "snapshot", "--budget", "40"]
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = "\(NSHomeDirectory())/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+        task.environment = env
+        try? task.run()
+    }
+
     private func deleteProjectItem(_ path: String) {
         if path.hasPrefix("http") {
             var links = (try? JSONSerialization.jsonObject(with: Data(contentsOf: linksURL))) as? [String] ?? []
@@ -1591,6 +1718,7 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         if stage == nil {
             let ctrl = StageWindowController(port: port, deck: state.deckSlug, bridge: self)
             wireStageEvents(ctrl)
+            DockController.shared.register(ctrl)
             stage = ctrl
         }
         stage?.open()

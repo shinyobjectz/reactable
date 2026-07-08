@@ -61,6 +61,7 @@ import { ttsSpeak, ttsDoctor } from "../lib/tts.ts";
 import { agentChat, agentStatus, agentLlmProbe, createProject } from "../lib/agent.ts";
 import { minimaxChat, minimaxKey } from "../lib/minimax.ts";
 import { CONNECTORS, connectorStatus, setConnector } from "../lib/connectors.ts";
+import * as intel from "../lib/intel.ts";
 import { getProject, listSurfaces, listResearch, addResearch } from "../lib/surface.ts";
 import { authLogin, authStatus, clearCredentials } from "../lib/auth.ts";
 import {
@@ -688,6 +689,38 @@ try {
       }
     }
     console.error("tts: speak | doctor");
+    process.exit(1);
+  }
+
+  if (cmd === "intel") {
+    const j = flags.json === true;
+    const out = (v: unknown) => console.log(j ? JSON.stringify(v, null, 2) : typeof v === "string" ? v : JSON.stringify(v, null, 2));
+    if (sub === "track") {
+      const kind = third === "competitor" ? "competitor" : "topic";
+      const q = rest.slice(kind === "topic" && third === "topic" ? 3 : 3).join(" ") || String(fourth || "");
+      if (!q) { console.error('usage: reactable intel track topic|competitor "<q>" [--platforms a,b]'); process.exit(1); }
+      const platforms = String(flags.platforms || flags.platform || "").split(",").filter(Boolean);
+      out(intel.track(kind as any, q, platforms));
+      process.exit(0);
+    }
+    if (sub === "untrack") { out(intel.untrack(String(third || ""))); process.exit(0); }
+    if (sub === "list") { out({ topics: intel.topics().map(({series, ...t}) => t), competitors: intel.competitors() }); process.exit(0); }
+    if (sub === "snapshot") { out(await intel.snapshot(Number(flags.budget || 40), flags.force === true)); process.exit(0); }
+    if (sub === "trends") { out(intel.trends()); process.exit(0); }
+    if (sub === "breakouts") { out(intel.breakouts()); process.exit(0); }
+    if (sub === "radar") {
+      const q = rest.slice(2).filter((x) => !x.startsWith("-")).join(" ");
+      if (!q) { console.error('usage: reactable intel radar "<topic>" [--platform youtube|tiktok]'); process.exit(1); }
+      out(await intel.radar(q, String(flags.platform || "youtube")));
+      process.exit(0);
+    }
+    if (sub === "ads") {
+      const q = rest.slice(2).filter((x) => !x.startsWith("-")).join(" ");
+      if (!q) { console.error('usage: reactable intel ads "<company>" [--library facebook|tiktok]'); process.exit(1); }
+      out(await intel.ads(q, String(flags.library || "facebook")));
+      process.exit(0);
+    }
+    console.error("intel verbs: track · untrack · list · snapshot · trends · breakouts · radar · ads");
     process.exit(1);
   }
 

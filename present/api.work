@@ -2185,6 +2185,18 @@ server :reactable_api do
 
     research = research_items(root) |> Enum.map_join(", ", & &1.title)
 
+    intel_line =
+      case read_dot_json(root, "intel/topics.json", []) do
+        [] ->
+          ""
+
+        list when is_list(list) ->
+          exploding = list |> Enum.filter(&(&1["grade"] in ["exploding", "rising"])) |> Enum.map_join(", ", &"#{&1["q"]} (#{&1["grade"]})")
+          count = length(list)
+          hot = if exploding == "", do: "none rising", else: exploding
+          "\nIntel: #{count} tracked — #{hot}. Verbs: reactable intel trends|radar|breakouts --json"
+      end
+
     """
     ## Live project context
 
@@ -2192,7 +2204,7 @@ server :reactable_api do
     #{deck_line}
     Takes (#{length(takes)}, newest first): #{if take_ids == "", do: "none yet", else: take_ids}
     Assets (#{length(assets)}): #{assets |> Enum.take(30) |> Enum.join(", ")}#{notes_block}#{links_line}
-    Research: #{if research == "", do: "none", else: research}
+    Research: #{if research == "", do: "none", else: research}#{intel_line}
 
     Depth on demand: `reactable project --json`, `reactable decks get #{deck} --json`, `reactable takes events <id> --json`.
     """

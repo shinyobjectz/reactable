@@ -48,7 +48,8 @@ enum PanelChrome {
         @objc private func fire() { onClose() }
     }
 
-    static func install(in win: NSWindow, content: NSView, title: String, onClose: @escaping () -> Void) {
+    @discardableResult
+    static func install(in win: NSWindow, content: NSView, title: String, onClose: @escaping () -> Void) -> PanelShell {
         let root = NSView()
         root.wantsLayer = true
         root.layer?.backgroundColor = NSColor(white: 0.08, alpha: 1).cgColor
@@ -61,19 +62,55 @@ enum PanelChrome {
         root.addSubview(strip)
         decorate(strip: strip, title: title, onClose: onClose)
 
-        content.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(content)
-
         NSLayoutConstraint.activate([
             strip.topAnchor.constraint(equalTo: root.topAnchor),
             strip.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             strip.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             strip.heightAnchor.constraint(equalToConstant: Chrome.dragStripHeight),
+        ])
+
+        let shell = PanelShell(window: win, root: root, strip: strip, content: content)
+        shell.attachContent()
+        ResizeCornersView.attach(to: root)
+        return shell
+    }
+}
+
+/// Handle onto a PanelChrome-built window: keeps the root/strip/content refs so
+/// the content can be detached into a dock group and reattached when torn out.
+@MainActor
+final class PanelShell {
+    let window: NSWindow
+    let root: NSView
+    let strip: DragStripView
+    let content: NSView
+    private var contentConstraints: [NSLayoutConstraint] = []
+
+    init(window: NSWindow, root: NSView, strip: DragStripView, content: NSView) {
+        self.window = window
+        self.root = root
+        self.strip = strip
+        self.content = content
+    }
+
+    func attachContent() {
+        guard content.superview !== root else { return }
+        content.removeFromSuperview()
+        content.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(content)
+        contentConstraints = [
             content.topAnchor.constraint(equalTo: strip.bottomAnchor, constant: Chrome.gapBelowDrag),
             content.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: Chrome.frameMargin),
             content.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -Chrome.frameMargin),
             content.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -Chrome.frameMargin),
-        ])
-        ResizeCornersView.attach(to: root)
+        ]
+        NSLayoutConstraint.activate(contentConstraints)
+    }
+
+    func detachContent() -> NSView {
+        NSLayoutConstraint.deactivate(contentConstraints)
+        contentConstraints = []
+        content.removeFromSuperview()
+        return content
     }
 }

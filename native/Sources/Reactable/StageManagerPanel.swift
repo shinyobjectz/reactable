@@ -10,6 +10,8 @@ final class StageManagerPanel: NSObject, NSWindowDelegate, WKScriptMessageHandle
     private let port: Int
     private var window: NSWindow?
     private var webView: WKWebView?
+    private var shell: PanelShell?
+    var dockHost: DockGroupController?
 
     /// Called with the full entry payload when a lineup entry is activated.
     var onActivate: (([String: Any]) -> Void)?
@@ -25,13 +27,22 @@ final class StageManagerPanel: NSObject, NSWindowDelegate, WKScriptMessageHandle
         super.init()
     }
 
-    var isVisible: Bool { window?.isVisible ?? false }
+    var isVisible: Bool {
+        if let dockHost { return dockHost.window.isVisible }
+        return window?.isVisible ?? false
+    }
 
     func toggle() {
         if isVisible { hide() } else { open() }
     }
 
     func open() {
+        if let dockHost {
+            dockHost.reveal()
+            pushData()
+            webView?.evaluateJavaScript("window.ReactableManager?.reset()")
+            return
+        }
         if window == nil { createWindow() }
         guard let win = window else { return }
         NSApp.activate(ignoringOtherApps: true)
@@ -41,7 +52,13 @@ final class StageManagerPanel: NSObject, NSWindowDelegate, WKScriptMessageHandle
         webView?.evaluateJavaScript("window.ReactableManager?.reset()")
     }
 
-    func hide() { window?.orderOut(nil) }
+    func hide() {
+        if dockHost != nil {
+            DockController.shared.undock(self, show: false)
+            return
+        }
+        window?.orderOut(nil)
+    }
 
     func pushData() {
         guard let data = dataProvider?(),
@@ -72,7 +89,7 @@ final class StageManagerPanel: NSObject, NSWindowDelegate, WKScriptMessageHandle
         web.autoresizingMask = [.width, .height]
         web.setValue(false, forKey: "drawsBackground")
         webView = web
-        PanelChrome.install(in: win, content: web, title: "Stage Manager") { [weak self] in self?.hide() }
+        shell = PanelChrome.install(in: win, content: web, title: "Stage Manager") { [weak self] in self?.hide() }
         web.load(URLRequest(url: URL(string: "http://127.0.0.1:\(port)/manager")!))
         window = win
     }
@@ -104,5 +121,22 @@ final class StageManagerPanel: NSObject, NSWindowDelegate, WKScriptMessageHandle
         default:
             break
         }
+    }
+}
+
+extension StageManagerPanel: DockablePanel {
+    var dockKey: String { "manager" }
+    var dockTitle: String { "Stage Manager" }
+    var dockMinSize: NSSize { NSSize(width: 360, height: 240) }
+    var panelWindow: NSWindow? { window }
+
+    func ensureLoaded() {
+        if window == nil { createWindow() }
+    }
+
+    func detachDockBody() -> NSView? { shell?.detachContent() }
+
+    func reattachDockBody(_ body: NSView, accessory: NSView?) {
+        shell?.attachContent()
     }
 }
