@@ -1864,10 +1864,11 @@ server :reactable_api do
         query = params |> Enum.map_join("&", fn {k, v} -> "#{URI.encode_www_form(to_string(k))}=#{URI.encode_www_form(to_string(v))}" end)
         url = base <> path <> if(query == "", do: "", else: "?" <> query)
         headers = [{"cookie", "reactable_session=" <> token}]
+        save_to = args["save_to"]
 
         case http_request(:get, url, headers, nil) do
-          {:ok, status, body} when is_binary(args["save_to"]) ->
-            save_connector_asset(args["save_to"], body, status)
+          {:ok, status, body} when is_binary(save_to) ->
+            save_connector_asset(save_to, body, status)
 
           {:ok, status, body} ->
             %{ok: status < 300, status: status, body: String.slice(body, 0, 12000)}

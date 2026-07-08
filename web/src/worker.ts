@@ -312,6 +312,18 @@ async function handle(req: Request, env: Env, ctx: ExecutionContext): Promise<Re
     if (path === "/api/drive/files") return driveList(session.email, req, env);
     if (path === "/api/drive/file") return driveFile(session.email, req, env);
   }
+  // Ops: credit grants, keyed by ADMIN_KEY (wrangler secret) — no UI.
+  if (path === "/api/admin/grant" && req.method === "POST") {
+    const auth = req.headers.get("authorization") || "";
+    if (!env.ADMIN_KEY || auth !== `Bearer ${env.ADMIN_KEY}`) {
+      return json({ ok: false, error: "forbidden" }, { status: 403 });
+    }
+    const body = (await req.json()) as { email?: string; credits?: number };
+    if (!body.email || !body.credits) return json({ ok: false, error: "email and credits required" }, { status: 400 });
+    const { ledgerApply } = await import("./ledger");
+    const balance = await ledgerApply(env.LEDGER, body.email, "grant", body.credits, "admin-grant");
+    return json({ ok: true, balance });
+  }
   if (path === "/api/gateway/chat" && req.method === "POST") {
     const session = await openSession(env, req);
     if (!session) return json({ ok: false, error: "sign in first" }, { status: 401 });

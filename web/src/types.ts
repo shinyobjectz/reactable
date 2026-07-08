@@ -20,6 +20,7 @@ export interface Env {
   DRIVE_CLIENT_SECRET?: string;
   META_APP_ID?: string;
   META_APP_SECRET?: string;
+  ADMIN_KEY?: string;
 }
 
 // Live account state — written by billing webhooks, read by /api/auth/me.
