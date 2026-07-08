@@ -34,9 +34,9 @@ client :settings do
     .row:hover .getkey { display: inline; }
     .row .getkey:hover { color: #fff; }
     .row .getkey + .chev { margin-left: 0; }
-    .procard { display: flex; align-items: center; gap: 11px; margin: -10px 18px 0; padding: 16px 8px 8px 12px; border-radius: 0 0 12px 12px; background: #161616; border: 1px solid #242424; border-top: 0; }
-    .pc-left { display: flex; flex-direction: column; align-items: center; gap: 4px; flex-shrink: 0; align-self: center; }
-    .pc-vpro { writing-mode: vertical-rl; transform: rotate(180deg); font: 900 9px inherit; letter-spacing: .16em; color: #8a8a8f; }
+    .procard { display: flex; align-items: center; gap: 12px; margin: -10px 18px 0; padding: 15px 12px 9px 14px; border-radius: 0 0 12px 12px; background: #161616; border: 1px solid #242424; border-top: 0; }
+    .pc-left { display: flex; flex-direction: column; align-items: center; gap: 3px; flex-shrink: 0; }
+    .pc-vpro { writing-mode: vertical-rl; transform: rotate(180deg); font: 900 8px inherit; letter-spacing: .18em; color: #6f6f74; }
     .pc-coin { display: flex; align-items: center; justify-content: center; width: 19px; height: 19px; border-radius: 50%; flex-shrink: 0; color: #5c5c62; font-size: 14px; line-height: 19px; padding-bottom: 1px; text-shadow: 0 -1px 0.5px rgba(0,0,0,.7), 0 1px 0.5px rgba(255,255,255,1);
       background:
         radial-gradient(circle at 32% 28%, rgba(255,255,255,.9), rgba(255,255,255,0) 42%),
@@ -46,16 +46,16 @@ client :settings do
     .pc-mid { flex: 1; min-width: 0; }
     .pc-copy { color: #9a9a9a; font-size: 11px; line-height: 1.45; }
     .pc-lead { color: #d9d9d9; font-weight: 700; }
-    .ticker { position: relative; display: flex; align-items: center; margin-top: 5px; overflow: hidden; cursor: pointer; mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); }
+    .ticker { position: relative; display: flex; align-items: center; margin-top: 6px; overflow: hidden; cursor: pointer; mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); }
     .ttrack { display: flex; align-items: center; gap: 12px; white-space: nowrap; animation: tickerScroll 22s linear infinite; padding-right: 12px; }
     .ticker:hover .ttrack { animation-play-state: paused; }
-    .titem { display: inline-flex; align-items: center; gap: 5px; color: #7a7a7a; font: 600 10px inherit; }
-    .titem .ticon { width: 11px; height: 11px; fill: currentColor; flex-shrink: 0; }
+    .titem { display: inline-flex; align-items: center; gap: 4px; color: #5f5f64; font: 600 9.5px inherit; }
+    .titem .ticon { width: 10px; height: 10px; fill: currentColor; flex-shrink: 0; }
     .tdot { color: #333; }
     @keyframes tickerScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-    .pc-cta { display: flex; flex-direction: column; align-items: center; gap: 3px; flex-shrink: 0; }
-    .pc-price { font: 700 11px inherit; color: #d9d9d9; }
-    .pc-price span { color: #6f6f6f; font-weight: 600; font-size: 9.5px; }
+    .pc-cta { display: flex; flex-direction: column; align-items: center; gap: 4px; flex-shrink: 0; padding-left: 2px; }
+    .pc-price { font: 700 10.5px inherit; color: #b9b9b9; letter-spacing: .01em; }
+    .pc-price span { color: #616161; font-weight: 600; font-size: 9px; }
     .gopro { position: relative; overflow: hidden; flex-shrink: 0; border: 1px solid #333; border-radius: 999px; padding: 7px 13px; background: #202020; color: #f0f0f0; font: 700 11.5px inherit; cursor: pointer; }
     .gopro::after { content: ''; position: absolute; top: 0; bottom: 0; left: -60%; width: 40%; background: linear-gradient(105deg, transparent, rgba(255,255,255,.14), transparent); transform: skewX(-18deg); animation: shine 3.4s ease-in-out infinite; }
     @keyframes shine { 0%, 55% { left: -60%; } 85%, 100% { left: 130%; } }
