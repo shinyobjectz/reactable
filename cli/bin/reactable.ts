@@ -17,6 +17,7 @@ import {
 import { scaffoldHyperframes, hfDir } from "../lib/hf.ts";
 import { renderWaveletTake } from "../lib/wavelet.ts";
 import { renderWalkthrough } from "../lib/walkthrough.ts";
+import { COMPONENTS, byName, demoPage } from "../../registry/wavelet-ui/components.ts";
 import {
   assertProject,
   apiBase,
@@ -970,6 +971,32 @@ try {
   if (cmd === "take") {
     if (sub === "hf" && third === "init") process.exit(cmdTakesHfInit(fourth));
     if (sub === "hf" && third === "render") process.exit(cmdTakesHfRender(fourth));
+  }
+
+  if (cmd === "ui") {
+    if (sub === "list") {
+      COMPONENTS.forEach((c) => console.log(`${c.name.padEnd(22)} ${c.category.padEnd(10)} ${c.title}${c.filterDependent ? " (filter-dependent)" : ""}`));
+      process.exit(0);
+    }
+    if (sub === "show" && third) {
+      const c = byName.get(third);
+      if (!c) { console.error(`unknown component: ${third}`); process.exit(1); }
+      jsonOut({ name: c.name, title: c.title, category: c.category, description: c.description, source: `remocn/${c.source}`, filterDependent: !!c.filterDependent, props: c.props });
+      process.exit(0);
+    }
+    if ((sub === "demo" || sub === "add") && third) {
+      const c = byName.get(third);
+      if (!c) { console.error(`unknown component: ${third}`); process.exit(1); }
+      const defaults = Object.fromEntries(Object.entries(c.props).map(([k, v]) => [k, v.default]));
+      const props = sub === "demo" ? { ...defaults, ...c.demoProps } : { ...defaults, ...(flags.props ? JSON.parse(String(flags.props)) : {}) };
+      const page = demoPage(c.generate(props), { title: c.title });
+      const out = fourth || `${c.name}.html`;
+      writeFileSync(out, page);
+      console.log(out);
+      process.exit(0);
+    }
+    console.error("usage: reactable ui list | show <name> | demo <name> [out.html] | add <name> --props '{...}' [out.html]");
+    process.exit(1);
   }
 
   if (cmd === "walkthrough") {

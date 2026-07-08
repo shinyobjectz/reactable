@@ -100,13 +100,25 @@ if (!CHROME || !existsSync(CHROME)) {
 }
 mkdirSync(WORK, { recursive: true });
 
-const comps = readdirSync(CORPUS).filter((f) => f.endsWith(".html") && !f.endsWith(".norm.html"));
+const REGISTRY = join(CORPUS, "registry");
+const comps: { file: string; dir: string }[] = [
+  ...readdirSync(CORPUS).filter((f) => f.endsWith(".html") && !f.endsWith(".norm.html")).map((f) => ({ file: f, dir: CORPUS })),
+  ...(existsSync(REGISTRY) ? readdirSync(REGISTRY).filter((f) => f.endsWith(".html")).map((f) => ({ file: f, dir: REGISTRY })) : []),
+];
+// wavelet-ui comps that use CSS filter: — render-core paints filter as no-op
+// until the filter pass lands, so they are expected fidelity gaps vs Chrome.
+try {
+  const { COMPONENTS } = await import("../registry/wavelet-ui/components.ts");
+  // filterDependent comps SETTLE to filter-none end states, so they gate clean;
+  // only comps broken at the settled state are expected-fail here.
+  for (const c of COMPONENTS) if (c.gateGap) KNOWN_GAPS[c.name] = c.gateGap;
+} catch {}
 type Row = { name: string; ssim: number; threshold: number; deterministic: boolean; pass: boolean };
 const rows: Row[] = [];
 
-for (const file of comps) {
+for (const { file, dir } of comps) {
   const name = file.replace(/\.html$/, "");
-  const norm = normalizedComp(join(CORPUS, file), name);
+  const norm = normalizedComp(join(dir, file), name);
   const threshold = SSIM_THRESHOLDS[name] ?? DEFAULT_THRESHOLD;
 
   // chrome truth (virtual-time lets CSS animations settle to their final state
