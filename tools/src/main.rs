@@ -8,6 +8,7 @@ mod mlx_stt;
 mod mlx_tts;
 mod transcribe;
 mod vad;
+mod wavelet;
 
 use clap::{Parser, Subcommand};
 use std::process;
@@ -105,6 +106,26 @@ enum Commands {
         #[arg(long)]
         stop: bool,
     },
+    /// Deterministic HTML-comp -> video via native wavelet-render-core
+    WaveletRender {
+        comp: String,
+        output: String,
+        #[arg(long, default_value = "1920")]
+        w: u32,
+        #[arg(long, default_value = "1080")]
+        h: u32,
+        #[arg(long, default_value = "30")]
+        fps: u32,
+        #[arg(long, default_value = "2.0")]
+        duration: f64,
+        #[arg(long)]
+        lossless: bool,
+        #[arg(long)]
+        keep_frames: bool,
+        /// TTF/OTF replacing the bundled Geist (match the deck's real font)
+        #[arg(long)]
+        font: Option<String>,
+    },
 }
 
 fn main() {
@@ -156,6 +177,17 @@ fn main() {
         Commands::AgentPull { model } => agent::pull(model.as_deref()),
         Commands::AgentRm { model } => agent::remove(&model),
         Commands::AgentServe { stop } => agent::serve(stop),
+        Commands::WaveletRender {
+            comp,
+            output,
+            w,
+            h,
+            fps,
+            duration,
+            lossless,
+            keep_frames,
+            font,
+        } => wavelet::render(&comp, &output, w, h, fps, duration, lossless, keep_frames, font.as_deref()),
     };
     process::exit(code);
 }

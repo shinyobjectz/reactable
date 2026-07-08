@@ -16,6 +16,10 @@ sha2 = "0.10"
 hex = "0.4"
 regex = "1"
 ureq = { version = "2", features = ["json"] }
+# Exploration checkout (workbooks-wasmvideo worktree) so render-core edits (font fixes,
+# frame-loop) land in the worktree, never the main workbooks tree. Flip to
+# ../../../../workbooks/nexus/... when the exploration merges.
+wavelet-render-core = { path = "../../../../workbooks-wasmvideo/nexus/wasm-video/crates/wavelet-render-core" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 voice-stt = "0.1"
