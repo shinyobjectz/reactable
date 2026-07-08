@@ -2,6 +2,7 @@ import type { Env, CliChallenge, Session } from "./types";
 import { billingCheckout, billingPortal, polarWebhook, userRecord } from "./billing";
 import { gatewayBalance, gatewayChat } from "./gateway";
 import { driveCallback, driveConnect, driveFile, driveList, driveStatus } from "./drive";
+import { metaCallback, metaConnect, metaGraph, metaStatus } from "./meta";
 import { ledgerBalance } from "./ledger";
 export { CreditLedger } from "./ledger";
 import {
@@ -287,6 +288,18 @@ async function handle(req: Request, env: Env, ctx: ExecutionContext): Promise<Re
   // Pro integrations: signed-in + pro plan. The callback is unauthenticated
   // by nature (state carries the binding).
   if (path === "/api/drive/callback" && req.method === "GET") return driveCallback(req, env);
+  if (path === "/api/meta/callback" && req.method === "GET") return metaCallback(req, env);
+  if (path.startsWith("/api/meta/") && req.method === "GET") {
+    const session = await openSession(env, req);
+    if (!session) return json({ ok: false, error: "sign in first" }, { status: 401 });
+    const record = await userRecord(env, session.email);
+    if (record.plan !== "pro") {
+      return json({ ok: false, error: "Meta is part of Pro", upgrade: "/pro" }, { status: 402 });
+    }
+    if (path === "/api/meta/connect") return metaConnect(session.email, env);
+    if (path === "/api/meta/status") return metaStatus(session.email, env);
+    if (path === "/api/meta/graph") return metaGraph(session.email, req, env);
+  }
   if (path.startsWith("/api/drive/") && req.method === "GET") {
     const session = await openSession(env, req);
     if (!session) return json({ ok: false, error: "sign in first" }, { status: 401 });

@@ -1878,6 +1878,25 @@ server :reactable_api do
     end
   end
 
+  defp run_connector_tool(%{"provider" => "meta"} = args) do
+    case reactable_session() do
+      nil ->
+        %{ok: false, error: "meta needs a signed-in Reactable account — Settings → Sign in"}
+
+      {base, token} ->
+        params = if is_map(args["params"]), do: args["params"], else: %{}
+        params = Map.put(params, "path", to_string(args["path"] || "/me/adaccounts"))
+        query = params |> Enum.map_join("&", fn {k, v} -> "#{URI.encode_www_form(to_string(k))}=#{URI.encode_www_form(to_string(v))}" end)
+        url = base <> "/api/meta/graph?" <> query
+        headers = [{"cookie", "reactable_session=" <> token}]
+
+        case http_request(:get, url, headers, nil) do
+          {:ok, status, body} -> %{ok: status < 300, status: status, body: String.slice(body, 0, 12000)}
+          {:error, e} -> %{ok: false, error: e}
+        end
+    end
+  end
+
   defp run_connector_tool(args) do
     provider = to_string(args["provider"] || "")
     key = to_string(connector_keys()[provider] || "")
@@ -2072,7 +2091,7 @@ server :reactable_api do
   # Connector docs only for providers the user has actually connected.
   defp connector_tool_doc do
     providers = connected_providers()
-    providers = if reactable_session(), do: providers ++ ["drive"], else: providers
+    providers = if reactable_session(), do: providers ++ ["drive", "meta"], else: providers
 
     case providers do
       [] ->
