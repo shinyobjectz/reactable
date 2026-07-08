@@ -5,6 +5,7 @@ Gemma runs in `reactable-tools` (Rust MLX).
 
 client :agent do
   <style>
+    #index-work, section.file { all: unset; display: block; width: 100%; max-width: none; margin: 0; padding: 0; }
     * { box-sizing: border-box; }
     html, body {
       margin: 0; height: 100%; overflow: hidden;

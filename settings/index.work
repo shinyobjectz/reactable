@@ -2,6 +2,7 @@
 
 client :settings do
   <style>
+    #index-work, section.file { all: unset; display: block; width: 100%; max-width: none; margin: 0; padding: 0; }
     * { box-sizing: border-box; margin: 0; }
     html, body { height: 100%; background: #141414; color: #e7e7e7; font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; user-select: none; }
     .wrap { display: flex; flex-direction: column; height: 100%; }
