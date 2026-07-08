@@ -48,7 +48,19 @@
   td b { color:var(--ink); font-weight:500; }
   #gate { padding:130px 40px; color:var(--dim); text-align:center; }
   #app { display:none; }
-  @media (max-width:760px) { .shell { grid-template-columns:1fr; } aside { position:static; height:auto; flex-direction:row; flex-wrap:wrap; } aside .foot { margin:0; border:0; padding:0; } main { padding:28px 22px 70px; } }
+  .tscroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  @media (max-width:820px) {
+    .shell { grid-template-columns:1fr; }
+    aside { position:sticky; top:0; z-index:30; height:auto; flex-direction:row; align-items:center; gap:8px; flex-wrap:nowrap; padding:11px 14px; border-right:0; border-bottom:1px solid var(--line); background:rgba(16,16,16,.9); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+    aside::-webkit-scrollbar { display:none; }
+    .brand { position:sticky; left:0; z-index:1; margin:0; padding:6px 16px 6px 6px; background:linear-gradient(90deg,#101010 60%,rgba(16,16,16,0)); }
+    .brand .word { display:none; }
+    aside a.nv { flex-shrink:0; white-space:nowrap; min-height:44px; padding:0 15px; border:1px solid var(--line); border-radius:999px; font-size:12.5px; }
+    aside a.nv.on { background:#161615; border-color:#33322f; color:var(--ink); }
+    aside .foot { margin:0; border:0; padding:0; flex-shrink:0; }
+    main { padding:26px 20px 90px; max-width:none; }
+    table { min-width:520px; }
+  }
 </style></head><body>
 <div class="shell">
 <aside>
@@ -68,8 +80,8 @@
 <div id="app">
   <h1>Publishing <em>queue.</em></h1><p class="sub">Everything the agent has shipped or scheduled — edit, reschedule, or pull it back before it goes public.</p>
   <div class="card" style="margin-top:34px">
-    <table><thead><tr><th>Take</th><th>Channel</th><th>State</th><th>Publish at</th><th></th></tr></thead>
-    <tbody id="rows"></tbody></table>
+    <div class="tscroll"><table><thead><tr><th>Take</th><th>Channel</th><th>State</th><th>Publish at</th><th></th></tr></thead>
+    <tbody id="rows"></tbody></table></div>
     <div class="empty" id="none" style="display:none;margin-top:8px">Nothing in the queue. Record a take and tell the agent:<br/><b style="color:var(--dim)">&ldquo;post it to YouTube tomorrow at 9am&rdquo;</b></div>
   </div>
 </div>

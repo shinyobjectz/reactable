@@ -1,6 +1,6 @@
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Reactable Pro — next-generation content intelligence</title>
-<meta name="description" content="Connect YouTube, Meta, and Drive. Research any creator. Ask the agent to ship the video. $20/mo."/><link rel="preconnect" href="https://api.fontshare.com"/><link href="https://api.fontshare.com/v2/css?f[]=sentient@300,301,400,401&display=swap" rel="stylesheet"/><link rel="preconnect" href="https://fonts.googleapis.com"/><link href="https://fonts.googleapis.com/css2?family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<meta name="description" content="Connect YouTube, Meta, and Drive. Research any creator. Describe the video; the agent ships it. $100/mo."/><link rel="preconnect" href="https://api.fontshare.com"/><link href="https://api.fontshare.com/v2/css?f[]=sentient@300,301,400,401&display=swap" rel="stylesheet"/><link rel="preconnect" href="https://fonts.googleapis.com"/><link href="https://fonts.googleapis.com/css2?family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
   :root { --ink:#e9e7e2; --dim:#8f8d88; --faint:#4a4947; --bg:#101010; --card:#141414; --line:#232220; --green:#7dd08b; --metal:linear-gradient(135deg,#b9b9bd,#f2f2f4 38%,#97979d 62%,#dedee2); }
   * { box-sizing:border-box; margin:0; }
@@ -21,15 +21,29 @@
   @keyframes shine { 0%,55%{left:-60%} 85%,100%{left:130%} }
   @keyframes rise { from { opacity:0; transform:translateY(16px); } to { opacity:1; } }
 
-  /* hero — asymmetric, coin off-axis */
-  .hero { display:grid; grid-template-columns:1.4fr .6fr; gap:56px; align-items:center; padding:120px 0 90px; }
+  /* hero — copy stacked, video player centerpiece */
+  .hero { max-width:680px; padding:118px 0 8px; }
+  .hero .kicker { display:block; margin-bottom:18px; }
   .hero h1 { font:300 clamp(34px,4.8vw,56px)/1.1 Sentient, Georgia, serif; letter-spacing:-.01em; animation:rise .7s .05s both; }
   .hero h1 em { font-style:italic; font-weight:400; }
-  .hero .sub { color:var(--dim); max-width:460px; margin-top:28px; animation:rise .7s .15s both; }
+  .hero .sub { color:var(--dim); max-width:520px; margin-top:28px; animation:rise .7s .15s both; }
   .hero .cta { display:flex; gap:18px; margin-top:44px; align-items:center; animation:rise .7s .25s both; }
   .price { font:400 26px Sentient, Georgia, serif; } .price span { font:400 12.5px "Spline Sans Mono",monospace; color:var(--dim); }
-  .coin { width:120px; height:120px; border-radius:50%; margin:0 auto; background:var(--metal); border:1px solid #6f6f74; box-shadow:inset 0 4px 6px rgba(255,255,255,.9), inset 0 -6px 8px rgba(0,0,0,.45), 0 18px 50px rgba(0,0,0,.65); display:flex; align-items:center; justify-content:center; color:#5c5c62; font-size:54px; text-shadow:0 -2px 2px rgba(0,0,0,.6),0 2px 2px #fff; animation:spin 1.1s cubic-bezier(.2,1.3,.4,1) both; }
-  @keyframes spin { from { opacity:0; transform:rotateY(140deg) translateY(-24px); } }
+
+  /* hero video player — app chrome + coin play affordance */
+  .player { position:relative; width:100%; max-width:880px; margin:8px auto 0; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 30px 80px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.05); overflow:hidden; animation:rise .7s .35s both; }
+  .pstrip { display:flex; align-items:center; justify-content:center; gap:3px; height:30px; position:relative; border-bottom:1px solid #201f1d; }
+  .pstrip i { width:3px; height:3px; border-radius:50%; background:rgba(255,255,255,.16); }
+  .pstrip .pt { position:absolute; left:15px; font-size:10.5px; color:#6f6d68; letter-spacing:.02em; }
+  .pstrip .px { position:absolute; right:13px; color:#5a5a58; font-size:11px; }
+  .pframe { position:relative; aspect-ratio:16/9; background:#0b0b0b; }
+  .pframe video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; background:#0b0b0b; }
+  .pplay { position:absolute; inset:0; margin:auto; width:78px; height:78px; border-radius:50%; padding:0; cursor:pointer; background:var(--metal); border:1px solid #6f6f74; box-shadow:inset 0 2px 3px rgba(255,255,255,.9), inset 0 -3px 4px rgba(0,0,0,.45), 0 14px 36px rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; transition:transform .45s cubic-bezier(.2,.8,.2,1); }
+  .pplay svg { width:27px; height:27px; margin-left:5px; fill:#3d3d41; filter:drop-shadow(0 1px 0 rgba(255,255,255,.55)); }
+  .pplay:hover { transform:scale(1.06); }
+  .pplay:focus-visible { outline:2px solid #d7d7db; outline-offset:5px; }
+  .player.playing .pplay { opacity:0; pointer-events:none; }
+  .pcap { text-align:center; color:var(--faint); font-size:11.5px; margin:16px 0 40px; }
 
   /* features — alternating asymmetric rows, mock-UI vignettes */
   .feat { display:grid; grid-template-columns:.9fr 1.1fr; gap:72px; align-items:center; padding:110px 0; border-top:1px solid var(--line); }
@@ -65,21 +79,45 @@
   .mini { width:26px; height:26px; border-radius:50%; background:var(--metal); border:1px solid #6f6f74; display:inline-flex; align-items:center; justify-content:center; color:#5c5c62; font-size:12px; box-shadow:inset 0 1px 2px rgba(255,255,255,.85), inset 0 -2px 2px rgba(0,0,0,.4); text-shadow:0 -1px 1px rgba(0,0,0,.6),0 1px 1px #fff; }
   .fine { text-align:center; color:var(--faint); font-size:12px; padding-bottom:150px; }
   .fine a { color:var(--dim); }
-  @media (max-width:760px) { .hero, .feat, .feat.rev, .plans { grid-template-columns:1fr; } .coin { width:84px; height:84px; font-size:38px; } }
+  @media (max-width:760px) {
+    .wrap { padding:0 20px; }
+    header { padding:20px 0; }
+    nav { gap:16px; }
+    nav a:nth-child(1) { display:none; }
+    .hero { padding:96px 0 4px; }
+    .hero .sub { margin-top:22px; }
+    .hero .cta { flex-direction:column; align-items:stretch; gap:16px; margin-top:36px; }
+    .hero .cta .btn { justify-content:center; padding:15px 24px; }
+    .price { font-size:22px; }
+    .player { margin-top:32px; }
+    .pcap { margin-bottom:28px; }
+    .feat, .feat.rev { grid-template-columns:1fr; gap:34px; padding:60px 0; }
+    .feat .shot { order:2; }
+    .shot { padding:22px; }
+    .plans { grid-template-columns:1fr; gap:18px; }
+    .plan { padding:32px 24px; }
+    .plan .btn { justify-content:center; }
+    .fine { padding-bottom:90px; }
+  }
 </style></head><body><div class="wrap">
 <header><svg class="mark" width="260" height="260" viewBox="0 0 260 260" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M0.234554 0C3.01842 0.358903 12.2517 0.14986 15.6428 0.149414L47.2922 0.145508L132.066 0.146484L159.824 0.138672C165.242 0.137785 171.004 0.0368192 176.388 0.220703C199.258 0.981506 220.871 10.8775 236.388 27.6953C248.666 40.8854 256.491 57.5988 258.759 75.4756C259.234 79.2057 259.577 82.4762 259.445 86.2207C257.902 88.3296 253.81 92.1967 251.761 94.2373L238.508 107.467L191.385 154.631L181 164.979C178.644 167.33 175.576 170.179 173.704 172.854L259.515 172.823L259.527 259.472C239.445 259.087 218.573 259.352 198.416 259.361L182.244 259.401C179.647 259.408 175.298 259.553 172.908 259.229C169.864 256.421 166.646 253.07 163.695 250.124L147.208 233.637C127.142 213.584 106.928 192.981 86.6291 173.22L86.6418 259.468C73.8499 259.194 60.5796 259.359 47.7609 259.359C31.8649 259.304 15.9681 259.334 0.0724443 259.449C0.261371 257.579 0.125693 253.601 0.121272 251.543L0.118343 236.431L0.11346 196.806C0.109702 189.09 -0.0688427 180.71 0.242366 173.063C2.35059 170.354 7.0319 165.966 9.59881 163.417L25.5324 147.509L62.4904 110.57C70.5494 102.61 78.5265 94.5671 86.4211 86.4434C83.8014 86.6854 79.2746 86.5617 76.5549 86.5615L58.9523 86.5576L0.20721 86.6035C-0.356649 65.4227 0.444868 43.9321 0.121272 22.7217C0.00699665 15.2365 0.0258954 7.47987 0.234554 0ZM86.7697 86.5723C86.2452 96.6121 86.6343 109.917 86.6232 120.141C86.6049 137.502 86.4465 155.265 86.6779 172.603C89.434 172.973 94.5764 172.852 97.5119 172.852L115.314 172.84C134.481 172.833 153.912 173.019 173.054 172.821L173.052 86.5791L86.7697 86.5723Z" fill="white"/>
 </svg><span class="word">Reactable</span><nav><a href="/#studio">Studio</a><a href="/dashboard">Dashboard</a><a href="/download/Reactable.dmg">Download</a></nav></header>
 
 <div class="hero">
-  <div>
-    <div class="kicker">Reactable Pro</div>
-    <h1>The recorder is free.<br/><em>The machine is Pro.</em></h1>
-    <p class="sub">Pro connects your channels, your ad account, and a research engine to the agent that already lives in your studio — so "make the video" becomes one sentence.</p>
-    <div class="cta"><a class="btn light" href="/api/billing/checkout">Go Pro</a><span class="price">$20<span>/month · cancel anytime</span></span></div>
-  </div>
-  <div class="coin">&#10022;</div>
+  <div class="kicker">Reactable Pro</div>
+  <h1>Your whole channel,<br/><em>run by one agent.</em></h1>
+  <p class="sub">Pro wires your YouTube channels, ad accounts, and Google Drive into the built-in agent, then adds a research engine that studies any creator. You describe the video; it researches, assembles, and ships. "Make the cut" becomes one sentence.</p>
+  <div class="cta"><a class="btn light" href="/api/billing/checkout">Go Pro</a><span class="price">$100<span>/month · cancel anytime</span></span></div>
 </div>
+<div class="player" id="player">
+  <div class="pstrip"><span class="pt">reactable-demo.mp4</span><i></i><i></i><i></i><i></i><i></i><i></i><span class="px">&#10005;</span></div>
+  <div class="pframe">
+    <video id="pvid" playsinline preload="none" poster="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1280' height='720'%3E%3Cdefs%3E%3CradialGradient id='s' cx='50%25' cy='-6%25' r='78%25'%3E%3Cstop offset='0' stop-color='%231c1c1c'/%3E%3Cstop offset='0.7' stop-color='%23101010'/%3E%3C/radialGradient%3E%3C/defs%3E%3Crect width='1280' height='720' fill='url(%23s)'/%3E%3Cpath d='M640 104 L648 128 L672 136 L648 144 L640 168 L632 144 L608 136 L632 128 Z' fill='%23272725'/%3E%3Ctext x='640' y='556' fill='%236a6863' font-family='Georgia, serif' font-size='30' font-style='italic' text-anchor='middle'%3Edescribe the video. the agent makes it.%3C/text%3E%3C/svg%3E"><source src="/demo/reactable-demo.mp4" type="video/mp4"/></video>
+    <button class="pplay" aria-label="Play the demo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button>
+  </div>
+</div>
+<p class="pcap">90 seconds: describe a video, watch the agent research, cut, and ship it.</p>
 
 <div class="feat">
   <div>
@@ -148,17 +186,21 @@
     </ul>
   </div>
   <div class="plan pro">
-    <h3><span class="mini">&#10022;</span> Pro</h3><div class="pp">$20<span>/month</span></div>
+    <h3><span class="mini">&#10022;</span> Pro</h3><div class="pp">$100<span>/month</span></div>
     <ul>
       <li><b>Everything in Free</b>, plus the connected machine:</li>
       <li><b>Post to YouTube</b> straight from the agent</li>
       <li><b>Meta campaign intelligence</b> — accounts, spend, winners</li>
       <li><b>Google Drive import</b> into project assets</li>
       <li><b>Brand &amp; consumer research</b> on any creator's content</li>
-      <li><b>2,000 credits included monthly</b> — hosted inference + research, atomic ledger</li>
+      <li><b>10,000 credits included monthly</b> — hosted inference + research, atomic ledger</li>
     </ul>
     <div style="margin-top:34px"><a class="btn light" href="/api/billing/checkout">Go Pro</a> <a class="btn ghost" style="margin-left:8px" href="/dashboard">Open dashboard</a></div>
   </div>
 </div>
 <p class="fine">Billing by Polar &middot; manage or cancel from your <a href="/dashboard">dashboard</a> &middot; your recordings never leave your Mac</p>
-</div></body></html>
+</div>
+<script>
+(function(){var p=document.getElementById('player');if(!p)return;var v=p.querySelector('video'),b=p.querySelector('.pplay');function fail(){p.classList.remove('playing');v.controls=false;}b.addEventListener('click',function(){p.classList.add('playing');v.controls=true;var r=v.play();if(r&&r.catch)r.catch(fail);});v.addEventListener('error',fail);v.addEventListener('pause',function(){if(v.currentTime===0)fail();});})();
+</script>
+</body></html>
