@@ -1,0 +1,91 @@
+# Pricing strategy — the commons and the private plane
+
+The question: subscription, credits, or both — and is the trend data a
+communal asset we build once and share, or per-user pulls? The answer falls
+out of one observation about the data itself.
+
+## The economic fact
+
+Trend data is **non-rivalrous**: "ai avatars is exploding on TikTok" is the
+same fact for every subscriber. If 500 users each snapshot overlapping
+topics, we pay the vendor 500× for identical bytes. Competitor tracking,
+deconstructions, and briefs are the opposite — **private in value** (your
+competitor list reveals your strategy) and rivalrous in cost (each pull
+serves one user).
+
+So the data splits into two planes, and the pricing follows it exactly.
+
+## Plane 1 — The Commons (what the subscription buys)
+
+A living, centrally-collected trend index — the Exploding Topics model:
+- We snapshot a curated + demand-seeded taxonomy centrally (CF cron on the
+  worker, KV/D1 series): top ~500 topics daily across TikTok/YouTube/Reddit
+  trending feeds, popular hashtags, rising audio. ~1,500 vendor calls/day —
+  a FIXED cost amortized across every subscriber, instead of a linear
+  per-user cost.
+- Every user's tracked-topic STRINGS (anonymized, opt-in) seed communal
+  discovery: what creators collectively watch is itself a trend signal no
+  individual pull could produce. Network effect: the index improves with
+  every subscriber.
+- Series get LONGER the longer we operate — a 12-month series is something
+  a new competitor cannot backfill. The commons is the moat.
+- G2's forward-validation runs on communal series at scale → publishable
+  accuracy ("our exploding calls grew 2.3× in the following 14 days") —
+  the marketing writes itself.
+
+Why this justifies a SUBSCRIPTION and not a one-time price: the asset is
+alive. You're not buying features, you're buying freshness and history.
+Cancel and the index keeps moving without you.
+
+## Plane 2 — Private intelligence (what credits buy)
+
+Marginal-cost, private-value actions, metered as today via the DO ledger:
+- Gateway inference (agent turns) — already metered.
+- Competitor tracking snapshots (their channels, their baselines).
+- Radar deep-dives, deconstructions (transcript + structure pass),
+  ad-library pulls per company.
+- These stay LOCAL (project files) per the plan — we never see competitor
+  lists or briefs. Privacy is a feature with a price of zero.
+
+## The offer (v1)
+
+- **Free** — the recorder, local agent, BYO connector keys. Unchanged; the
+  hook stays free forever.
+- **Pro $20/mo** — the intelligence suite (YouTube/Meta/Drive connections),
+  THE COMMONS (browsable graded trend index + personalized weekly brief
+  compiled from it), **and a 2,000-credit monthly allowance** so Pro feels
+  complete out of the box (~600 agent turns or ~150 research pulls).
+  Allowance resets monthly, doesn't roll over (packs do).
+- **Credit packs** — $10/5,000 · $25/15,000, purchased à la carte for power
+  use. Packs roll over forever (already true: grants are ledger deposits).
+- Later, not now: Team tier (multi-brand commons views, shared projects,
+  seats) once agencies show up.
+
+## Cost sanity
+
+Commons: ~1,500 calls/day ≈ 45k/mo vendor calls — flat, regardless of
+subscriber count; breakeven inside a handful of subscriptions. Private
+pulls: paid by the credit that triggered them, with margin (3cr ≈ 2–4×
+vendor cost). Inference: MiniMax per-token cost carries ~2–3× margin at
+1cr/1k tokens. The allowance costs us at most ~$3–4/user/mo if fully
+consumed — most users won't.
+
+## Data policy (state it plainly, it's a selling point)
+
+Private stays local: competitor lists, briefs, deconstructions, takes never
+leave the machine. The commons ingests only anonymized topic strings, and
+only with the toggle on (Settings → Account). No user content trains
+anything.
+
+## Implementation deltas (small, later)
+
+1. Worker cron: communal snapshot job + `commons:` KV/D1 series (reuses the
+   intel grading — same pure function, run centrally).
+2. `/api/commons/trends` (Pro-gated) — the browsable index; `intel trends`
+   merges communal grades with local tracks (local wins on overlap).
+3. Ledger: monthly allowance = scheduled grant of 2,000 with ref
+   `allowance:YYYY-MM` (idempotent by ref, webhook-independent).
+4. Polar: keep Pro product as-is; packs as-is. No usage-based migration
+   needed — the DO ledger already IS the meter; revisit Polar meters only
+   if we want usage shown in THEIR portal.
+5. Anonymized seeding toggle in Settings; default off until policy page.
