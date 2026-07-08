@@ -22,7 +22,7 @@ Determinism is architecture (`resolve(frame/fps)` CSS clock), not runtime — by
 
 **P0 — DONE (2026-07-07).** Chain proven under wasmtime: reactable showcase slides (verbatim stage CSS) → render_seq.wasm → 72×1080p PNG (1.6–2.3s) → wb_encode.wasm → playable mp4 (6.3s). Byte-identical re-renders. Fidelity vs Chrome: structurally identical; deltas = bundled-font metrics + repro'd `ui-*` generic-family bug (zero glyphs when `ui-monospace` is the only family). Full record: workbooks worktree `experiments/wasm-video-p0/FINDINGS.md`.
 
-**P1′ — native render verb (reactable-tools).**
+**P1′ — native render verb (reactable-tools). SHIPPED 2026-07-07.** 297ms/72f@1080p30; ui-* fix + font seam landed in render-core (submodule branch explore/wavelet-render-core).
 - `reactable-tools wavelet render <comp.html> <out.mp4|frames-dir> --w --h --fps --duration [--lossless]`
 - Path dep on wavelet-render-core (cross-repo path dep, same pattern as the nexus sidecar); frames → ffmpeg encode via existing `ffmpeg_util`
 - Port the frame-loop from the monolith (reuse parsed document across `resolve(t)` calls instead of re-parse-per-frame)
@@ -30,7 +30,7 @@ Determinism is architecture (`resolve(frame/fps)` CSS clock), not runtime — by
 - Parity check: native frames vs wasmtime frames (float drift acceptable, layout must match)
 - Do NOT touch the root `wavelet` monolith (missing vendor/{blitz-paint,stylo} — rabbit hole); render-core only
 
-**P2 — take compiler.**
+**P2 — take compiler. SHIPPED v1 2026-07-07** (fixture-validated; real-take validation pending — takes dir was empty). Deck-API empty-prose-body quirk found, investigate in sidecar.
 `take → comp.html`: deck slides JSON + events.jsonl → one CSS-keyframe comp (sketch: workbooks worktree `experiments/wasm-video-p0/P2-TAKE-COMPILER.md`).
 - Slide track: hard-cut visibility keyframes per `slide` event; prose/client/html slides inline stage HTML+CSS verbatim
 - Cursor path (20Hz events → translate keyframes, decimated), click ripples, auto-zoom = port composite.py smoothstep math to keyframes — all data-driven, fits the CSS-only deterministic clock
@@ -39,10 +39,10 @@ Determinism is architecture (`resolve(frame/fps)` CSS clock), not runtime — by
 - Wire as `reactable takes render <id> --engine wavelet` beside the ffmpeg/HyperFrames lanes
 - Pixel fallback stays for iframe/dev/youtube/video slides (until P3 snapshots)
 
-**P3 — agent walkthrough recorder (the showcase).**
+**P3 — agent walkthrough recorder. v1 SHIPPED 2026-07-07** (`walkthrough render` + live /projects-panel demo, docs/demos/). Backlog: font:inherit shorthand text drops, http asset injection, recorder-side capture skill.
 Agent drives a dev server/browser (chrome-devtools MCP / agent-browser) → logs step events + per-step DOM snapshot (extend the existing HAR capture + `/reactable/blitz/replay` seam; rrweb-style mutation log later) → take compiler → video tutorial. No screen recorder anywhere. Demo: "agent records a narrated tutorial of your app." All local Rust + Bun CLI — no nexus dependency.
 
-**P4 — lossless + delivery.**
+**P4 — lossless + delivery. SHIPPED with P1′** (`--lossless` = qp0+yuv444p, verified).
 Native ffmpeg makes this trivial (the wb_encode yuv420p limitation is gone): `--lossless` = libx264 `-qp 0` yuv444p or FFV1/ProRes master + crf18 delivery proxy. PNG/WebP frame dir remains the archival master when wanted.
 
 **P5 — parked: nexus/cloud lane.**
