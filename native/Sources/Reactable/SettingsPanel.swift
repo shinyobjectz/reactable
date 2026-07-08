@@ -22,7 +22,7 @@ final class SettingsPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
 
     func open() {
         if window == nil {
-            let size = NSSize(width: 460, height: 520)
+            let size = NSSize(width: 530, height: 560)
             let win = KeyableWindow(
                 contentRect: NSRect(origin: .zero, size: size),
                 styleMask: [.borderless, .fullSizeContentView, .resizable],
@@ -48,7 +48,7 @@ final class SettingsPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
         }
         guard let win = window, let screen = NSScreen.main else { return }
         let f = screen.visibleFrame
-        win.setFrameOrigin(NSPoint(x: f.midX - 230, y: f.midY - 220))
+        win.setFrameOrigin(NSPoint(x: f.midX - 265, y: f.midY - 240))
         NSApp.activate(ignoringOtherApps: true)
         win.makeKeyAndOrderFront(nil)
     }
