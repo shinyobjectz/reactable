@@ -1,4 +1,5 @@
 import type { Env, CliChallenge, Session } from "./types";
+import { billingCheckout, billingPortal, polarWebhook, userRecord } from "./billing";
 import {
   clearSessionCookie,
   json,
@@ -132,10 +133,17 @@ async function googleCallback(req: Request, env: Env): Promise<Response> {
 async function authMe(req: Request, env: Env): Promise<Response> {
   const session = await openSession(env, req);
   if (!session) return json({ ok: true, signedIn: false });
+  const record = await userRecord(env, session.email);
   return json({
     ok: true,
     signedIn: true,
-    user: { email: session.email, name: session.name, picture: session.picture, plan: session.plan },
+    user: {
+      email: session.email,
+      name: session.name,
+      picture: session.picture,
+      plan: record.plan,
+      credits: record.credits,
+    },
     youtube: Boolean(session.youtube?.accessToken),
   });
 }
@@ -260,6 +268,22 @@ async function handle(req: Request, env: Env): Promise<Response> {
   if (path === "/api/auth/me" && req.method === "GET") return authMe(req, env);
   if (path === "/api/auth/logout" && req.method === "GET") return authLogout(req, env);
   if (path === "/api/auth/cli/start" && req.method === "POST") return cliStart(req, env);
+  if (path === "/api/webhooks/polar" && req.method === "POST") return polarWebhook(req, env);
+  if ((path === "/api/billing/checkout" || path === "/pro") && req.method === "GET") {
+    const session = await openSession(env, req);
+    if (!session) {
+      return new Response(null, {
+        status: 302,
+        headers: { location: `/api/auth/login?next=${encodeURIComponent("/pro")}` },
+      });
+    }
+    return billingCheckout(session.email, env);
+  }
+  if (path === "/api/billing/portal" && req.method === "GET") {
+    const session = await openSession(env, req);
+    if (!session) return json({ ok: false, error: "sign in first" }, { status: 401 });
+    return billingPortal(session.email, env);
+  }
   if (path === "/api/auth/cli/poll" && req.method === "POST") return cliPoll(req, env);
   if (path === "/api/download" && req.method === "GET") return downloadInfo(req, env);
   if (path === "/download/Reactable.dmg" && req.method === "GET") return downloadDmg(req, env);

@@ -9,6 +9,19 @@ export interface Env {
   YOUTUBE_CLIENT_ID?: string;
   YOUTUBE_CLIENT_SECRET?: string;
   SESSION_SECRET: string;
+  POLAR_ACCESS_TOKEN?: string;
+  POLAR_WEBHOOK_SECRET?: string;
+  POLAR_PRODUCT_PRO?: string;
+  POLAR_API?: string;
+}
+
+// Live account state — written by billing webhooks, read by /api/auth/me.
+// Sessions seal plan at login; this record is the truth that outlives them.
+export interface UserRecord {
+  plan: "free" | "pro";
+  credits: number;
+  polarCustomerId?: string;
+  updatedAt: string;
 }
 
 export interface Session {
@@ -22,7 +35,7 @@ export interface Session {
     refreshToken: string;
     expiresAt: number;
   };
-  plan: "free";
+  plan: "free" | "pro";
   createdAt: number;
 }
 
@@ -31,7 +44,7 @@ export interface UserRecord {
   email: string;
   name: string;
   picture?: string;
-  plan: "free";
+  plan: "free" | "pro";
   createdAt: number;
 }
 
