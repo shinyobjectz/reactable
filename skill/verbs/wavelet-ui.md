@@ -303,6 +303,113 @@ Loading placeholder with a sweeping highlight band.
 | sweepSeconds | `1.4` | sweep cycle |
 | speed | `1` | playback multiplier |
 
+### button
+shadcn-style button state atom with an optional press-in enter.
+
+| prop | default | doc |
+|---|---|---|
+| label | `"Continue"` | button text |
+| variant | `"default"` | default|secondary|destructive|outline|ghost |
+| size | `"default"` | sm|default|lg |
+| state | `"idle"` | idle|hover|press |
+| enter | `true` | spring-scale enter animation |
+| mode | `"dark"` | light|dark theme |
+
+### input
+Text field that types its value with a live caret.
+
+| prop | default | doc |
+|---|---|---|
+| value | `"hello@example.com"` | typed text |
+| placeholder | `""` | shown before typing (static) |
+| size | `"default"` | sm|default|lg |
+| charsPerSecond | `18` | typing speed |
+| width | `320` | field px |
+| mode | `"dark"` | light|dark theme |
+
+### checkbox
+Checkbox that pops its check on at a chosen time.
+
+| prop | default | doc |
+|---|---|---|
+| label | `"Accept terms"` | label text |
+| size | `"default"` | sm|default|lg |
+| checkAtSeconds | `0.6` | when the check lands |
+| mode | `"dark"` | light|dark theme |
+
+### switch
+Toggle that flips on at a chosen time — thumb slide + track tint.
+
+| prop | default | doc |
+|---|---|---|
+| size | `"default"` | sm|default|lg |
+| toggleAtSeconds | `0.6` | when it flips |
+| label | `""` | optional label |
+| mode | `"dark"` | light|dark theme |
+
+### tabs
+Segmented tabs whose pill indicator glides to the next tab.
+
+| prop | default | doc |
+|---|---|---|
+| labels | `["Overview","Metrics","Logs"]` | tab labels |
+| from | `0` | starting tab index |
+| to | `1` | destination tab index |
+| switchAtSeconds | `0.7` | when the indicator glides |
+| width | `360` | px |
+| mode | `"dark"` | light|dark theme |
+
+### tooltip
+Tooltip that pops in above its anchor.
+
+| prop | default | doc |
+|---|---|---|
+| text | `"Copied!"` | tooltip text |
+| anchor | `"Hover me"` | anchor label |
+| showAtSeconds | `0.5` | when it appears |
+| mode | `"dark"` | light|dark theme |
+
+### toast
+Notification card that slides up and settles.
+
+| prop | default | doc |
+|---|---|---|
+| title | `"Deploy complete"` | headline |
+| body | `"Production is live on v2.4.0"` | supporting line |
+| width | `340` | px |
+| mode | `"dark"` | light|dark theme |
+
+### message-bubble
+Chat bubble that pops in — sent or received styling.
+
+| prop | default | doc |
+|---|---|---|
+| text | `"Hey! The new build is ready 🎉"` | message |
+| side | `"left"` | left (received) | right (sent) |
+| maxWidth | `380` | px |
+| mode | `"dark"` | light|dark theme |
+
+### skeleton
+Card-shaped multi-line loading skeleton with sweeping bands.
+
+| prop | default | doc |
+|---|---|---|
+| lines | `3` | text lines |
+| width | `360` | px |
+| mode | `"dark"` | light|dark theme |
+
+### spotlight-card
+Feature card with a soft radial spotlight glow.
+
+| prop | default | doc |
+|---|---|---|
+| title | `"Deterministic renders"` | headline |
+| body | `"Same input, same pixels — every time."` | supporting line |
+| glowX | `30` | % from left |
+| glowY | `0` | % from top |
+| width | `380` | px |
+| mode | `"dark"` | light|dark theme |
+
 ## background
 
 ### infinite-marquee

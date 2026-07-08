@@ -447,7 +447,8 @@ export const COMPONENTS: UIComponent[] = [
 ];
 
 import { WAVE2 } from "./wave2.ts";
-COMPONENTS.push(...WAVE2);
+import { WAVE3 } from "./wave3.ts";
+COMPONENTS.push(...WAVE2, ...WAVE3);
 
 export const byName = new Map(COMPONENTS.map((c) => [c.name, c]));
 export { demoPage } from "./lib/motion.ts";
