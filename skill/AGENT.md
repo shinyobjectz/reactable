@@ -155,6 +155,9 @@ you render or edit takes — e.g. `remove-filler: enabled` means run
 - skill/agent-skills/video-strategy.md — series/episode planning.
 - skill/agent-skills/takes-post.md — post-production lanes: takes render
   (fast) and takes hf (HyperFrames, rich).
+- skill/agent-skills/gen-media.md — WHEN to generate vs edit vs use the
+  pipeline (decision tree), prompting Veo/Omni Flash/image models,
+  anti-patterns, cost etiquette. Read BEFORE any videogen call.
 
 ## Hard rules
 

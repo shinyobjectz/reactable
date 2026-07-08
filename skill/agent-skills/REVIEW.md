@@ -49,3 +49,11 @@ Net: 6 native skills — slide-craft, island-design, slide-motion, video-copy,
 video-strategy, takes-post. DROPs remain in skill/vendored/ for human use.
 Bundling: agent-skills/ ships in dist; vendored/ deep refs resolve only in
 the dev-tree project (documented in each skill).
+
+## Addendum (2026-07-08): generative-media skills
+| skill | ruling | destination |
+|---|---|---|
+| Emily2040/nano-banana-image-skill | REF | vendored; deep prompting modules for image gen/edit |
+| maciejdzierzek/nano-banana-prompt-generator | REF | vendored; thumbnails/infographics/storyboard modes |
+| Google Veo 3.1 prompting guide (cloud blog) | ADAPT | distilled into [[gen-media]] (five-part formula, colon-dialogue, stability cues) |
+| Omni Flash docs (Interactions API) | ADAPT | [[gen-media]] edit-delta + preservation-clause patterns |

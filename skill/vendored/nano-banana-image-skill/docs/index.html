@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Nano Banana Image Skill</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Portable Gemini image prompting skill for Nano Banana Pro and Nano Banana 2.">
+  <meta property="og:title" content="Nano Banana Image Skill">
+  <meta property="og:description" content="Model-aware prompting system with schemas, examples, and runtime compiler.">
+  <meta property="og:image" content="./assets/hero-imagegen.png">
+  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+  <style>
+    :root{--bg:#0b1020;--card:#131b33;--ink:#ecf3ff;--muted:#b7c8e6;--line:#243356;--a:#7ce6ff;--b:#c4a4ff;--c:#ffd889;--max:1160px}
+    *{box-sizing:border-box} body{margin:0;font:16px/1.55 Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:linear-gradient(180deg,#0b1020,#121a30)}
+    .shell{max-width:var(--max);margin:0 auto;padding:0 20px} a{color:inherit}
+    .nav{position:sticky;top:0;z-index:10;background:rgba(11,16,32,.86);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+    .nav-inner{max-width:var(--max);margin:0 auto;padding:14px 20px;display:flex;justify-content:space-between;gap:16px;align-items:center}
+    .brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-weight:700}
+    .brand img{width:28px;height:28px}.links{display:flex;gap:14px;flex-wrap:wrap}.links a{text-decoration:none;color:var(--muted);font-size:14px}
+    .hero{padding:28px 0}.hero img{width:100%;display:block;border-radius:20px;border:1px solid var(--line)}
+    .intro{display:grid;grid-template-columns:1.2fr .8fr;gap:18px;padding:26px 0}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px}
+    h1,h2,h3{margin:0;line-height:1.15} h1{font-size:clamp(2rem,4vw,3.3rem);margin-top:12px}
+    .muted{color:var(--muted)} .eyebrow{display:inline-block;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--a)}
+    .cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:16px}.btn{display:inline-block;padding:10px 14px;border-radius:12px;border:1px solid var(--line);text-decoration:none;font-weight:600}
+    .btn.primary{background:linear-gradient(135deg,rgba(124,230,255,.14),rgba(196,164,255,.14))}
+    .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.stats div{background:#10182e;border:1px solid var(--line);border-radius:12px;padding:12px}
+    section{padding:28px 0}.section-head{display:flex;justify-content:space-between;gap:16px;align-items:end;margin-bottom:14px}
+    .grid{display:grid;gap:12px}.three{grid-template-columns:repeat(3,minmax(0,1fr))}.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .pill{display:inline-block;background:#0f1830;border:1px solid var(--line);border-radius:999px;padding:4px 8px;font-size:12px;color:var(--a);margin-bottom:10px}
+    pre{margin:0;padding:14px;background:#0b1327;border:1px solid var(--line);border-radius:12px;overflow:auto;color:#dbe9ff}
+    table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+    th,td{padding:12px;border-bottom:1px solid var(--line);text-align:left} th{background:#101936} tr:last-child td{border-bottom:none}
+    .img{width:100%;display:block;border-radius:12px;border:1px solid var(--line)}
+    footer{padding:28px 0 52px}
+    @media(max-width:980px){.intro,.three,.two{grid-template-columns:1fr}.section-head{display:block}}
+  </style>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="#top"><img src="./assets/favicon.svg" alt=""><span>Nano Banana Image Skill</span></a>
+    <div class="links">
+      <a href="#models">Models</a><a href="#runtime">Runtime</a><a href="#workflow">Workflow</a><a href="#v2-assets">ImageGen Assets</a><a href="#examples">Examples</a><a href="#install">Install</a>
+    </div>
+  </div>
+</nav>
+
+<main id="top" class="shell">
+  <section class="hero">
+    <img src="./assets/hero-imagegen.png" alt="Nano Banana Image Skill overview board">
+    <div class="intro">
+      <div>
+        <span class="eyebrow">Portable · Modular · Production-ready</span>
+        <h1>A disciplined image prompting system for Nano Banana models.</h1>
+        <p class="muted">This repository turns loose art direction into grounded prompts and compact runtime JSON. It is optimized for generation, editing, continuity, typography, and model routing.</p>
+        <div class="cta">
+          <a class="btn primary" href="#workflow">See workflow</a>
+          <a class="btn" href="#v2-assets">See generated assets</a>
+        </div>
+      </div>
+      <aside class="card">
+        <h3>Pack snapshot</h3>
+        <div class="stats" style="margin-top:10px">
+          <div><strong>20+</strong><br><span class="muted">core modules</span></div>
+          <div><strong>30+</strong><br><span class="muted">style/profile/platform overlays</span></div>
+          <div><strong>5</strong><br><span class="muted">authoring/runtime pairs</span></div>
+          <div><strong>3</strong><br><span class="muted">validation paths</span></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <section id="models">
+    <div class="section-head"><h2>Model lanes</h2><p class="muted">Pick the model intentionally based on complexity, typography load, and edit precision.</p></div>
+    <div class="grid three">
+      <article class="card"><span class="pill">Fast lane</span><h3>Nano Banana 2</h3><p><code>gemini-3.1-flash-image-preview</code></p><p class="muted">Rapid concepts, variant sweeps, quick edit loops.</p></article>
+      <article class="card"><span class="pill">Precision lane</span><h3>Nano Banana Pro</h3><p><code>gemini-3-pro-image-preview</code></p><p class="muted">Text-heavy layouts, infographics, high-fidelity preservation edits.</p></article>
+      <article class="card"><span class="pill">Compatibility</span><h3>Nano Banana</h3><p><code>gemini-2.5-flash-image</code></p><p class="muted">Simple generation tasks and legacy fallback compatibility.</p></article>
+    </div>
+  </section>
+
+  <section id="runtime">
+    <div class="section-head"><h2>Gemini runtime note</h2><p class="muted">Current public Gemini image docs use <code>generateContent</code> with text parts, inline image data, image config, and model-specific output controls.</p></div>
+    <div class="grid two">
+      <article class="card"><span class="pill">Documented image models</span><h3>API names</h3><p><code>gemini-3-pro-image-preview</code><br><code>gemini-3.1-flash-image-preview</code><br><code>gemini-2.5-flash-image</code></p></article>
+      <article class="card"><span class="pill">Runtime setup</span><h3>Before validation</h3><pre>python -m pip install -r requirements-dev.txt
+python scripts/validate_repo.py</pre></article>
+    </div>
+  </section>
+
+  <section id="workflow">
+    <div class="section-head"><h2>Workflow infographics</h2><p class="muted">Front-end now includes ImageGen and SVG process visuals aligned with the skill modules.</p></div>
+    <div class="grid two">
+      <article class="card"><img class="img" src="./assets/infographic-imagegen.png" alt="Nano Banana Image Skill workflow infographic"></article>
+      <article class="card"><img class="img" src="./assets/infographic-model-lanes-v2.svg" alt="Model lane decision infographic"></article>
+    </div>
+  </section>
+
+  <section id="v2-assets">
+    <div class="section-head"><h2>ImageGen asset prompt set</h2><p class="muted">Prompts used to create the hero and workflow infographic visual direction.</p></div>
+    <div class="grid two">
+      <article class="card"><h3>Hero prompt</h3><pre>Create a polished 16:9 hero image for an open-source image-generation skill.
+Show a cinematic AI workstation with prompt cards, reference thumbnails,
+schema blocks, and a subtle banana-yellow signal ribbon. No readable text.</pre></article>
+      <article class="card"><h3>Infographic prompt</h3><pre>Create a 16:9 five-stage workflow infographic:
+creative brief intake, reference binding, risk preflight,
+prompt/runtime compiler, and final output validation. Icons only, no text.</pre></article>
+    </div>
+  </section>
+
+  <section id="examples">
+    <div class="section-head"><h2>Example scenarios</h2><p class="muted">Authoring JSON and runtime JSON examples are paired for reproducible outputs.</p></div>
+    <div class="grid three">
+      <article class="card"><h3>Night market portrait</h3><p class="muted">Photoreal editorial portrait with controlled lighting and preservation-ready framing.</p></article>
+      <article class="card"><h3>Edo festival poster</h3><p class="muted">Readable hierarchy with movement/culture routing and text-safe composition.</p></article>
+      <article class="card"><h3>Product relight</h3><p class="muted">Identity-preserving relight + background swap with strict delta instructions.</p></article>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="section-head"><h2>Install + validate</h2><p class="muted">Use full validation when dependencies exist, and lite validation in restricted environments.</p></div>
+    <div class="grid two">
+      <article class="card"><h3>Install</h3><pre>mkdir -p ~/.agents/skills
+ln -s /path/to/nano-banana-image-skill \
+  ~/.agents/skills/nano-banana-image-skill</pre></article>
+      <article class="card"><h3>Validate</h3><pre>python -m pip install -r requirements-dev.txt
+python scripts/validate_repo.py
+python scripts/validate_repo.py --lite
+make validate-lite</pre></article>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head"><h2>Compatibility</h2><p class="muted">Single canonical skill logic with multi-agent entrypoints.</p></div>
+    <table>
+      <thead><tr><th>Client style</th><th>Primary file</th><th>Behavior</th></tr></thead>
+      <tbody>
+        <tr><td>Skill-aware agents</td><td><code>SKILL.md</code></td><td>Canonical entrypoint</td></tr>
+        <tr><td>AGENTS-style guidance</td><td><code>AGENTS.md</code></td><td>Repo workflow instructions</td></tr>
+        <tr><td>Claude memory</td><td><code>CLAUDE.md</code></td><td>Concise compatibility memory</td></tr>
+        <tr><td>Gemini memory</td><td><code>GEMINI.md</code></td><td>Imports canonical skill behavior</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer>
+    <div class="card">
+      <h3>Precise prompts. Stable outputs. Clean handoff.</h3>
+      <p class="muted">Built by Iamemily2050. Includes docs site, schemas, examples, compiler, and validators.</p>
+    </div>
+  </footer>
+</main>
+</body>
+</html>
