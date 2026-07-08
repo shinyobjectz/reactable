@@ -242,22 +242,8 @@ pub fn chat(input: &str, output: Option<&str>, model: Option<&str>, stream: bool
     };
     let model_id = model.map(|s| s.to_string()).unwrap_or_else(agent_llm::default_model);
     let mut streamed_live = false;
-    let resp = match minimax_key() {
-        Some(key) if !provider_forced_local() => {
-            let attempt = if stream { minimax_stream(&req, &key) } else { minimax_complete(&req, &key) };
-            match attempt {
-                Ok(r) => {
-                    streamed_live = stream;
-                    r
-                }
-                Err(e) => {
-                    eprintln!("minimax failed ({e}) — falling back to local model");
-                    agent_llm::complete(&req, &model_id)
-                }
-            }
-        }
-        None if !provider_forced_local() && gateway_auth().is_some() => {
-            let (base, token) = gateway_auth().unwrap();
+    let resp = match gateway_auth() {
+        Some((base, token)) if !provider_forced_local() => {
             let attempt = if stream { gateway_stream(&req, &base, &token) } else { gateway_complete(&req, &base, &token) };
             match attempt {
                 Ok(r) => {
@@ -303,7 +289,7 @@ pub fn status() -> i32 {
     // Cloud provider (MiniMax) counts as a ready agent — the panel must not
     // gate on a local model that this machine will never use.
     if !provider_forced_local() {
-        if minimax_key().is_some() {
+        if gateway_auth().map(|(_, t)| t).is_some() {
             let cfg: serde_json::Value = fs::read_to_string(reactable_dir().join("minimax.json"))
                 .ok()
                 .and_then(|t| serde_json::from_str(&t).ok())
