@@ -61,6 +61,16 @@ client :projects do
     .card:hover .fname { color: #fff; }
     .card .more { border: 0; background: none; color: #565656; cursor: pointer; font-size: 13px; flex-shrink: 0; }
     .card .more:hover { color: #fff; }
+    .dlg { position: fixed; inset: 0; z-index: 80; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; }
+    .dlg-box { width: min(300px, 86vw); background: #222; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 18px 50px rgba(0,0,0,.6); }
+    .dlg-t { font-weight: 600; }
+    .dlg-s { color: #8a8a8a; font-size: 12px; }
+    .dlg-skip { display: flex; align-items: center; gap: 7px; color: #9a9a9a; font-size: 12px; cursor: pointer; }
+    .dlg-row { display: flex; gap: 8px; justify-content: flex-end; }
+    .dlg-row button { border: 0; border-radius: 8px; padding: 8px 14px; font: 600 12px inherit; cursor: pointer; }
+    .dlg-row .c { background: #2c2c2c; color: #d4d4d4; }
+    .dlg-row .del { background: #dc2626; color: #fff; }
+    .dlg-in { width: 100%; padding: 10px 12px; border: 0; border-radius: 9px; background: #141414; color: #fff; font: 12.5px ui-monospace, monospace; outline: none; }
     .addmenu, .ctxmenu { position: fixed; z-index: 60; background: #222; border-radius: 10px; padding: 4px; min-width: 150px; box-shadow: 0 14px 34px rgba(0,0,0,.55); display: none; }
     .addmenu.open, .ctxmenu.open { display: block; }
     .addmenu button, .ctxmenu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: 0; border-radius: 7px; background: none; color: #d4d4d4; font: 12px inherit; cursor: pointer; }
@@ -261,8 +271,7 @@ client :projects do
       const act = e.target.dataset?.act;
       if (!act) return;
       if (act === 'link') {
-        const url = prompt('Link URL:');
-        if (url) send('projects.addlink', { url });
+        openLinkInput();
       } else {
         send('projects.addmedia', { mode: act });
       }
@@ -275,9 +284,53 @@ client :projects do
       if (act === 'reveal') send('projects.reveal', { path: m.dataset.path });
       if (act === 'note') m._note?.classList.add('open');
       if (act === 'copy') navigator.clipboard?.writeText(m.dataset.path);
-      if (act === 'delete' && confirm('Delete ' + m.dataset.path + '?')) send('projects.delete', { path: m.dataset.path });
+      if (act === 'delete') requestDelete(m.dataset.path);
       m.classList.remove('open');
     };
+    // WKWebView has no native confirm()/prompt() — in-page dialogs instead.
+    function requestDelete(path) {
+      if (localStorage.getItem('skip-delete-confirm') === '1') {
+        send('projects.delete', { path });
+        return;
+      }
+      const d = document.createElement('div');
+      d.className = 'dlg';
+      d.innerHTML = `<div class="dlg-box">
+        <div class="dlg-t">Delete “${path.split('/').pop()}”?</div>
+        <div class="dlg-s">Moves to the Trash.</div>
+        <label class="dlg-skip"><input type="checkbox"/> Don't ask again</label>
+        <div class="dlg-row"><button class="c">Cancel</button><button class="del">Delete</button></div>
+      </div>`;
+      d.querySelector('.c').onclick = () => d.remove();
+      d.querySelector('.del').onclick = () => {
+        if (d.querySelector('input').checked) localStorage.setItem('skip-delete-confirm', '1');
+        send('projects.delete', { path });
+        d.remove();
+      };
+      d.addEventListener('pointerdown', (e) => { if (e.target === d) d.remove(); });
+      document.body.appendChild(d);
+    }
+
+    function openLinkInput() {
+      const d = document.createElement('div');
+      d.className = 'dlg';
+      d.innerHTML = `<div class="dlg-box">
+        <div class="dlg-t">Add link</div>
+        <input class="dlg-in" placeholder="https://… (press ⏎)"/>
+      </div>`;
+      const input = d.querySelector('input');
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && input.value.trim()) {
+          send('projects.addlink', { url: input.value.trim() });
+          d.remove();
+        }
+        if (e.key === 'Escape') d.remove();
+      });
+      d.addEventListener('pointerdown', (e) => { if (e.target === d) d.remove(); });
+      document.body.appendChild(d);
+      input.focus();
+    }
+
     document.addEventListener('pointerdown', (e) => {
       for (const id of ['addmenu', 'ctxmenu']) {
         const m = document.getElementById(id);
