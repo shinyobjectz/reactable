@@ -69,6 +69,10 @@ final class NexusSidecar: @unchecked Sendable {
         env["WB_SERVE"] = "1"
         env["RELEASE_NAME"] = env["RELEASE_NAME"] ?? "reactable_sidecar"
         env["SHINYOBJECTZ_ROOT"] = monorepoRoot.path()
+        if let skill = Bundle.main.resourceURL?.appending(path: "skill"),
+           FileManager.default.fileExists(atPath: skill.path) {
+            env["REACTABLE_SKILL_DIST"] = skill.path
+        }
         if env["WB_SESSION_SECRET"] == nil || (env["WB_SESSION_SECRET"]?.count ?? 0) < 16 {
             env["WB_SESSION_SECRET"] = try DesktopSecrets.sessionSecret()
         }

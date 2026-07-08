@@ -306,6 +306,9 @@ client :agent do
     #tail.on { opacity: 1; animation: tailFlow 1.4s linear infinite; }
     @keyframes tailFlow { to { background-position: 200% 0; } }
     .tool-chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-start; }
+    .tchip.run { animation: chipPulse 1.2s ease-in-out infinite; }
+    .tsum { color: #6f6f6f; }
+    @keyframes chipPulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
     .tchip { font: 10px ui-monospace, monospace; color: #9a9a9a; background: #1d1d1d; padding: 4px 8px; border-radius: 999px; }
     /* de-stroke: one seamless surface, elevation by tone only */
     .composer, .composer:focus-within { border: 0; background: #1d1d1d; box-shadow: none; }
@@ -562,58 +565,133 @@ client :agent do
       append('user', message);
       history.push({ role: 'user', content: message });
       const typing = showTyping();
+      const fm = toolFrontmatter();
+      const wire = fm ? fm + '\n\n' + message : message;
+      const payload = { message: wire, history: history.slice(0, -1), deck, max_turns: 6 };
       try {
-        const fm = toolFrontmatter();
-        const wire = fm ? fm + '\n\n' + message : message;
-        const res = await fetch('/reactable/agent/chat', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ message: wire, history: history.slice(0, -1), deck, max_turns: 6 }),
-        });
-        const data = await res.json();
-        typing.remove();
-        if (!data.ok) {
-          append('error', data.error || 'Chat failed');
-          return;
-        }
-        // Tool activity chips — what the agent did this turn.
-        if (data.tools?.length) {
-          const chips = document.createElement('div');
-          chips.className = 'msg system tool-chips';
-          chips.innerHTML = data.tools.map((t) =>
-            `<span class="tchip">⚙ ${typeof t === 'string' ? t : (t.name || t.tool || 'tool')}</span>`).join('');
-          log.appendChild(chips);
-        }
-        // Stream the reply in (typewriter over the markdown source).
-        const full = data.reply || '(empty)';
-        const el = append('assistant', '');
-        let i = 0;
-        await new Promise((resolve) => {
-          const step = () => {
-            i = Math.min(full.length, i + 3 + Math.floor(Math.random() * 4));
-            el.innerHTML = renderMarkdown(full.slice(0, i));
-            log.scrollTop = log.scrollHeight;
-            if (i < full.length) setTimeout(step, 16);
-            else resolve();
-          };
-          step();
-        });
-        if (data.turns > 1) {
-          const t = document.createElement('div');
-          t.className = 'tools';
-          t.textContent = `${data.turns} turns`;
-          el.appendChild(t);
-        }
-        history.push({ role: 'assistant', content: full });
+        await chatStream(payload, typing);
       } catch (e) {
-        typing.remove();
-        append('error', String(e));
+        // Live channel unavailable — the blocking POST still works.
+        try {
+          await chatBlocking(payload, typing);
+        } catch (e2) {
+          typing.remove();
+          append('error', String(e2));
+        }
       } finally {
         busy = false;
         document.getElementById('tail').classList.remove('on');
         sendBtn.disabled = false;
         input.focus();
       }
+    }
+
+    // True streaming: POST {stream:true} → {run}, then EventSource over the
+    // nexus live channel. Tokens land as they're generated; tool calls show
+    // as activity chips that resolve when the result comes back.
+    function chatStream(payload, typing) {
+      return new Promise(async (resolve, reject) => {
+        const res = await fetch('/reactable/agent/chat', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ ...payload, stream: true }),
+        });
+        const data = await res.json();
+        if (!data.ok || !data.run) return reject(new Error(data.error || 'no run'));
+
+        const es = new EventSource(`/live/agent?run=${encodeURIComponent(data.run)}`);
+        let el = null;
+        let raw = '';
+        let sawAny = false;
+        const chips = new Map();
+
+        const fail = (err) => {
+          es.close();
+          if (!sawAny) return reject(err);
+          typing.remove();
+          append('error', String(err.message || err));
+          resolve();
+        };
+
+        es.onmessage = (ev) => {
+          let e;
+          try { e = JSON.parse(ev.data); } catch { return; }
+          sawAny = true;
+          if (e.type === 'tok') {
+            if (!el) { typing.remove(); el = append('assistant', ''); raw = ''; }
+            raw += e.v;
+            el.innerHTML = renderMarkdown(raw.replace(/```tool[\s\S]*?(```|$)/g, '').trim() || '…');
+            log.scrollTop = log.scrollHeight;
+          } else if (e.type === 'turn.start' && e.turn > 1) {
+            // New turn: the previous bubble was a tool call — start fresh.
+            el = null;
+          } else if (e.type === 'tool.start') {
+            const chip = document.createElement('div');
+            chip.className = 'msg system tool-chips';
+            const label = e.tool?.name === 'bash' ? (e.tool.args?.cmd || 'bash') : (e.tool?.name || 'tool');
+            chip.innerHTML = `<span class="tchip run">⚙ ${escapeHtml(String(label).slice(0, 80))}</span>`;
+            log.appendChild(chip);
+            log.scrollTop = log.scrollHeight;
+            chips.set(JSON.stringify(e.tool), chip.querySelector('.tchip'));
+          } else if (e.type === 'tool.result') {
+            const c = chips.get(JSON.stringify(e.tool));
+            if (c) {
+              c.classList.remove('run');
+              c.innerHTML = `${e.ok ? '✓' : '✗'} ${c.textContent.replace(/^⚙ /, '')}<span class="tsum"> — ${escapeHtml(String(e.summary || '').slice(0, 90))}</span>`;
+            }
+          } else if (e.type === 'reply.done') {
+            es.close();
+            typing.remove();
+            const full = e.reply || '(empty)';
+            if (!el) el = append('assistant', '');
+            el.innerHTML = renderMarkdown(full.replace(/```tool[\s\S]*?(```|$)/g, '').trim() || full);
+            if (e.turns > 1) {
+              const t = document.createElement('div');
+              t.className = 'tools';
+              t.textContent = `${e.turns} turns`;
+              el.appendChild(t);
+            }
+            history.push({ role: 'assistant', content: full });
+            log.scrollTop = log.scrollHeight;
+            resolve();
+          } else if (e.type === 'error') {
+            fail(new Error(e.error || 'stream error'));
+          }
+        };
+        es.onerror = () => fail(new Error('stream connection lost'));
+      });
+    }
+
+    async function chatBlocking(payload, typing) {
+      const res = await fetch('/reactable/agent/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      typing.remove();
+      if (!data.ok) {
+        append('error', data.error || 'Chat failed');
+        return;
+      }
+      if (data.tools?.length) {
+        const chips = document.createElement('div');
+        chips.className = 'msg system tool-chips';
+        chips.innerHTML = data.tools.map((t) =>
+          `<span class="tchip">⚙ ${typeof t === 'string' ? t : (t.tool?.name || t.name || 'tool')}</span>`).join('');
+        log.appendChild(chips);
+      }
+      const full = data.reply || '(empty)';
+      const el = append('assistant', '');
+      el.innerHTML = renderMarkdown(full);
+      if (data.turns > 1) {
+        const t = document.createElement('div');
+        t.className = 'tools';
+        t.textContent = `${data.turns} turns`;
+        el.appendChild(t);
+      }
+      history.push({ role: 'assistant', content: full });
+      log.scrollTop = log.scrollHeight;
     }
 
     sendBtn.addEventListener('click', () => {

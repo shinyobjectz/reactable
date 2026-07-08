@@ -91,6 +91,8 @@ enum Commands {
         output: Option<String>,
         #[arg(long)]
         model: Option<String>,
+        #[arg(long, default_value_t = false)]
+        stream: bool,
     },
     AgentStatus,
     AgentModels,
@@ -150,7 +152,8 @@ fn main() {
             input,
             output,
             model,
-        } => agent::chat(&input, output.as_deref(), model.as_deref()),
+            stream,
+        } => agent::chat(&input, output.as_deref(), model.as_deref(), stream),
         Commands::AgentStatus => agent::status(),
         Commands::AgentModels => agent::models(),
         Commands::AgentPull { model } => agent::pull(model.as_deref()),

@@ -52,6 +52,7 @@ app: build
     cp "{{native}}/Resources/Info.plist" "$APP/Contents/"
     cp "{{native}}/Resources/AppIcon.icns" "$APP/Contents/Resources/"
     cp "{{native}}/Resources/AppIcon.png" "$APP/Contents/Resources/"
+    if [ -d "$ROOT/skill/dist" ]; then mkdir -p "$APP/Contents/Resources/skill"; cp -R "$ROOT/skill/dist/." "$APP/Contents/Resources/skill/"; fi
     chmod +x "$APP/Contents/MacOS/reactable"
     # Bundled nexus sidecar (required for Dock/Launchpad — no system Elixir)
     if [ ! -x "$ROOT/dist/reactable-nexus" ]; then
@@ -129,6 +130,7 @@ app-dist: build
     cp "{{native}}/Resources/Info.plist" "$APP/Contents/"
     cp "{{native}}/Resources/AppIcon.icns" "$APP/Contents/Resources/"
     cp "{{native}}/Resources/AppIcon.png" "$APP/Contents/Resources/"
+    if [ -d "$ROOT/skill/dist" ]; then mkdir -p "$APP/Contents/Resources/skill"; cp -R "$ROOT/skill/dist/." "$APP/Contents/Resources/skill/"; fi
     chmod +x "$APP/Contents/MacOS/reactable"
     echo "→ $APP"
 

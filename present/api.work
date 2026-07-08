@@ -1223,13 +1223,47 @@ server :reactable_api do
     max_turns = min(max_turns(body["max_turns"]), 8)
 
     cond do
-      message == "" -> {400, %{ok: false, error: "message required"}}
+      message == "" ->
+        {400, %{ok: false, error: "message required"}}
+
+      body["stream"] == true ->
+        run = Base.url_encode64(:crypto.strong_rand_bytes(9))
+        :persistent_term.put({:agent_run, run}, %{message: message, history: history, deck: deck, max_turns: max_turns})
+        %{ok: true, run: run}
+
       true ->
         case agent_turn_loop(message, history, deck, max_turns) do
           {:ok, result} -> Map.put(result, :ok, true)
           {:error, e} -> {500, %{ok: false, error: e}}
         end
     end
+  end
+
+  # Self-registering live source (bringup calls register/0): the agent run as
+  # an SSE stream. The page POSTs {stream:true} → {run}, then opens
+  # EventSource('/live/agent?run=<id>'); the payload is fetch-once.
+  def register do
+    Nexus.Live.register("agent", fn params, emit ->
+      run = to_string(params["run"] || "")
+      key = {:agent_run, run}
+
+      case run != "" && :persistent_term.get(key, nil) do
+        %{message: message, history: history, deck: deck, max_turns: max_turns} ->
+          :persistent_term.erase(key)
+          system = agent_system_prompt(deck)
+          messages = history ++ [%{"role" => "user", "content" => message}]
+
+          case agent_turns_stream(system, messages, max_turns, 0, [], emit) do
+            {:ok, result} -> emit.(Map.merge(%{type: "reply.done"}, result))
+            {:error, e} -> emit.(%{type: "error", error: e})
+          end
+
+        _ ->
+          emit.(%{type: "error", error: "unknown run"})
+      end
+
+      :ok
+    end)
   end
 
   def projects_list(_req) do
@@ -1256,7 +1290,9 @@ server :reactable_api do
       research: research_items(root),
       decks: deck_surfaces(root),
       takes: take_surfaces(root),
-      surfaces: surfaces_for(root, summary.id)
+      surfaces: surfaces_for(root, summary.id),
+      notes: read_asset_notes(root),
+      links: read_links(root)
     })
   end
 
@@ -1495,6 +1531,155 @@ server :reactable_api do
     end
   end
 
+  # agent_turns with a live wire: model tokens stream out as they arrive,
+  # tool calls announce themselves before running and report after. Same
+  # transcript threading as the blocking loop.
+  defp agent_turns_stream(system, messages, max_turns, turn, tool_log, emit) do
+    emit.(%{type: "turn.start", turn: turn + 1})
+
+    case llm_complete_stream(system, messages, fn tok -> emit.(%{type: "tok", v: tok}) end) do
+      {:ok, text} ->
+        case parse_tool_calls(text) do
+          [] ->
+            if malformed_tool_block?(text) and turn + 1 < max_turns do
+              retry =
+                "Your tool block was malformed JSON. Emit ONLY one valid tool block: " <>
+                  ~s(```tool\n{"name":"...","args":{...}}\n```)
+
+              agent_turns_stream(
+                system,
+                messages ++
+                  [%{"role" => "assistant", "content" => text}, %{"role" => "user", "content" => retry}],
+                max_turns,
+                turn + 1,
+                tool_log,
+                emit
+              )
+            else
+              {:ok, %{reply: text, tools: tool_log, turns: turn + 1}}
+            end
+
+          _tools when turn + 1 >= max_turns ->
+            {:ok, %{reply: text, tools: tool_log, turns: turn + 1, note: "max turns"}}
+
+          tools ->
+            results =
+              Enum.map(tools, fn tool ->
+                emit.(%{type: "tool.start", tool: tool})
+                out = run_agent_tool(tool)
+                emit.(%{type: "tool.result", tool: tool, ok: out[:ok] == true, summary: tool_summary(out)})
+                %{tool: tool, result: out}
+              end)
+
+            followup =
+              "Tool results:\n" <>
+                Enum.map_join(results, "\n", fn r ->
+                  Jason.encode!(r)
+                end)
+
+            agent_turns_stream(
+              system,
+              messages ++
+                [%{"role" => "assistant", "content" => text}, %{"role" => "user", "content" => followup}],
+              max_turns,
+              turn + 1,
+              tool_log ++ results,
+              emit
+            )
+        end
+
+      {:error, e} ->
+        {:error, e}
+    end
+  end
+
+  defp tool_summary(%{ok: true} = out) do
+    cond do
+      out[:saved] -> "saved #{out[:saved]} (#{out[:bytes]} bytes)"
+      out[:entries] -> "#{length(out[:entries])} entries"
+      out[:output] -> String.slice(out[:output], 0, 160)
+      out[:content] -> "#{byte_size(out[:content])} bytes read"
+      out[:path] -> "wrote #{out[:path]}"
+      out[:body] -> String.slice(to_string(out[:body]), 0, 160)
+      true -> "ok"
+    end
+  end
+
+  defp tool_summary(out), do: to_string(out[:error] || "failed")
+
+  # Streamed completion: the tools binary runs as a Port with --stream and we
+  # forward each NDJSON tok line the moment it lands. Stub mode stays whole.
+  defp llm_complete_stream(system, messages, on_token) do
+    if System.get_env("REACTABLE_AGENT_STUB") == "1" do
+      case llm_complete(system, messages) do
+        {:ok, text} ->
+          on_token.(text)
+          {:ok, text}
+
+        other ->
+          other
+      end
+    else
+      bin = tools_bin()
+
+      if File.exists?(bin) do
+        req = %{system: system, messages: Enum.map(messages, &normalize_msg/1), max_tokens: 4096}
+        tmp_in = Path.join(System.tmp_dir!(), "reactable-agent-in-#{System.unique_integer([:positive])}.json")
+        File.write!(tmp_in, Jason.encode!(req))
+
+        port =
+          Port.open({:spawn_executable, String.to_charlist(bin)}, [
+            :binary,
+            :exit_status,
+            {:line, 65536},
+            {:cd, String.to_charlist(wb_data())},
+            args: ["agent-chat", "--input", tmp_in, "--stream"]
+          ])
+
+        result = stream_port_loop(port, on_token, nil)
+        File.rm(tmp_in)
+        result
+      else
+        {:error, "reactable-tools not found"}
+      end
+    end
+  end
+
+  defp stream_port_loop(port, on_token, done) do
+    receive do
+      {^port, {:data, {:eol, line}}} ->
+        done =
+          case Jason.decode(line) do
+            {:ok, %{"t" => "tok", "v" => v}} ->
+              on_token.(v)
+              done
+
+            {:ok, %{"t" => "done"} = d} ->
+              d
+
+            _ ->
+              done
+          end
+
+        stream_port_loop(port, on_token, done)
+
+      {^port, {:data, {:noeol, _partial}}} ->
+        stream_port_loop(port, on_token, done)
+
+      {^port, {:exit_status, status}} ->
+        cond do
+          is_map(done) and done["ok"] == true -> {:ok, to_string(done["text"] || "")}
+          is_map(done) -> {:error, to_string(done["error"] || "agent-chat failed")}
+          status == 0 -> {:error, "stream ended without done"}
+          true -> {:error, "agent-chat exited #{status}"}
+        end
+    after
+      300_000 ->
+        Port.close(port)
+        {:error, "stream timeout"}
+    end
+  end
+
   defp malformed_tool_block?(text) when is_binary(text) do
     String.contains?(text, "```tool") and parse_tool_calls(text) == []
   end
@@ -1527,7 +1712,7 @@ server :reactable_api do
     unless File.exists?(bin) do
       {:error, "reactable-tools not found"}
     else
-      req = %{system: system, messages: Enum.map(messages, &normalize_msg/1), max_tokens: 2048}
+      req = %{system: system, messages: Enum.map(messages, &normalize_msg/1), max_tokens: 4096}
       tmp_in = Path.join(System.tmp_dir!(), "reactable-agent-in-#{System.unique_integer([:positive])}.json")
       tmp_out = Path.join(System.tmp_dir!(), "reactable-agent-out-#{System.unique_integer([:positive])}.json")
       File.write!(tmp_in, Jason.encode!(req))
@@ -1595,11 +1780,141 @@ server :reactable_api do
     end
   end
 
+  defp run_agent_tool(%{"name" => "list_files"} = tool) do
+    rel = get_in(tool, ["args", "path"]) || "."
+    path = safe_path(rel)
+
+    case path && File.ls(path) do
+      {:ok, names} ->
+        entries =
+          names
+          |> Enum.reject(&String.starts_with?(&1, "."))
+          |> Enum.sort()
+          |> Enum.map(fn n ->
+            full = Path.join(path, n)
+            kind = if File.dir?(full), do: "dir", else: "file"
+            %{name: n, kind: kind}
+          end)
+
+        %{ok: true, path: rel, entries: entries}
+
+      _ ->
+        %{ok: false, error: "missing or outside sandbox"}
+    end
+  end
+
+  defp run_agent_tool(%{"name" => "connector", "args" => args}) when is_map(args) do
+    run_connector_tool(args)
+  end
+
   defp run_agent_tool(%{"name" => name}) do
     %{ok: false, error: "unknown tool #{name}"}
   end
 
   defp run_agent_tool(_), do: %{ok: false, error: "invalid tool payload"}
+
+  # ── Connectors: key-gated provider APIs, auth injected server-side ──
+  # The model sees the vendored skill docs (skill/connectors/<id>.md) only for
+  # providers with a saved key; the key itself never enters the transcript.
+  @connector_providers %{
+    "unsplash" => %{base: "https://api.unsplash.com", auth: {:header, "authorization", "Client-ID "}},
+    "pexels" => %{base: "https://api.pexels.com", auth: {:header, "authorization", ""}},
+    "elevenlabs" => %{base: "https://api.elevenlabs.io", auth: {:header, "xi-api-key", ""}},
+    "fal" => %{base: "https://fal.run", auth: {:header, "authorization", "Key "}}
+  }
+
+  defp connector_keys do
+    path = Path.join(System.get_env("HOME") || "", ".reactable/connectors.json")
+
+    with true <- File.exists?(path),
+         {:ok, body} <- File.read(path),
+         {:ok, %{} = keys} <- Jason.decode(body) do
+      keys
+    else
+      _ -> %{}
+    end
+  end
+
+  defp connected_providers do
+    keys = connector_keys()
+    @connector_providers |> Map.keys() |> Enum.filter(&(to_string(keys[&1] || "") != "")) |> Enum.sort()
+  end
+
+  defp run_connector_tool(args) do
+    provider = to_string(args["provider"] || "")
+    key = to_string(connector_keys()[provider] || "")
+
+    cond do
+      not Map.has_key?(@connector_providers, provider) ->
+        %{ok: false, error: "unknown provider #{provider} — available: #{Enum.join(Map.keys(@connector_providers), ", ")}"}
+
+      key == "" ->
+        %{ok: false, error: "#{provider} has no saved key — the user can add one in Settings → Account"}
+
+      true ->
+        %{base: base, auth: {:header, header, prefix}} = @connector_providers[provider]
+        method = args["method"] |> to_string() |> String.downcase()
+        method = if method in ["get", "post"], do: method, else: "get"
+        path = to_string(args["path"] || "/")
+        path = if String.starts_with?(path, "/"), do: path, else: "/" <> path
+        params = if is_map(args["params"]), do: args["params"], else: %{}
+        save_to = args["save_to"]
+        headers = [{header, prefix <> key}, {"content-type", "application/json"}]
+
+        result =
+          if method == "get" do
+            query = params |> Enum.map_join("&", fn {k, v} -> "#{URI.encode_www_form(to_string(k))}=#{URI.encode_www_form(to_string(v))}" end)
+            url = base <> path <> if(query == "", do: "", else: "?" <> query)
+            http_request(:get, url, headers, nil)
+          else
+            http_request(:post, base <> path, headers, Jason.encode!(params))
+          end
+
+        case result do
+          {:ok, status, body} when is_binary(save_to) ->
+            save_connector_asset(save_to, body, status)
+
+          {:ok, status, body} ->
+            %{ok: status < 300, status: status, body: String.slice(body, 0, 12000)}
+
+          {:error, e} ->
+            %{ok: false, error: e}
+        end
+    end
+  end
+
+  # save_to is assets/-only by construction; binary bodies land as files, and
+  # a JSON body with a direct URL is followed one hop (search-hit downloads).
+  defp save_connector_asset(save_to, body, status) do
+    rel = to_string(save_to)
+
+    cond do
+      status >= 300 ->
+        %{ok: false, status: status, body: String.slice(body, 0, 2000)}
+
+      not String.starts_with?(rel, "assets/") ->
+        %{ok: false, error: "save_to must be under assets/"}
+
+      true ->
+        case safe_write(rel, body) do
+          :ok -> %{ok: true, saved: rel, bytes: byte_size(body)}
+          {:error, e} -> %{ok: false, error: e}
+        end
+    end
+  end
+
+  defp http_request(method, url, headers, body) do
+    request =
+      case method do
+        :get -> {String.to_charlist(url), Enum.map(headers, fn {k, v} -> {String.to_charlist(k), String.to_charlist(v)} end)}
+        :post -> {String.to_charlist(url), Enum.map(headers, fn {k, v} -> {String.to_charlist(k), String.to_charlist(v)} end), ~c"application/json", body}
+      end
+
+    case :httpc.request(method, request, [{:timeout, 60_000}], body_format: :binary) do
+      {:ok, {{_, status, _}, _, resp}} -> {:ok, status, resp}
+      {:error, e} -> {:error, inspect(e)}
+    end
+  end
 
   defp sandbox_cmd_allowed?(cmd) do
     cmd = String.trim(cmd)
@@ -1677,15 +1992,122 @@ server :reactable_api do
     if File.exists?(bundled), do: bundled, else: System.find_executable("reactable-tools") || bundled
   end
 
-  defp agent_system_prompt(deck) do
-    prompt_path = Path.join([wb_data(), "skill", "dist", "agent-prompt.txt"])
+  # Prompt resolution: the active project's compiled skill wins, then the
+  # app-bundled copy (REACTABLE_SKILL_DIST, set by the native shell), so a
+  # bare data root still gets the full studio-agent brain.
+  defp skill_dist_paths do
+    [Path.join([wb_data(), "skill", "dist"]), System.get_env("REACTABLE_SKILL_DIST")]
+    |> Enum.reject(&is_nil/1)
+  end
 
-    base =
-      if File.exists?(prompt_path) do
-        File.read!(prompt_path)
-      else
-        "You are the Reactable local agent. Help author decks, run reactable CLI, and plan videos."
+  defp read_skill_file(rel) do
+    skill_dist_paths()
+    |> Enum.map(&Path.join(&1, rel))
+    |> Enum.find_value(fn p -> if File.exists?(p), do: File.read!(p) end)
+  end
+
+  # .reactable metadata written by the native app — the user's per-asset
+  # context notes and saved links. Short user-authored strings, exactly the
+  # kind of grounding the agent should always see.
+  defp read_asset_notes(root) do
+    read_dot_json(root, "asset-notes.json", %{})
+  end
+
+  defp read_links(root) do
+    read_dot_json(root, "links.json", [])
+  end
+
+  defp read_dot_json(root, name, default) do
+    path = Path.join([root, ".reactable", name])
+
+    with true <- File.exists?(path),
+         {:ok, body} <- File.read(path),
+         {:ok, parsed} <- Jason.decode(body) do
+      parsed
+    else
+      _ -> default
+    end
+  end
+
+  # Compact live digest injected into every agent turn: what the project IS
+  # right now. Depth comes from the --json verbs, not from bloating this.
+  # Connector docs only for providers the user has actually connected.
+  defp connector_tool_doc do
+    case connected_providers() do
+      [] ->
+        ""
+
+      providers ->
+        skills =
+          Enum.map_join(providers, "\n\n", fn p ->
+            read_skill_file("connectors/#{p}.md") || read_skill_file("bundle/connectors/#{p}.md") || "### #{p}\n(connected)"
+          end)
+
+        """
+        - `connector` — call a connected provider API; auth is added server-side. Args: {"provider":"...","method":"GET|POST","path":"/...","params":{...},"save_to":"assets/<name>"?}. `save_to` writes the response body into assets/.
+
+        ## Connected providers
+
+        #{skills}
+        """
+    end
+  end
+
+  defp agent_context_digest(deck) do
+    root = wb_data()
+    summary = project_summary(root)
+
+    deck_line =
+      case parse_deck(Path.join([root, "decks", deck, "deck.work"]), deck) do
+        %{title: title, slides: slides} ->
+          ids = Enum.map_join(slides, " · ", fn s -> "#{s[:id] || s["id"]}(#{s[:type] || s["type"]})" end)
+          "Active deck: #{deck} — \"#{title}\" — slides: #{ids}"
+
+        _ ->
+          "Active deck: #{deck} (no deck.work found)"
       end
+
+    takes = take_surfaces(root)
+    take_ids = takes |> Enum.take(5) |> Enum.map_join(", ", & &1.ref)
+
+    assets =
+      case File.ls(Path.join(root, "assets")) do
+        {:ok, names} -> names |> Enum.reject(&String.starts_with?(&1, ".")) |> Enum.sort()
+        _ -> []
+      end
+
+    notes = read_asset_notes(root)
+
+    notes_block =
+      if map_size(notes) > 0 do
+        "\nAsset notes from the user:\n" <>
+          Enum.map_join(notes, "\n", fn {path, note} -> "- #{path}: #{String.slice(note, 0, 200)}" end)
+      else
+        ""
+      end
+
+    links = read_links(root)
+    links_line = if links == [], do: "", else: "\nSaved links: #{Enum.join(links, " · ")}"
+
+    research = research_items(root) |> Enum.map_join(", ", & &1.title)
+
+    """
+    ## Live project context
+
+    Project: #{summary.id} — "#{summary.name}" at #{summary.path}
+    #{deck_line}
+    Takes (#{length(takes)}, newest first): #{if take_ids == "", do: "none yet", else: take_ids}
+    Assets (#{length(assets)}): #{assets |> Enum.take(30) |> Enum.join(", ")}#{notes_block}#{links_line}
+    Research: #{if research == "", do: "none", else: research}
+
+    Depth on demand: `reactable project --json`, `reactable decks get #{deck} --json`, `reactable takes events <id> --json`.
+    """
+  end
+
+  defp agent_system_prompt(deck) do
+    base =
+      read_skill_file("agent-prompt.txt") ||
+        "You are the Reactable local agent. Help author decks, run reactable CLI, and plan videos."
 
     base <>
       """
@@ -1702,6 +2124,8 @@ server :reactable_api do
       - `bash` — commands starting with: reactable, bun run, ffmpeg, bash scripts/, python3 scripts/
       - `read_file` — args: {"path": "relative/path"}
       - `write_file` — args: {"path": "relative/path", "content": "..."}
+      - `list_files` — args: {"path": "relative/dir"} (project-scoped, one level)
+      #{connector_tool_doc()}
 
       Example — read a deck, then answer:
       user: What is the first slide?
@@ -1713,7 +2137,7 @@ server :reactable_api do
 
       When no tool is needed, answer directly. After tool results arrive, either emit another tool block or give the final answer.
 
-      Active deck: #{deck}
+      #{agent_context_digest(deck)}
       """
   end
 

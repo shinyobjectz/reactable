@@ -15,66 +15,25 @@ function loadManifest() {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
+// The in-app agent prompt is authored in skill/AGENT.md (the source of
+// truth); this function only appends the verb router from the manifest.
+// The old install-oriented onboarding text lives on in skill/SKILL.md for
+// external agent hosts — it has no place in the in-app brain.
 export function buildAgentPrompt(opts: PromptOpts = {}) {
-  const deck = opts.deck || "showcase";
   const manifest = loadManifest();
-  const pkg = manifest?.package ?? {};
-  const related = (manifest?.relatedSkills as { name: string; install: string }[]) ?? [];
+  const agentDoc = join(SKILL_SRC, "AGENT.md");
+  const base = existsSync(agentDoc)
+    ? readFileSync(agentDoc, "utf8")
+    : "You are the Reactable studio agent. Help author decks, run the reactable CLI, and plan videos.";
 
-  const relatedBlock = related.length
-    ? related.map((r) => `  ${r.name}: ${r.install}`).join("\n")
-    : "  npx hyperframes init";
+  const verbIndex = (manifest?.verbIndex as { verbs: string[]; reference: string }[]) ?? [];
+  const routerBlock = verbIndex.length
+    ? `\n## Deeper references (read_file when needed)\n\n${verbIndex
+        .map((v) => `- ${v.verbs.join(", ")} → skill/${v.reference}`)
+        .join("\n")}\n`
+    : "";
 
-  return `You are working with **Reactable** — native macOS stage recorder + agent CLI for deck authoring and video post.
-
-## Install (pick your agent host)
-
-**CLI + skills (recommended):**
-\`\`\`bash
-npm i -g reactable-cli
-reactable doctor
-reactable skills install --user
-reactable install app          # macOS — downloads Reactable.app
-\`\`\`
-
-**skills.sh (when published):**
-\`\`\`bash
-npx skills add ${pkg.owner ?? "shinyobjectz"}/${pkg.repo ?? "reactable"} --copy -y -a cursor -a claude-code
-\`\`\`
-
-**Related motion skills:**
-\`\`\`bash
-${relatedBlock}
-\`\`\`
-
-## Hard rules
-
-1. Preview decks with \`reactable stage open --deck <slug>\` — never a browser tab.
-2. Decks are \`decks/<slug>/deck.work\` (\`slide do\`, \`script do\`, \`client :unit\`).
-3. Nexus is local only — \`:4020\`, not the studio server.
-
-## Quick start (deck: ${deck})
-
-\`\`\`bash
-reactable decks get ${deck} --json
-reactable stage open --deck ${deck}
-reactable plan ${deck}
-reactable takes list
-\`\`\`
-
-## Progressive disclosure
-
-Load \`reactable\` skill references by verb:
-- decks / plan → verbs/decks.md
-- stage / record → verbs/stage.md
-- takes render → verbs/post-ffmpeg.md
-- takes hf → verbs/post-hyperframes.md (+ hyperframes, gsap skills)
-- youtube → verbs/youtube.md
-
-Skill root after install: \`~/.cursor/skills/reactable/\` or \`.cursor/skills/reactable/\`
-
-Docs: ${pkg.download?.replace("/download/Reactable.dmg", "") ?? "https://reactable.app"}
-`;
+  return base + routerBlock;
 }
 
 export function agentPromptPath(root = PROJECT) {
