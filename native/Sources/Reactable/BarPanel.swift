@@ -217,6 +217,8 @@ final class BarPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
     private func route(_ action: String, payload: [String: Any]) {
         guard let bridge else { return }
         switch action {
+        case "bar.ready":
+            pushState(appState)
         case "record.start":
             bridge.bridgeRecordStart(countdown: payload["countdown"] as? Int ?? 3)
         case "record.pause": bridge.bridgeRecordPause()

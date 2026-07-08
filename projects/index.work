@@ -292,6 +292,22 @@ client :projects do
     };
     document.getElementById('q').oninput = renderFiles;
     document.getElementById('add').onclick = (e) => openAddMenu(e.clientX, e.clientY);
+    // HTML5 drop fallback — WKWebView's internal views swallow native drags.
+    document.addEventListener('dragover', (e) => e.preventDefault());
+    document.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      for (const f of e.dataTransfer.files) {
+        if (f.size > 100 * 1024 * 1024) continue;
+        const buf = await f.arrayBuffer();
+        let bin = '';
+        const bytes = new Uint8Array(buf);
+        const CHUNK = 0x8000;
+        for (let i = 0; i < bytes.length; i += CHUNK) {
+          bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+        }
+        send('projects.dropdata', { name: f.name, data: btoa(bin) });
+      }
+    });
     send('projects.ready');
     window.ReactableProjects = { setData(d) { data = { ...data, ...d }; renderSwitcher(); renderFiles(); } };
     renderSwitcher(); renderFiles();

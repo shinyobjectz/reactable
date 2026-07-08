@@ -259,6 +259,14 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             board.onNew = { [weak self] in self?.createProject() }
             board.onNote = { [weak self] p, note in self?.saveAssetNote(path: p, note: note) }
             board.onAddLink = { [weak self] url in self?.addProjectLink(url) }
+            board.onDropData = { [weak self] name, data in
+                guard let self else { return }
+                let dest = self.activeProjectURL.appending(path: "assets")
+                try? FileManager.default.createDirectory(at: dest, withIntermediateDirectories: true)
+                try? data.write(to: dest.appending(path: name))
+                fputs("reactable: dropped \(name) (\(data.count) bytes) into assets\n", stderr)
+                self.projectsBoard?.pushData()
+            }
             board.onReveal = { [weak self] p in
                 guard let self else { return }
                 NSWorkspace.shared.activateFileViewerSelecting([self.activeProjectURL.appending(path: p)])

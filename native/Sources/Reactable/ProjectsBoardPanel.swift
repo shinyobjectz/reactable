@@ -23,6 +23,7 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
     var onNote: ((String, String) -> Void)?
     var onDrop: (([URL]) -> Void)?
     var onAddLink: ((String) -> Void)?
+    var onDropData: ((String, Data) -> Void)?
     var onReveal: ((String) -> Void)?
 
     init(port: Int) {
@@ -99,6 +100,10 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
         win.setFrameOrigin(NSPoint(x: f.midX - s.width / 2, y: f.midY - s.height / 2 + f.height * 0.04))
     }
 
+    func windowDidBecomeKey(_ notification: Notification) {
+        pushData()
+    }
+
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let parsed = BridgeMessage.parse(message.body) else { return }
         switch parsed.action {
@@ -120,6 +125,12 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
             NSApp.activate(ignoringOtherApps: true)
             if panel.runModal() == .OK, !panel.urls.isEmpty {
                 onDrop?(panel.urls)
+            }
+        case "projects.dropdata":
+            if let name = parsed.payload["name"] as? String,
+               let b64 = parsed.payload["data"] as? String,
+               let bytes = Data(base64Encoded: b64) {
+                onDropData?(name, bytes)
             }
         case "projects.addlink":
             if let u = parsed.payload["url"] as? String { onAddLink?(u) }

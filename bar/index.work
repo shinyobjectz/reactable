@@ -251,6 +251,7 @@ client :bar do
       const c = lo[1].map((v, i) => Math.round(v + (hi[1][i] - v) * t));
       return 'rgb(' + c.join(',') + ')';
     }
+    send('bar.ready');
     window.ReactableBar = {
       setState(s) { state = s; render(); },
       setDevices() { /* window list refreshed natively when picker opens */ },
