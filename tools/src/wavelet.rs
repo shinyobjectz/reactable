@@ -78,6 +78,8 @@ pub fn render(
         "-y".into(),
         "-framerate".into(), fps.to_string(),
         "-i".into(), pattern.display().to_string(),
+        // odd frame dimensions (e.g. a captured 1625px viewport) break yuv420p
+        "-vf".into(), "pad=ceil(iw/2)*2:ceil(ih/2)*2".into(),
         "-c:v".into(), "libx264".into(),
     ];
     if lossless {

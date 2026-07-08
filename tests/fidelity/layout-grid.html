@@ -1,0 +1,21 @@
+<!doctype html>
+<!-- gate comp: pure layout — flex, grid, absolute, borders, radius, shadows,
+     nesting. No text (font-independent layout truth). -->
+<html><head><style>
+  html, body { margin:0; width:100%; height:100%; background:#101018; }
+  .row { display:flex; gap:16px; padding:24px; }
+  .card { flex:1; height:120px; border-radius:14px; background:#1c1c28; border:1px solid #34344a; box-shadow:0 6px 18px rgba(0,0,0,.4); }
+  .card.acc { flex:2; background:linear-gradient(135deg,#6366f1,#a855f7); }
+  .grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; padding:0 24px; }
+  .cell { aspect-ratio:16/10; border-radius:10px; background:#181822; border:1px solid #2c2c3c; position:relative; }
+  .cell::after { content:''; position:absolute; left:10px; top:10px; width:36px; height:36px; border-radius:50%; background:#34d399; }
+  .abs { position:relative; margin:24px; height:140px; background:#141420; border-radius:12px; overflow:hidden; }
+  .abs .a { position:absolute; left:20px; top:20px; width:120px; height:40px; background:#f87171; border-radius:8px; }
+  .abs .b { position:absolute; right:20px; bottom:20px; width:180px; height:60px; background:#fbbf24; border-radius:999px; }
+  .abs .c { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%) rotate(12deg); width:220px; height:44px; background:#38bdf8; }
+</style></head>
+<body>
+  <div class="row"><div class="card"></div><div class="card acc"></div><div class="card"></div></div>
+  <div class="grid"><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div></div>
+  <div class="abs"><div class="a"></div><div class="b"></div><div class="c"></div></div>
+</body></html>

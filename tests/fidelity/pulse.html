@@ -1,0 +1,22 @@
+<!doctype html>
+<!-- P0 spike comp 2: reactable showcase deck `client :pulse_slide` island,
+     verbatim (inline styles + @keyframes pulse). Tests: gradients, nested
+     <style>, infinite transform/opacity animation under the frame clock. -->
+<html>
+<head>
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #050508; position: relative; }
+</style>
+</head>
+<body>
+  <div style="position:absolute;inset:0;background:linear-gradient(165deg,#0c0c12,#151528 45%,#0a0a0f);color:#f2f2f2;font:16px/1.45 ui-sans-serif,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;padding:48px">
+    <div style="max-width:520px;text-align:center">
+      <div style="display:inline-block;font:600 10px ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;color:#6ee7b7;padding:6px 12px;border-radius:8px;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.35);margin-bottom:24px">client :unit</div>
+      <h2 style="font-size:2rem;font-weight:600;margin:0 0 12px;letter-spacing:-.02em">Custom HTML islands</h2>
+      <p style="color:#9ca3af;margin:0 0 32px;line-height:1.55">Design title slides, diagrams, or UI mockups as reusable <code style="font:0.9em ui-monospace;color:#a5b4fc;background:rgba(99,102,241,.15);border:1px solid rgba(129,140,248,.3);padding:2px 8px;border-radius:5px">client :name</code> blocks in deck.work.</p>
+      <div style="width:72px;height:72px;margin:0 auto;border-radius:50%;background:linear-gradient(135deg,#6366f1,#a855f7);box-shadow:0 0 60px rgba(99,102,241,.45);animation:pulse 2.4s ease-in-out infinite"></div>
+    </div>
+    <style>@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.08);opacity:.9}}</style>
+  </div>
+</body>
+</html>

@@ -5,7 +5,7 @@
 // their capture.* anchors. Everything is generated @keyframes + animation-delay
 // — no JS — so the render-core clock (resolve(frame/fps)) steps it exactly.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { apiBase, takePath } from "./paths.ts";
 import { readEvents, readTakeManifest } from "./take.ts";
@@ -204,5 +204,35 @@ export async function renderWaveletTake(
   if (opts.lossless) args.push("--lossless");
   const proc = Bun.spawnSync([bin, ...args], { stdout: "inherit", stderr: "inherit" });
   if (proc.exitCode !== 0) throw new Error(`wavelet-render exited ${proc.exitCode}`);
-  return { ...meta, output: out };
+  const audio = muxTakeAudio(id, out, opts.root);
+  return { ...meta, output: out, audio };
+}
+
+// Mux the real mic track under the re-rendered stage. Offset comes from the
+// capture anchors on the shared take clock: mic starts (capture.mic.start)
+// relative to the stage first frame (capture.stage) — positive → adelay,
+// negative → trim the head. Prefers the cleaned voice track.
+function muxTakeAudio(id: string, video: string, root?: string): string | null {
+  const dir = takePath(id, root);
+  const mic = ["mic-clean.wav", "mic.wav"].map((f) => join(dir, f)).find(existsSync);
+  if (!mic) return null;
+
+  const events = readEvents(id, root) as { t: number; type: string }[];
+  const tStage = events.find((e) => e.type === "capture.stage")?.t;
+  const tMic = events.find((e) => e.type === "capture.mic.start")?.t;
+  const offset = tStage != null && tMic != null ? Number(tMic) - Number(tStage) : 0;
+
+  const tmp = video.replace(/\.mp4$/, ".mux.mp4");
+  const audioIn = offset < 0 ? ["-ss", (-offset).toFixed(3), "-i", mic] : ["-i", mic];
+  const filter = offset > 0 ? ["-filter_complex", `[1:a]adelay=${Math.round(offset * 1000)}:all=1[a]`, "-map", "0:v", "-map", "[a]"] : ["-map", "0:v", "-map", "1:a"];
+  const ff = Bun.spawnSync([
+    "ffmpeg", "-y", "-v", "error", "-i", video, ...audioIn, ...filter,
+    "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", tmp,
+  ]);
+  if (ff.exitCode !== 0) {
+    console.error(`wavelet: audio mux failed (${new TextDecoder().decode(ff.stderr).slice(0, 300)}) — video kept silent`);
+    return null;
+  }
+  renameSync(tmp, video);
+  return `${mic} (offset ${offset.toFixed(3)}s)`;
 }

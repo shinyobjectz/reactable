@@ -265,3 +265,7 @@ cli-publish:
     if [ -z "${NPM_TOKEN:-}" ]; then echo "set NPM_TOKEN" >&2; exit 1; fi
     echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > "${HOME}/.npmrc"
     npm publish --access public
+
+# Differential fidelity gate: Chrome-vs-wavelet SSIM + determinism + perf budget
+wavelet-gate:
+    bun scripts/fidelity-gate.ts

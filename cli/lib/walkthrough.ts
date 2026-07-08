@@ -33,116 +33,93 @@ function readSteps(dir: string): WalkStep[] {
     .filter((s: WalkStep) => s.type === "step");
 }
 
-// One segment comp: the snapshot fills the stage; a title chip fades in; the
-// cursor glides from a neutral position to the click point, ripples, dwells.
-function stepComp(dir: string, step: WalkStep, i: number, w: number, h: number, dwell: number): string {
+// One segment comp: the SNAPSHOT DOCUMENT IS the comp — we inject overlay
+// styles + divs (title chip, cursor glide, click ripple) before </body>. The
+// snapshot's own <body> classes/state selectors (e.g. body.pick) stay intact.
+// Rendered at the snapshot's viewport size; concat scales to the target.
+function stepComp(dir: string, step: WalkStep, i: number, dwell: number): { html: string; vw: number; vh: number } {
   const snapPath = resolve(dir, step.snapshot);
-  const snapshot = readFileSync(snapPath, "utf8");
-  // scale the snapshot's viewport onto the render resolution
-  const vw = step.vw ?? w;
-  const vh = step.vh ?? h;
-  const scale = Math.min(w / vw, h / vh);
+  let snapshot = readFileSync(snapPath, "utf8");
+  const vw = step.vw ?? 1280;
+  const vh = step.vh ?? 720;
 
   const click = step.click;
   const startX = vw * 0.5;
   const startY = vh * 0.82;
   const glideEnd = Math.min(1.2, dwell * 0.45);
-  const cursor = click
-    ? `<div class="wl-cursor" style="animation: wl-glide ${dwell}s linear both"></div>`
-    : "";
   const cursorCss = click
     ? `@keyframes wl-glide {
         0% { transform: translate(${startX.toFixed(1)}px, ${startY.toFixed(1)}px); animation-timing-function: ease-in-out; }
         ${((glideEnd / dwell) * 100).toFixed(2)}% { transform: translate(${click.x.toFixed(1)}px, ${click.y.toFixed(1)}px); }
         100% { transform: translate(${click.x.toFixed(1)}px, ${click.y.toFixed(1)}px); }
       }
-      .wl-cursor { position:absolute; left:-11px; top:-11px; width:22px; height:22px; border-radius:50%;
-        background:rgba(255,255,255,.9); box-shadow:0 0 0 2px rgba(0,0,0,.35), 0 2px 8px rgba(0,0,0,.5); z-index:60; }
-      @keyframes wl-ripple { 0%,${(((glideEnd) / dwell) * 100).toFixed(2)}% { opacity:0; transform:scale(.3); }
+      .wl-cursor { position: fixed; left:-11px; top:-11px; width:22px; height:22px; border-radius:50%;
+        background:rgba(255,255,255,.9); box-shadow:0 0 0 2px rgba(0,0,0,.35), 0 2px 8px rgba(0,0,0,.5); z-index:2147483000;
+        animation: wl-glide ${dwell}s linear both; }
+      @keyframes wl-ripple { 0%,${((glideEnd / dwell) * 100).toFixed(2)}% { opacity:0; transform:scale(.3); }
         ${(((glideEnd + 0.05) / dwell) * 100).toFixed(2)}% { opacity:.75; transform:scale(.35); }
-        ${(((Math.min(glideEnd + 0.65, dwell)) / dwell) * 100).toFixed(2)}% { opacity:0; transform:scale(2.4); } 100% { opacity:0; } }
-      .wl-ripple { position:absolute; left:${(click.x - 26).toFixed(1)}px; top:${(click.y - 26).toFixed(1)}px;
-        width:52px; height:52px; border-radius:50%; border:3px solid rgba(129,140,248,.95); opacity:0; z-index:59;
+        ${((Math.min(glideEnd + 0.65, dwell) / dwell) * 100).toFixed(2)}% { opacity:0; transform:scale(2.4); } 100% { opacity:0; } }
+      .wl-ripple { position: fixed; left:${(click.x - 26).toFixed(1)}px; top:${(click.y - 26).toFixed(1)}px;
+        width:52px; height:52px; border-radius:50%; border:3px solid rgba(129,140,248,.95); opacity:0; z-index:2147482999;
         animation: wl-ripple ${dwell}s linear both; }`
     : "";
-  const ripple = click ? `<div class="wl-ripple"></div>` : "";
 
-  const chip = step.title
-    ? `<div class="wl-chip" style="animation: wl-chip ${dwell}s linear both">${step.title}</div>`
-    : "";
+  const chipFont = Math.max(15, Math.round(vh / 42));
   const chipCss = step.title
-    ? `@keyframes wl-chip { 0% { opacity:0; transform:translateY(14px); animation-timing-function:ease-out; }
-        ${((Math.min(0.5, dwell * 0.2) / dwell) * 100).toFixed(2)}% { opacity:1; transform:translateY(0); } 100% { opacity:1; } }
-      .wl-chip { position:absolute; left:50%; bottom:4.5%; transform:translateX(-50%); z-index:70;
-        font:600 ${Math.round(h / 42)}px/1.3 sans-serif; letter-spacing:.01em; color:#fff; background:rgba(10,10,16,.82);
+    ? `@keyframes wl-chip { 0% { opacity:0; transform:translate(-50%, 14px); animation-timing-function:ease-out; }
+        ${((Math.min(0.5, dwell * 0.2) / dwell) * 100).toFixed(2)}% { opacity:1; transform:translate(-50%, 0); } 100% { opacity:1; transform:translate(-50%, 0); } }
+      .wl-chip { position: fixed; left:50%; bottom:4.5%; z-index:2147483001;
+        font:600 ${chipFont}px/1.3 sans-serif; letter-spacing:.01em; color:#fff; background:rgba(10,10,16,.85);
         border:1px solid rgba(129,140,248,.4); border-radius:999px; padding:.55em 1.3em;
-        box-shadow:0 8px 30px rgba(0,0,0,.45); white-space:nowrap; }`
+        box-shadow:0 8px 30px rgba(0,0,0,.45); white-space:nowrap;
+        animation: wl-chip ${dwell}s linear both; }`
     : "";
 
-  return `<!doctype html>
-<!-- walkthrough step ${i} — generated; snapshot inlined below in an isolated frame -->
-<html><head><style>
-  html, body { margin:0; padding:0; width:${w}px; height:${h}px; background:#0a0a0f; overflow:hidden; }
-  .wl-viewport { position:absolute; left:${((w - vw * scale) / 2).toFixed(1)}px; top:${((h - vh * scale) / 2).toFixed(1)}px;
-    width:${vw}px; height:${vh}px; transform:scale(${scale.toFixed(4)}); transform-origin:top left; overflow:hidden; }
-  ${cursorCss}
-  ${chipCss}
-</style></head>
-<body>
-  <div class="wl-viewport">
-    <iframe-substitute>
-${snapshot}
-    </iframe-substitute>
-    ${ripple}
-    ${cursor}
-  </div>
-  ${chip}
-</body></html>`;
-}
+  const overlay = `<style>${cursorCss}\n${chipCss}</style>` +
+    (click ? `<div class="wl-ripple"></div><div class="wl-cursor"></div>` : "") +
+    (step.title ? `<div class="wl-chip">${step.title}</div>` : "");
 
-// Blitz has no <iframe>; the snapshot is a full html document we must nest.
-// Strategy: strip its outer <html>/<head>/<body> shells, hoist its <style>
-// blocks scoped under the step viewport, and inline the body content.
-function inlineSnapshot(comp: string): string {
-  const m = comp.match(/<iframe-substitute>([\s\S]*)<\/iframe-substitute>/);
-  if (!m) return comp;
-  let snap = m[1];
-  const styles = [...snap.matchAll(/<style[^>]*>[\s\S]*?<\/style>/gi)].map((x) => x[0]).join("\n");
-  const bodyMatch = snap.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-  const content = bodyMatch ? bodyMatch[1] : snap.replace(/<\/?(!doctype|html|head|body)[^>]*>/gi, "");
-  return comp.replace(m[0], `${styles}\n<div class="wl-snap" style="position:absolute;inset:0">${content}</div>`);
+  if (/<\/body>/i.test(snapshot)) {
+    snapshot = snapshot.replace(/<\/body>/i, `${overlay}</body>`);
+  } else {
+    snapshot += overlay;
+  }
+  return { html: snapshot, vw, vh };
 }
 
 export function compileWalkthrough(dir: string, opts: { w?: number; h?: number } = {}) {
   const steps = readSteps(dir);
   if (!steps.length) throw new Error("no steps in walkthrough");
-  const w = opts.w ?? 1920;
-  const h = opts.h ?? 1080;
   const outDir = join(dir, "wavelet");
   mkdirSync(outDir, { recursive: true });
-  const comps: { comp: string; dwell: number }[] = [];
+  const comps: { comp: string; dwell: number; vw: number; vh: number }[] = [];
   steps.forEach((s, i) => {
     const dwell = Math.max(1, s.dwell ?? 3);
-    const comp = inlineSnapshot(stepComp(dir, s, i, w, h, dwell));
+    const { html, vw, vh } = stepComp(dir, s, i, dwell);
     const p = join(outDir, `step-${i}.comp.html`);
-    writeFileSync(p, comp);
-    comps.push({ comp: p, dwell });
+    writeFileSync(p, html);
+    comps.push({ comp: p, dwell, vw, vh });
   });
-  return { comps, w, h };
+  const vw = comps[0].vw;
+  const vh = comps[0].vh;
+  if (comps.some((c) => c.vw !== vw || c.vh !== vh)) throw new Error("all steps must share one viewport size");
+  return { comps, vw, vh, w: opts.w ?? 1920, h: opts.h ?? 1080 };
 }
 
 export function renderWalkthrough(dir: string, opts: { w?: number; h?: number; fps?: number; lossless?: boolean } = {}) {
   const bin = toolsBinary();
   if (!bin) throw new Error("reactable-tools binary not found (cargo build --release in tools/)");
-  const { comps, w, h } = compileWalkthrough(dir, opts);
+  const { comps, vw, vh, w, h } = compileWalkthrough(dir, opts);
   const fps = opts.fps ?? 30;
   const outDir = join(dir, "wavelet");
   const segs: string[] = [];
   comps.forEach(({ comp, dwell }, i) => {
     const seg = join(outDir, `step-${i}.mp4`);
+    // Render at the SNAPSHOT viewport (CSS px) so responsive layout matches the
+    // captured page exactly; the concat pass scales to the delivery size.
     const args = [
       "wavelet-render", comp, seg,
-      "--w", String(w), "--h", String(h), "--fps", String(fps), "--duration", dwell.toFixed(3),
+      "--w", String(vw), "--h", String(vh), "--fps", String(fps), "--duration", dwell.toFixed(3),
     ];
     if (opts.lossless) args.push("--lossless");
     const proc = Bun.spawnSync([bin, ...args], { stdout: "inherit", stderr: "inherit" });
@@ -152,10 +129,12 @@ export function renderWalkthrough(dir: string, opts: { w?: number; h?: number; f
   const list = join(outDir, "concat.txt");
   writeFileSync(list, segs.map((s) => `file '${s}'`).join("\n") + "\n");
   const out = join(dir, "walkthrough.mp4");
-  const ff = Bun.spawnSync(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", out]);
+  const vf = `scale=${w}:${h}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=#0a0a0f`;
+  const enc = opts.lossless ? ["-qp", "0", "-pix_fmt", "yuv444p"] : ["-crf", "18", "-pix_fmt", "yuv420p", "-movflags", "+faststart"];
+  const ff = Bun.spawnSync(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", list, "-vf", vf, "-c:v", "libx264", ...enc, out]);
   if (ff.exitCode !== 0) {
     throw new Error(`ffmpeg concat failed: ${new TextDecoder().decode(ff.stderr)}`);
   }
   rmSync(list);
-  return { output: out, steps: segs.length, w, h, fps };
+  return { output: out, steps: segs.length, vw, vh, w, h, fps };
 }

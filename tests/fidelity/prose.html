@@ -1,0 +1,65 @@
+<!doctype html>
+<!-- P0 spike comp 1: reactable prose slide (showcase deck, "Authored in .work").
+     Markup = exact prose_to_html output; CSS = verbatim stage deck typography
+     from reactable present/index.work. One spike-added keyframe animation
+     (.wl-rise) proves deterministic time-stepping. -->
+<html>
+<head>
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #050508; }
+  .work-prose {
+    box-sizing: border-box;
+    width: 100%;
+    color: #e8e8ec;
+    font: 20px/1.55 ui-sans-serif, system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .work-prose .deck-h1 {
+    font-size: clamp(2.4rem, 5vw, 3.75rem);
+    font-weight: 650;
+    letter-spacing: -0.03em;
+    line-height: 1.08;
+    margin: 0 0 0.35em;
+    color: #fff;
+  }
+  .work-prose .deck-h2 {
+    font-size: clamp(1.5rem, 3vw, 2.25rem);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    margin: 0 0 0.5em;
+    color: #fff;
+  }
+  .work-prose p { margin: 0 0 1em; color: #a1a1aa; max-width: 42rem; }
+  .work-prose strong { color: #f4f4f5; font-weight: 600; }
+  .work-prose code, .work-prose .deck-code {
+    font: 0.86em ui-monospace, SFMono-Regular, Menlo, monospace !important;
+    color: #c4b5fd !important;
+    background: rgba(99, 102, 241, 0.14) !important;
+    border: 1px solid rgba(129, 140, 248, 0.35) !important;
+    padding: 0.12em 0.5em !important;
+    border-radius: 6px !important;
+  }
+  .work-prose.deck-body {
+    padding: 8vh 10vw;
+    background: #050508;
+    min-height: 100%;
+  }
+  /* spike-added: deterministic-clock proof */
+  .wl-rise {
+    animation: wl-rise 1.2s ease-out both;
+  }
+  @keyframes wl-rise {
+    from { opacity: 0; transform: translateY(40px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+</style>
+</head>
+<body>
+  <div class="work-prose deck-body wl-rise">
+    <h2 class="deck-h2">Prose slides</h2>
+    <h1 class="deck-h1">Authored in <code class="deck-code">.work</code></h1>
+    <p>Speaker notes live in the slide header. Body text supports <strong>emphasis</strong>, lists, and <code class="deck-code">inline code</code> — rendered with deck typography before the stage loads.</p>
+  </div>
+</body>
+</html>
