@@ -348,6 +348,22 @@ async function handle(req: Request, env: Env, ctx: ExecutionContext): Promise<Re
     if (!session) return json({ ok: false, error: "sign in first" }, { status: 401 });
     return gatewayBalance(session.email, env);
   }
+  if (path === "/api/publishing/list" && req.method === "GET") {
+    const session = await openSession(env, req);
+    if (!session) return json({ ok: false, error: "sign in first" }, { status: 401 });
+    const raw = await env.KV.get(`pub:${session.email.toLowerCase()}`);
+    return json({ ok: true, items: raw ? JSON.parse(raw) : [] });
+  }
+  if (path === "/api/publishing/cancel" && req.method === "POST") {
+    const session = await openSession(env, req);
+    if (!session) return json({ ok: false, error: "sign in first" }, { status: 401 });
+    const id = url.searchParams.get("id") || "";
+    const k = `pub:${session.email.toLowerCase()}`;
+    const items = ((await env.KV.get(k)) ? JSON.parse((await env.KV.get(k))!) : []) as any[];
+    const next = items.map((v) => (v.videoId === id ? { ...v, state: "canceled" } : v));
+    await env.KV.put(k, JSON.stringify(next));
+    return json({ ok: true });
+  }
   if (path === "/api/gateway/usage" && req.method === "GET") {
     const session = await openSession(env, req);
     if (!session) return json({ ok: false, error: "sign in first" }, { status: 401 });
