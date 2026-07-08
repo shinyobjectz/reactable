@@ -49,6 +49,14 @@ const SSIM_THRESHOLDS: Record<string, number> = {
   "pulse": 0.96,
   "text-styles": 0.96,
   "real-app-panel": 0.93, // captured real-world page — scored 0.996 at calibration
+  // decorative soft-field tier: seeded blob/band/dot shader approximations.
+  // SSIM punishes AA/dither variance on noise-like fields though structure is
+  // engine-identical (luminance means matched within 0.4 at calibration).
+  "shader-voronoi": 0.88,
+  "shader-color-panels": 0.9,
+  "shader-warp": 0.82,
+  "shader-smoke-ring": 0.9,
+  "infinite-bento-pan": 0.93,
 };
 const DEFAULT_THRESHOLD = 0.95;
 

@@ -286,6 +286,35 @@ Digits roll up into their final value, odometer style.
 | fontWeight | `600` | font weight |
 | speed | `1` | playback multiplier |
 
+### kinetic-center-build
+Hero words fly in from opposing sides and lock around the center.
+
+| prop | default | doc |
+|---|---|---|
+| words | `["BUILD","WITH","MOTION"]` | stacked words |
+| fontSize | `96` | px |
+| color | `"#f4f4f5"` | text color |
+
+### number-wheel
+Odometer wheel rolling every digit to its target value.
+
+| prop | default | doc |
+|---|---|---|
+| value | `"1,204,551"` | target number |
+| label | `"renders shipped"` | caption |
+| fontSize | `84` | px |
+
+### short-slide-down
+The line drops down into place while words fade in sequence.
+
+| prop | default | doc |
+|---|---|---|
+| text | `"Short slide down"` | content |
+| distance | `24` | drop px |
+| staggerDelay | `3` | frames between words |
+| fontSize | `72` | px |
+| color | `"#f4f4f5"` | text color |
+
 ## reveal
 
 ### micro-scale-fade
@@ -326,6 +355,25 @@ A block resolves from heavy defocus into crisp focus.
 | speed | `1` | playback multiplier |
 | blur | `18` | start defocus px |
 | durationFrames | `26` | resolve length |
+
+### logo-enter
+Logo mark pops in with a ring burst; the wordmark slides out beside it.
+
+| prop | default | doc |
+|---|---|---|
+| wordmark | `"wavelet"` | brand text |
+| accent | `"#818cf8"` | mark color |
+| fontSize | `64` | wordmark px |
+
+### scale-down-fade
+Block fades in while settling down from an oversized scale.
+
+| prop | default | doc |
+|---|---|---|
+| text | `"Settle in"` | content |
+| scaleFrom | `1.15` | start scale |
+| fontSize | `84` | px |
+| color | `"#f4f4f5"` | text color |
 
 ## transition
 
@@ -895,6 +943,24 @@ Line chart drawing itself point to point with a leading dot.
 | gridColor | `"#27272a"` | grid lines |
 | speed | `1` | playback multiplier |
 
+### resizable
+Split view whose divider glides to a new balance point.
+
+| prop | default | doc |
+|---|---|---|
+| fromPct | `50` | start left-pane % |
+| toPct | `68` | end left-pane % |
+
+### select
+Select field — panel drops, options cascade, choice fills the field.
+
+| prop | default | doc |
+|---|---|---|
+| placeholder | `"Aspect ratio"` | field label |
+| options | `["16:9 — landscape","9:16 — vertical","1:1 — square"]` | options |
+| pick | `1` | picked index |
+| mode | `"dark"` | light|dark theme |
+
 ## background
 
 ### infinite-marquee
@@ -951,6 +1017,165 @@ Celebration burst — seeded ballistic particles, fully deterministic.
 | originY | `60` | % from top |
 | seed | `"party"` | burst seed |
 | durationSeconds | `2.2` | burst length |
+
+### shader-color-panels
+Animated color panels backdrop. CSS approximation of the WebGL shader — run the true GLSL in the HyperFrames lane.
+
+| prop | default | doc |
+|---|---|---|
+| seed | `"color-panels"` | field seed |
+| back | `"#0a0a12"` | backdrop color |
+
+### shader-dithering
+Animated dithering backdrop. CSS approximation of the WebGL shader — run the true GLSL in the HyperFrames lane.
+
+| prop | default | doc |
+|---|---|---|
+| seed | `"dithering"` | field seed |
+| back | `"#101014"` | backdrop color |
+
+### shader-dot-orbit
+Animated dot orbit backdrop. CSS approximation of the WebGL shader — run the true GLSL in the HyperFrames lane.
+
+| prop | default | doc |
+|---|---|---|
+| seed | `"dot-orbit"` | field seed |
+| back | `"#0a0a12"` | backdrop color |
+
+### shader-god-rays
+Animated god rays backdrop. CSS approximation of the WebGL shader — run the true GLSL in the HyperFrames lane.
+
+| prop | default | doc |
+|---|---|---|
+| seed | `"god-rays"` | field seed |
+| back | `"#0d0b06"` | backdrop color |
+
+### shader-grain-gradient
+Animated grain gradient backdrop. CSS approximation of the WebGL shader — run the true GLSL in the HyperFrames lane.
+
+| prop | default | doc |
+|---|---|---|
+| seed | `"grain-gradient"` | field seed |
+| back | `"#23233a"` | backdrop color |
+
+### shader-liquid-metal
+Animated liquid metal backdrop. CSS approximation of the WebGL shader — run the true GLSL in the HyperFrames lane.
+
+| prop | default | doc |
+|---|---|---|
+| seed | `"liquid-metal"` | field seed |
+| back | `"#111114"` | backdrop color |
+
+### shader-mesh-gradient
+Animated mesh gradient backdrop. CSS approximation of the WebGL shader — run the true GLSL in the HyperFrames lane.
+
+| prop | default | doc |
+|---|---|---|
+| seed | `"mesh-gradient"` | field seed |
+| back | `"#0a0a12"` | backdrop color |
+
+### shader-metaballs
+Animated metaballs backdrop. CSS approximation of the WebGL shader — run the true GLSL in the HyperFrames lane.
+
+| prop | default | doc |
+|---|---|---|
+| seed | `"metaballs"` | field seed |
+| back | `"#120a16"` | backdrop color |
+
+### shader-neuro-noise
+Animated neuro noise backdrop. CSS approximation of the WebGL shader — run the true GLSL in the HyperFrames lane.
+
+| prop | default | doc |
+|---|---|---|
+| seed | `"neuro-noise"` | field seed |
+| back | `"#06131a"` | backdrop color |
+
+### shader-perlin-noise
+Animated perlin noise backdrop. CSS approximation of the WebGL shader — run the true GLSL in the HyperFrames lane.
+
+| prop | default | doc |
+|---|---|---|
+| seed | `"perlin-noise"` | field seed |
+| back | `"#0f1420"` | backdrop color |
+
+### shader-pulsing-border
+Animated pulsing border backdrop. CSS approximation of the WebGL shader — run the true GLSL in the HyperFrames lane.
+
+| prop | default | doc |
+|---|---|---|
+| seed | `"pulsing-border"` | field seed |
+| back | `"#0a0a12"` | backdrop color |
+
+### shader-simplex-noise
+Animated simplex noise backdrop. CSS approximation of the WebGL shader — run the true GLSL in the HyperFrames lane.
+
+| prop | default | doc |
+|---|---|---|
+| seed | `"simplex-noise"` | field seed |
+| back | `"#171412"` | backdrop color |
+
+### shader-smoke-ring
+Animated smoke ring backdrop. CSS approximation of the WebGL shader — run the true GLSL in the HyperFrames lane.
+
+| prop | default | doc |
+|---|---|---|
+| seed | `"smoke-ring"` | field seed |
+| back | `"#131316"` | backdrop color |
+
+### shader-spiral
+Animated spiral backdrop. CSS approximation of the WebGL shader — run the true GLSL in the HyperFrames lane.
+
+| prop | default | doc |
+|---|---|---|
+| seed | `"spiral"` | field seed |
+| back | `"#140b06"` | backdrop color |
+
+### shader-swirl
+Animated swirl backdrop. CSS approximation of the WebGL shader — run the true GLSL in the HyperFrames lane.
+
+| prop | default | doc |
+|---|---|---|
+| seed | `"swirl"` | field seed |
+| back | `"#0a0a16"` | backdrop color |
+
+### shader-voronoi
+Animated voronoi backdrop. CSS approximation of the WebGL shader — run the true GLSL in the HyperFrames lane.
+
+| prop | default | doc |
+|---|---|---|
+| seed | `"voronoi"` | field seed |
+| back | `"#04120c"` | backdrop color |
+
+### shader-warp
+Animated warp backdrop. CSS approximation of the WebGL shader — run the true GLSL in the HyperFrames lane.
+
+| prop | default | doc |
+|---|---|---|
+| seed | `"warp"` | field seed |
+| back | `"#0e0a16"` | backdrop color |
+
+### shader-water
+Animated water backdrop. CSS approximation of the WebGL shader — run the true GLSL in the HyperFrames lane.
+
+| prop | default | doc |
+|---|---|---|
+| seed | `"water"` | field seed |
+| back | `"#04121f"` | backdrop color |
+
+### infinite-bento-pan
+Endless diagonal pan across a bento tile field (duplicated sheet loop).
+
+| prop | default | doc |
+|---|---|---|
+| seed | `"bento"` | tile seed |
+
+### perspective-marquee
+Angled marquee rows drifting in alternating directions (flat-skew approximation of the 3D plane).
+
+| prop | default | doc |
+|---|---|---|
+| rows | `["SHIP · BUILD · RENDER · ","MOTION · PIXELS · CODE · ","DECKS · TAKES · CLIPS · "]` | marquee rows |
+| fontSize | `84` | px |
 
 ## scene
 
@@ -1045,4 +1270,109 @@ v0-style prompt → generating → preview card swap.
 | prop | default | doc |
 |---|---|---|
 | prompt | `"a pricing page with three tiers"` | typed prompt |
+
+### github-stars
+Repo star-count card — odometer count-up, star pop, stargazer avatars cascade.
+
+| prop | default | doc |
+|---|---|---|
+| repo | `"workbooks-sh/wavelet"` | owner/name |
+| stars | `"12,408"` | count |
+| mode | `"dark"` | light|dark theme |
+
+### github-sponsors
+Sponsors card — pulsing heart, tier rows cascading in.
+
+| prop | default | doc |
+|---|---|---|
+| handle | `"@shinyobjectz"` | sponsored account |
+| tiers | `["$5 · Supporter — 48","$25 · Backer — 17","$100 · Partner — 4"]` | tier rows |
+| mode | `"dark"` | light|dark theme |
+
+### x-follow-card
+X profile card — cursor glides to Follow, button flips to Following.
+
+| prop | default | doc |
+|---|---|---|
+| handle | `"@shinyobjectz"` | handle |
+| name | `"Shiny Objectz"` | display name |
+| followers | `"8,214"` | count |
+
+### x-followers-overview
+Analytics overview — stat tiles cascade, weekly bars grow.
+
+| prop | default | doc |
+|---|---|---|
+| followers | `"8,214"` | total |
+| impressions | `"412K"` | impressions |
+| bars | `[40,55,45,70,62,85,96]` | weekly series |
+
+### ai-prompt-flow
+Prompt types in, pipeline chips light in sequence, answer lines stream out.
+
+| prop | default | doc |
+|---|---|---|
+| prompt | `"Cut a 30s teaser from this take"` | typed prompt |
+| steps | `["parse","plan","render"]` | pipeline chips |
+| answer | `["Selected 4 highlight ranges","Compiled comp with captions","Rendered 16:9 + 9:16"]` | output lines |
+
+### chat-to-preview-layout
+Split layout — chat messages land left, the preview assembles right.
+
+| prop | default | doc |
+|---|---|---|
+| ask | `"Make the hero bolder"` | user message |
+| reply | `"Done — scaled the headline and tightened tracking."` | agent reply |
+
+### checkout-flow
+Checkout card — line items cascade, total rolls up, Pay flips to success.
+
+| prop | default | doc |
+|---|---|---|
+| items | `["Pro plan — $29","Extra seat — $9"]` | line items |
+| total | `"38"` | total (digits) |
+
+### signup-flow
+Signup card — email and password type in, button flips to success.
+
+| prop | default | doc |
+|---|---|---|
+| email | `"shane@shinyobjectz.com"` | typed email |
+
+### onboarding-stepper-flow
+Vertical onboarding steps checking off in sequence.
+
+| prop | default | doc |
+|---|---|---|
+| steps | `["Create your workspace","Record a take","Render with wavelet","Share the clip"]` | steps |
+
+### settings-toggle-flow
+Settings rows — cursor glides between switches, flipping them on.
+
+| prop | default | doc |
+|---|---|---|
+| rows | `["Lossless master","Auto captions","Publish to channel"]` | settings |
+| flips | `[0,2]` | rows that toggle on |
+
+### data-flow-pipes
+Nodes linked by pipes with pulses traveling between them (18–24f per hop).
+
+| prop | default | doc |
+|---|---|---|
+| nodes | `["events","compile","render","publish"]` | pipeline nodes |
+
+### ecosystem-constellation
+Satellite chips orbit a core node on two counter-rotating rings.
+
+| prop | default | doc |
+|---|---|---|
+| core | `"wavelet"` | center label |
+| satellites | `["decks","takes","agents","skills","gate","cli"]` | orbiters |
+
+### live-code-compilation
+Code lines cascade, the build bar sweeps, the status badge flips green.
+
+| prop | default | doc |
+|---|---|---|
+| lines | `["fn render(take: &Take) -> Mp4 {","  let comp = compile(take);","  encode(comp.frames())","}"]` | code |
 

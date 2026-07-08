@@ -452,7 +452,9 @@ import { WAVE4 } from "./wave4.ts";
 import { WAVE5 } from "./wave5.ts";
 import { WAVE6 } from "./wave6.ts";
 import { WAVE7 } from "./wave7.ts";
-COMPONENTS.push(...WAVE2, ...WAVE3, ...WAVE4, ...WAVE5, ...WAVE6, ...WAVE7);
+import { WAVE8 } from "./wave8.ts";
+import { WAVE9 } from "./wave9.ts";
+COMPONENTS.push(...WAVE2, ...WAVE3, ...WAVE4, ...WAVE5, ...WAVE6, ...WAVE7, ...WAVE8, ...WAVE9);
 
 export const byName = new Map(COMPONENTS.map((c) => [c.name, c]));
 export { demoPage } from "./lib/motion.ts";

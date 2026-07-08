@@ -14,7 +14,8 @@ export interface ShotBrowser {
 
 export async function launchShotBrowser(chrome: string, width: number, height: number): Promise<ShotBrowser> {
   const proc = Bun.spawn(
-    [chrome, "--remote-debugging-port=0", "--no-first-run", "--disable-crash-reporter",
+    [chrome, ...(chrome.includes("headless-shell") ? [] : ["--headless=new"]),
+     "--remote-debugging-port=0", "--no-first-run", "--disable-crash-reporter",
      `--window-size=${width},${height}`, "--hide-scrollbars", "--force-device-scale-factor=1", "about:blank"],
     { stderr: "pipe", stdout: "ignore" },
   );
