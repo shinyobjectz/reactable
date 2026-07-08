@@ -16,6 +16,10 @@ export interface Env {
   SCRAPECREATORS_API_KEY?: string;
   MINIMAX_GATEWAY_KEY?: string;
   LEDGER: DurableObjectNamespace;
+  DRIVE_CLIENT_ID?: string;
+  DRIVE_CLIENT_SECRET?: string;
+  META_APP_ID?: string;
+  META_APP_SECRET?: string;
 }
 
 // Live account state — written by billing webhooks, read by /api/auth/me.

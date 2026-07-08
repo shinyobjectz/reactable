@@ -1840,6 +1840,44 @@ server :reactable_api do
     @connector_providers |> Map.keys() |> Enum.filter(&(to_string(keys[&1] || "") != "")) |> Enum.sort()
   end
 
+  defp reactable_session do
+    path = Path.join(System.get_env("HOME") || "", ".reactable/auth.json")
+
+    with true <- File.exists?(path),
+         {:ok, body} <- File.read(path),
+         {:ok, %{"access_token" => token} = auth} when is_binary(token) and token != "" <- Jason.decode(body) do
+      {Map.get(auth, "api_base", "https://reactable.app"), token}
+    else
+      _ -> nil
+    end
+  end
+
+  defp run_connector_tool(%{"provider" => "drive"} = args) do
+    case reactable_session() do
+      nil ->
+        %{ok: false, error: "drive needs a signed-in Reactable account — Settings → Sign in"}
+
+      {base, token} ->
+        path = to_string(args["path"] || "/api/drive/files")
+        path = if String.starts_with?(path, "/api/drive/"), do: path, else: "/api/drive/files"
+        params = if is_map(args["params"]), do: args["params"], else: %{}
+        query = params |> Enum.map_join("&", fn {k, v} -> "#{URI.encode_www_form(to_string(k))}=#{URI.encode_www_form(to_string(v))}" end)
+        url = base <> path <> if(query == "", do: "", else: "?" <> query)
+        headers = [{"cookie", "reactable_session=" <> token}]
+
+        case http_request(:get, url, headers, nil) do
+          {:ok, status, body} when is_binary(args["save_to"]) ->
+            save_connector_asset(args["save_to"], body, status)
+
+          {:ok, status, body} ->
+            %{ok: status < 300, status: status, body: String.slice(body, 0, 12000)}
+
+          {:error, e} ->
+            %{ok: false, error: e}
+        end
+    end
+  end
+
   defp run_connector_tool(args) do
     provider = to_string(args["provider"] || "")
     key = to_string(connector_keys()[provider] || "")
@@ -2033,13 +2071,16 @@ server :reactable_api do
   # right now. Depth comes from the --json verbs, not from bloating this.
   # Connector docs only for providers the user has actually connected.
   defp connector_tool_doc do
-    case connected_providers() do
+    providers = connected_providers()
+    providers = if reactable_session(), do: providers ++ ["drive"], else: providers
+
+    case providers do
       [] ->
         ""
 
-      providers ->
+      provider_list ->
         skills =
-          Enum.map_join(providers, "\n\n", fn p ->
+          Enum.map_join(provider_list, "\n\n", fn p ->
             read_skill_file("connectors/#{p}.md") || read_skill_file("bundle/connectors/#{p}.md") || "### #{p}\n(connected)"
           end)
 
