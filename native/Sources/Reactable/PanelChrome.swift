@@ -23,11 +23,11 @@ enum PanelChrome {
         strip.addSubview(close)
 
         NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: strip.leadingAnchor, constant: 12),
-            label.centerYAnchor.constraint(equalTo: strip.centerYAnchor),
+            label.leadingAnchor.constraint(equalTo: strip.leadingAnchor, constant: 18),
+            label.centerYAnchor.constraint(equalTo: strip.centerYAnchor, constant: 3),
             label.widthAnchor.constraint(lessThanOrEqualTo: strip.widthAnchor, multiplier: 0.42),
-            close.trailingAnchor.constraint(equalTo: strip.trailingAnchor, constant: -10),
-            close.centerYAnchor.constraint(equalTo: strip.centerYAnchor),
+            close.trailingAnchor.constraint(equalTo: strip.trailingAnchor, constant: -16),
+            close.centerYAnchor.constraint(equalTo: strip.centerYAnchor, constant: 3),
         ])
         return label
     }

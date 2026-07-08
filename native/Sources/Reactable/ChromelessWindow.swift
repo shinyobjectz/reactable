@@ -49,7 +49,7 @@ final class DragStripView: NSView {
         for col in -1...1 {
             for row in 0...1 {
                 let x = bounds.midX + CGFloat(col) * dx - r
-                let y = bounds.midY + (CGFloat(row) - 0.5) * dy - r
+                let y = bounds.midY + 2 + (CGFloat(row) - 0.5) * dy - r
                 NSBezierPath(ovalIn: NSRect(x: x, y: y, width: r * 2, height: r * 2)).fill()
             }
         }

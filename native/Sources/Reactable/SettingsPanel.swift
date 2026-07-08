@@ -60,6 +60,27 @@ final class SettingsPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
             if let u = parsed.payload["url"] as? String, let url = URL(string: u) {
                 NSWorkspace.shared.open(url)
             }
+        case "settings.connector":
+            if let id = parsed.payload["id"] as? String, let key = parsed.payload["key"] as? String {
+                let dir = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".reactable")
+                let file = dir.appending(path: "connectors.json")
+                var all = (try? JSONSerialization.jsonObject(with: Data(contentsOf: file))) as? [String: String] ?? [:]
+                all[id] = key
+                try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                if let d = try? JSONSerialization.data(withJSONObject: all, options: [.prettyPrinted]) {
+                    try? d.write(to: file)
+                }
+            }
+        case "settings.youtube":
+            let home = FileManager.default.homeDirectoryForCurrentUser.path
+            for cli in ["\(home)/.bun/bin/reactable", "/opt/homebrew/bin/reactable"]
+            where FileManager.default.isExecutableFile(atPath: cli) {
+                let proc = Process()
+                proc.executableURL = URL(fileURLWithPath: cli)
+                proc.arguments = ["youtube", "connect"]
+                try? proc.run()
+                break
+            }
         case "settings.close":
             window?.orderOut(nil)
         default:

@@ -8,13 +8,14 @@ client :projects do
   <style>
     * { box-sizing: border-box; margin: 0; }
     html, body { height: 100%; background: #141414; color: #e7e7e7; font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; user-select: none; }
-    .wrap { display: flex; flex-direction: column; height: 100%; }
+    .wrap { display: flex; flex-direction: column; height: 100vh; }
     .switcher { padding: 8px 10px 6px; }
     .current { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px; background: #1d1d1d; cursor: pointer; }
     .current:hover { background: #232323; }
     .current .name { flex: 1; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .current .chev { color: #6f6f6f; transition: transform .15s; }
     .current.open .chev { transform: rotate(180deg); }
+    .stagebar { padding: 6px 2px 0; }
     .plist { display: none; margin-top: 4px; border-radius: 10px; background: #191919; overflow: hidden; }
     .plist.open { display: block; }
     .prow { display: flex; align-items: center; gap: 8px; padding: 9px 12px; cursor: pointer; }
@@ -42,7 +43,11 @@ client :projects do
   </style>
   <div class="wrap">
     <div class="switcher">
-      <div class="current" id="current"><span class="name" id="cur-name">—</span><span class="chev">▾</span></div>
+      <div class="current" id="current">
+        <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6;opacity:.7"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+        <span class="name" id="cur-name">—</span><span class="chev">▾</span>
+      </div>
+      <div class="stagebar"><button class="chip" id="cur-stage">idea</button></div>
       <div class="plist" id="plist"></div>
     </div>
     <div class="search"><input id="q" placeholder="Search takes and assets…" /></div>
@@ -64,6 +69,15 @@ client :projects do
     function renderSwitcher() {
       const cur = data.projects.find((p) => p.root + '/' + p.slug === data.active);
       document.getElementById('cur-name').textContent = cur ? (cur.title || cur.slug) : '—';
+      const curStage = data.stages[data.active] || 'idea';
+      const chip = document.getElementById('cur-stage');
+      chip.textContent = curStage;
+      chip.onclick = () => {
+        const next = COLS[(COLS.indexOf(curStage) + 1) % COLS.length];
+        data.stages[data.active] = next;
+        send('projects.stage', { id: data.active, stage: next });
+        renderSwitcher();
+      };
       const list = document.getElementById('plist');
       list.innerHTML = '';
       for (const p of data.projects) {
@@ -71,19 +85,12 @@ client :projects do
         const stage = data.stages[key] || 'idea';
         const row = document.createElement('div');
         row.className = 'prow';
-        row.innerHTML = `<span class="name">${p.title || p.slug}</span><button class="chip">${stage}</button>`;
-        row.addEventListener('click', (e) => {
-          if (e.target.classList.contains('chip')) return;
+        row.innerHTML = `<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6;opacity:.6"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m10 9 5 3-5 3z"/></svg><span class="name">${p.title || p.slug}</span><span class="chip">${stage}</span>`;
+        row.addEventListener('click', () => {
           send('projects.select', { root: p.root, slug: p.slug });
           list.classList.remove('open');
           document.getElementById('current').classList.remove('open');
         });
-        row.querySelector('.chip').onclick = () => {
-          const next = COLS[(COLS.indexOf(stage) + 1) % COLS.length];
-          data.stages[key] = next;
-          send('projects.stage', { id: key, stage: next });
-          renderSwitcher();
-        };
         list.appendChild(row);
       }
       const add = document.createElement('div');
@@ -122,7 +129,12 @@ client :projects do
           box.appendChild(note);
         }
       }
-      if (!box.children.length) box.innerHTML = '<div class="empty">No media yet — record a take or drop files in.</div>';
+      if (!box.children.length) {
+        box.innerHTML = `<div class="empty">
+          <svg viewBox="0 0 24 24" style="width:26px;height:26px;stroke:#3a3a3a;fill:none;stroke-width:1.4;margin-bottom:8px"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m10 9 5 3-5 3z"/></svg><br/>
+          ${q ? 'Nothing matches your search.' : 'No media yet.<br/>Record a take or drop files anywhere on this panel.'}
+        </div>`;
+      }
     }
 
     document.getElementById('current').onclick = () => {

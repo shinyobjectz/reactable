@@ -37,25 +37,30 @@ final class ResizeCornersView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let inset: CGFloat = 5
-        let leg: CGFloat = 13
+        let inset: CGFloat = 8
+        let leg: CGFloat = 12
+        let r: CGFloat = 4  // rounded bend
         NSColor(white: 1, alpha: 0.20).setStroke()
         let b = bounds.insetBy(dx: inset, dy: inset)
         let p = NSBezierPath()
         p.lineWidth = 2
         p.lineCapStyle = .round
-        p.move(to: NSPoint(x: b.minX, y: b.minY + leg))
-        p.line(to: NSPoint(x: b.minX, y: b.minY))
-        p.line(to: NSPoint(x: b.minX + leg, y: b.minY))
-        p.move(to: NSPoint(x: b.maxX - leg, y: b.minY))
-        p.line(to: NSPoint(x: b.maxX, y: b.minY))
-        p.line(to: NSPoint(x: b.maxX, y: b.minY + leg))
-        p.move(to: NSPoint(x: b.minX, y: b.maxY - leg))
-        p.line(to: NSPoint(x: b.minX, y: b.maxY))
-        p.line(to: NSPoint(x: b.minX + leg, y: b.maxY))
-        p.move(to: NSPoint(x: b.maxX - leg, y: b.maxY))
-        p.line(to: NSPoint(x: b.maxX, y: b.maxY))
-        p.line(to: NSPoint(x: b.maxX, y: b.maxY - leg))
+
+        func corner(_ cx: CGFloat, _ cy: CGFloat, _ sx: CGFloat, _ sy: CGFloat) {
+            // L with an arc at the bend; (sx, sy) point inward.
+            p.move(to: NSPoint(x: cx, y: cy + sy * leg))
+            p.line(to: NSPoint(x: cx, y: cy + sy * r))
+            p.appendArc(
+                from: NSPoint(x: cx, y: cy),
+                to: NSPoint(x: cx + sx * r, y: cy),
+                radius: r
+            )
+            p.line(to: NSPoint(x: cx + sx * leg, y: cy))
+        }
+        corner(b.minX, b.minY, 1, 1)
+        corner(b.maxX, b.minY, -1, 1)
+        corner(b.minX, b.maxY, 1, -1)
+        corner(b.maxX, b.maxY, -1, -1)
         p.stroke()
     }
 
