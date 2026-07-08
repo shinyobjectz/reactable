@@ -98,6 +98,14 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
             }
         case "projects.new":
             onNew?()
+        case "projects.addmedia":
+            let panel = NSOpenPanel()
+            panel.allowsMultipleSelection = true
+            panel.canChooseDirectories = false
+            NSApp.activate(ignoringOtherApps: true)
+            if panel.runModal() == .OK, !panel.urls.isEmpty {
+                onDrop?(panel.urls)
+            }
         case "projects.note":
             if let p = parsed.payload["path"] as? String {
                 onNote?(p, parsed.payload["note"] as? String ?? "")

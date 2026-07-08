@@ -304,6 +304,8 @@ client :agent do
     #tail { height: 3px; margin: 0 14px; border-radius: 3px; opacity: 0; background: linear-gradient(90deg, #1c1c1c, #efefef, #1c1c1c); background-size: 200% 100%; transition: opacity .25s ease; }
     #tail.on { opacity: 1; animation: tailFlow 1.4s linear infinite; }
     @keyframes tailFlow { to { background-position: 200% 0; } }
+    .tool-chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-start; }
+    .tchip { font: 10px ui-monospace, monospace; color: #9a9a9a; background: #1d1d1d; padding: 4px 8px; border-radius: 999px; }
     /* de-stroke: one seamless surface, elevation by tone only */
     .composer, .composer:focus-within { border: 0; background: #1d1d1d; box-shadow: none; }
     .composer-bar { border-top: 0; }
@@ -412,6 +414,7 @@ client :agent do
       }
       log.appendChild(el);
       log.scrollTop = log.scrollHeight;
+      return el;
     }
 
     function showBanner(html) {
@@ -572,12 +575,35 @@ client :agent do
           append('error', data.error || 'Chat failed');
           return;
         }
-        const meta = [];
-        if (data.tools?.length) meta.push(`${data.tools.length} tool run(s)`);
-        if (data.turns > 1) meta.push(`${data.turns} turns`);
-        if (data.note) meta.push(data.note);
-        append('assistant', data.reply || '(empty)', meta.join(' · '));
-        history.push({ role: 'assistant', content: data.reply || '' });
+        // Tool activity chips — what the agent did this turn.
+        if (data.tools?.length) {
+          const chips = document.createElement('div');
+          chips.className = 'msg system tool-chips';
+          chips.innerHTML = data.tools.map((t) =>
+            `<span class="tchip">⚙ ${typeof t === 'string' ? t : (t.name || t.tool || 'tool')}</span>`).join('');
+          log.appendChild(chips);
+        }
+        // Stream the reply in (typewriter over the markdown source).
+        const full = data.reply || '(empty)';
+        const el = append('assistant', '');
+        let i = 0;
+        await new Promise((resolve) => {
+          const step = () => {
+            i = Math.min(full.length, i + 3 + Math.floor(Math.random() * 4));
+            el.innerHTML = renderMarkdown(full.slice(0, i));
+            log.scrollTop = log.scrollHeight;
+            if (i < full.length) setTimeout(step, 16);
+            else resolve();
+          };
+          step();
+        });
+        if (data.turns > 1) {
+          const t = document.createElement('div');
+          t.className = 'tools';
+          t.textContent = `${data.turns} turns`;
+          el.appendChild(t);
+        }
+        history.push({ role: 'assistant', content: full });
       } catch (e) {
         typing.remove();
         append('error', String(e));
