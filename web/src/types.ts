@@ -13,6 +13,7 @@ export interface Env {
   POLAR_WEBHOOK_SECRET?: string;
   POLAR_PRODUCT_PRO?: string;
   POLAR_API?: string;
+  SCRAPECREATORS_API_KEY?: string;
 }
 
 // Live account state — written by billing webhooks, read by /api/auth/me.
