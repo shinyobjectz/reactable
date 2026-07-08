@@ -258,6 +258,11 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             board.onStage = { [weak self] id, stage in self?.setProjectStage(id: id, stage: stage) }
             board.onNew = { [weak self] in self?.createProject() }
             board.onNote = { [weak self] p, note in self?.saveAssetNote(path: p, note: note) }
+            board.onAddLink = { [weak self] url in self?.addProjectLink(url) }
+            board.onReveal = { [weak self] p in
+                guard let self else { return }
+                NSWorkspace.shared.activateFileViewerSelecting([self.activeProjectURL.appending(path: p)])
+            }
             board.onDrop = { [weak self] urls in self?.importAssets(urls) }
             projectsBoard = board
             syncBar()
@@ -896,6 +901,43 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         projectsBoard?.pushData()
     }
 
+    private var linksURL: URL { activeProjectURL.appending(path: ".reactable/links.json") }
+
+    private func addProjectLink(_ url: String) {
+        var links = (try? JSONSerialization.jsonObject(with: Data(contentsOf: linksURL))) as? [String] ?? []
+        if !links.contains(url) { links.append(url) }
+        try? FileManager.default.createDirectory(at: linksURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let d = try? JSONSerialization.data(withJSONObject: links) { try? d.write(to: linksURL) }
+        projectsBoard?.pushData()
+    }
+
+    /// Small cached JPEG thumbnail as a data URI (video: first frames via
+    /// AVAssetImageGenerator; image: downscaled NSImage).
+    private func thumbnail(for file: URL, kind: String) -> String? {
+        let thumbsDir = activeProjectURL.appending(path: ".reactable/thumbs")
+        let key = file.path.replacingOccurrences(of: "/", with: "_") + ".jpg"
+        let cache = thumbsDir.appending(path: key)
+        if let data = try? Data(contentsOf: cache) {
+            return "data:image/jpeg;base64," + data.base64EncodedString()
+        }
+        var cg: CGImage?
+        if kind == "video" || kind == "take" {
+            let gen = AVAssetImageGenerator(asset: AVURLAsset(url: file))
+            gen.appliesPreferredTrackTransform = true
+            gen.maximumSize = CGSize(width: 480, height: 480)
+            cg = try? gen.copyCGImage(at: CMTime(seconds: 0.4, preferredTimescale: 600), actualTime: nil)
+        } else if kind == "image", let img = NSImage(contentsOf: file) {
+            var rect = NSRect(origin: .zero, size: img.size)
+            cg = img.cgImage(forProposedRect: &rect, context: nil, hints: nil)
+        }
+        guard let cg else { return nil }
+        let rep = NSBitmapImageRep(cgImage: cg)
+        guard let jpeg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.6]) else { return nil }
+        try? FileManager.default.createDirectory(at: thumbsDir, withIntermediateDirectories: true)
+        try? jpeg.write(to: cache)
+        return "data:image/jpeg;base64," + jpeg.base64EncodedString()
+    }
+
     /// The project's media, code abstracted away: takes + assets (+ root media).
     private func projectFiles() -> [[String: Any]] {
         var out: [[String: Any]] = []
@@ -903,7 +945,13 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
         let takes = activeProjectURL.appending(path: "takes")
         if let items = try? fm.contentsOfDirectory(atPath: takes.path) {
             for t in items.sorted(by: >) where t.hasPrefix("take") {
-                out.append(["name": t, "path": "takes/\(t)", "group": "Takes", "icon": "take", "sub": ""])
+                var row: [String: Any] = ["name": t, "path": "takes/\(t)", "group": "Takes", "icon": "take", "sub": ""]
+                let stageMov = takes.appending(path: "\(t)/stage.mov")
+                if FileManager.default.fileExists(atPath: stageMov.path),
+                   let thumb = thumbnail(for: stageMov, kind: "take") {
+                    row["thumb"] = thumb
+                }
+                out.append(row)
             }
         }
         let assets = activeProjectURL.appending(path: "assets")
@@ -915,9 +963,17 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                     : ["wav", "mp3", "m4a", "aiff"].contains(ext) ? "audio"
                     : ["png", "jpg", "jpeg", "gif", "webp"].contains(ext) ? "image" : "file"
                 let group = rel.contains("/") ? "assets/" + rel.components(separatedBy: "/")[0] : "Assets"
-                out.append(["name": f.lastPathComponent, "path": "assets/\(rel)", "group": group, "icon": icon, "sub": ext])
+                var row: [String: Any] = ["name": f.lastPathComponent, "path": "assets/\(rel)", "group": group, "icon": icon, "sub": ext]
+                if icon == "image" || icon == "video", let thumb = thumbnail(for: f, kind: icon) {
+                    row["thumb"] = thumb
+                }
+                out.append(row)
                 if out.count > 240 { break }
             }
+        }
+        let links = (try? JSONSerialization.jsonObject(with: Data(contentsOf: linksURL))) as? [String] ?? []
+        for l in links {
+            out.append(["name": l, "path": l, "group": "Links", "icon": "link", "sub": "url"])
         }
         return out
     }

@@ -22,6 +22,8 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
     var onNew: (() -> Void)?
     var onNote: ((String, String) -> Void)?
     var onDrop: (([URL]) -> Void)?
+    var onAddLink: ((String) -> Void)?
+    var onReveal: ((String) -> Void)?
 
     init(port: Int) {
         self.port = port
@@ -46,10 +48,21 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
     func hide() { window?.orderOut(nil) }
 
     func pushData() {
-        guard let data = dataProvider?(),
+        guard let data = dataProvider?() else {
+            FileHandle.standardError.write(Data("projects: pushData — no dataProvider\n".utf8))
+            return
+        }
+        guard JSONSerialization.isValidJSONObject(data),
               let json = try? JSONSerialization.data(withJSONObject: data),
-              let str = String(data: json, encoding: .utf8) else { return }
-        webView?.evaluateJavaScript("window.ReactableProjects?.setData(\(str))")
+              let str = String(data: json, encoding: .utf8) else {
+            FileHandle.standardError.write(Data("projects: pushData — data not JSON-serializable\n".utf8))
+            return
+        }
+        webView?.evaluateJavaScript("window.ReactableProjects?.setData(\(str))") { _, err in
+            if let err {
+                FileHandle.standardError.write(Data("projects: setData failed: \(err)\n".utf8))
+            }
+        }
     }
 
     private func createWindow() {
@@ -99,13 +112,19 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
         case "projects.new":
             onNew?()
         case "projects.addmedia":
+            let mode = parsed.payload["mode"] as? String ?? "file"
             let panel = NSOpenPanel()
             panel.allowsMultipleSelection = true
-            panel.canChooseDirectories = false
+            panel.canChooseDirectories = mode == "folder"
+            panel.canChooseFiles = mode != "folder"
             NSApp.activate(ignoringOtherApps: true)
             if panel.runModal() == .OK, !panel.urls.isEmpty {
                 onDrop?(panel.urls)
             }
+        case "projects.addlink":
+            if let u = parsed.payload["url"] as? String { onAddLink?(u) }
+        case "projects.reveal":
+            if let p = parsed.payload["path"] as? String { onReveal?(p) }
         case "projects.note":
             if let p = parsed.payload["path"] as? String {
                 onNote?(p, parsed.payload["note"] as? String ?? "")
@@ -133,25 +152,25 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
 }
 
 
-// Transparent drag-and-drop catcher: invisible to clicks, receives file drags.
+// WKWebView that accepts file drags natively (a hitTest-nil overlay never
+// receives them — AppKit routes drag destinations through hitTest).
 @MainActor
-final class FileDropView: NSView {
-    var onDrop: (([URL]) -> Void)?
+final class DropWebView: WKWebView {
+    var onDropFiles: (([URL]) -> Void)?
 
-    override init(frame: NSRect) {
-        super.init(frame: frame)
+    override init(frame: CGRect, configuration: WKWebViewConfiguration) {
+        super.init(frame: frame, configuration: configuration)
         registerForDraggedTypes([.fileURL])
     }
     required init?(coder: NSCoder) { nil }
 
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { .copy }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { .copy }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self]) as? [URL] ?? []
-        guard !urls.isEmpty else { return false }
-        onDrop?(urls)
+        guard !urls.isEmpty else { return super.performDragOperation(sender) }
+        onDropFiles?(urls)
         return true
     }
 }
