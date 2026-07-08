@@ -1,293 +1,112 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Reactable — record interactive decks on Mac</title>
-  <meta name="description" content="Present a live deck — apps, clips, prose — with your face on metal. One stage for preview and capture. Export polished takes." />
-  <meta property="og:title" content="Reactable — record interactive decks on Mac" />
-  <meta property="og:description" content="Present a live deck with your face on metal. Preview and capture are the same window." />
-  <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://reactable.app" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/black.css" />
-  <link rel="stylesheet" href="/brand/desktop.css" />
-  <link rel="stylesheet" href="/brand/reactable-stage.css" />
-  <link rel="stylesheet" href="/brand/reactable-bar.css" />
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Reactable — the studio that makes the video</title>
+<meta name="description" content="Record interactive decks on a real stage, let the agent research, edit, and assemble — then post it. Next-generation content intelligence for Mac."/>
+<meta property="og:title" content="Reactable"/>
+<meta property="og:description" content="Record. React. Ship. The Mac studio with a brain."/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,600;9..144,700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+  :root { --ink:#e9e7e2; --dim:#8f8d88; --faint:#4a4947; --bg:#101010; --line:#232220; --metal:linear-gradient(135deg,#b9b9bd,#f2f2f4 38%,#97979d 62%,#dedee2); }
+  * { box-sizing:border-box; margin:0; }
+  html { scroll-behavior:smooth; }
+  body { background:var(--bg); color:var(--ink); font:16px/1.6 "Spline Sans Mono", ui-monospace, monospace; -webkit-font-smoothing:antialiased; overflow-x:hidden; }
+  body::before { content:''; position:fixed; inset:0; pointer-events:none; background:radial-gradient(60% 42% at 50% -6%, rgba(255,255,255,.07), transparent 70%); }
+  body::after { content:''; position:fixed; inset:0; pointer-events:none; opacity:.05; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E"); }
+  .wrap { max-width:1060px; margin:0 auto; padding:0 28px; position:relative; }
+  header { display:flex; align-items:center; gap:12px; padding:26px 0; }
+  .mark { width:22px; height:22px; } .mark path { fill:var(--ink); }
+  .word { font:600 17px Fraunces, serif; letter-spacing:.01em; }
+  nav { margin-left:auto; display:flex; gap:26px; align-items:center; font-size:13px; }
+  nav a { color:var(--dim); text-decoration:none; } nav a:hover { color:var(--ink); }
+  .pill { border:1px solid var(--line); border-radius:999px; padding:8px 16px; color:var(--ink)!important; }
+  .hero { padding:96px 0 60px; text-align:center; }
+  .coin { width:58px; height:58px; margin:0 auto 34px; border-radius:50%; background:var(--metal); border:1px solid #6f6f74; box-shadow:inset 0 2px 3px rgba(255,255,255,.9), inset 0 -3px 4px rgba(0,0,0,.45), 0 6px 24px rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; color:#5c5c62; font-size:26px; text-shadow:0 -1px 1px rgba(0,0,0,.6),0 1px 1px #fff; animation:drop .9s cubic-bezier(.2,1.4,.4,1) both; }
+  h1 { font:300 clamp(44px,7.2vw,86px)/1.04 Fraunces, serif; letter-spacing:-.015em; animation:rise .8s .1s cubic-bezier(.2,.8,.2,1) both; }
+  h1 em { font-style:italic; font-weight:600; }
+  .sub { max-width:560px; margin:26px auto 0; color:var(--dim); font-size:15px; animation:rise .8s .22s cubic-bezier(.2,.8,.2,1) both; }
+  .cta { display:flex; gap:14px; justify-content:center; margin-top:40px; animation:rise .8s .34s cubic-bezier(.2,.8,.2,1) both; }
+  .btn { text-decoration:none; padding:14px 26px; border-radius:12px; font-size:14px; }
+  .btn.light { background:var(--ink); color:#101010; font-weight:500; }
+  .btn.ghost { border:1px solid var(--line); color:var(--ink); position:relative; overflow:hidden; }
+  .btn.ghost::after { content:''; position:absolute; top:0; bottom:0; left:-60%; width:40%; background:linear-gradient(105deg,transparent,rgba(255,255,255,.13),transparent); transform:skewX(-18deg); animation:shine 3.4s ease-in-out infinite; }
+  @keyframes shine { 0%,55% { left:-60%; } 85%,100% { left:130%; } }
+  @keyframes rise { from { opacity:0; transform:translateY(18px); } to { opacity:1; } }
+  @keyframes drop { from { opacity:0; transform:translateY(-30px) rotate(-18deg); } to { opacity:1; } }
+  .ticker { border-block:1px solid var(--line); margin-top:84px; padding:13px 0; overflow:hidden; mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent); }
+  .track { display:flex; gap:44px; white-space:nowrap; width:max-content; animation:roll 30s linear infinite; color:var(--faint); font-size:13px; }
+  @keyframes roll { to { transform:translateX(-50%); } }
+  section { padding:88px 0 0; }
+  .kicker { color:var(--faint); font-size:12px; letter-spacing:.22em; text-transform:uppercase; margin-bottom:18px; }
+  .grid { display:grid; gap:1px; background:var(--line); border:1px solid var(--line); border-radius:16px; overflow:hidden; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); }
+  .cell { background:#141414; padding:34px 30px 38px; }
+  .cell:hover { background:#171716; }
+  .cell h3 { font:600 22px Fraunces, serif; margin-bottom:12px; }
+  .cell p { color:var(--dim); font-size:13.5px; }
+  .cell .n { color:var(--faint); font-size:12px; display:block; margin-bottom:20px; }
+  .pro { margin:96px 0 0; border:1px solid var(--line); border-radius:20px; padding:56px 40px; text-align:center; background:radial-gradient(70% 120% at 50% 0%, #17171a, #121212); }
+  .pro h2 { font:300 clamp(30px,4.4vw,46px)/1.1 Fraunces, serif; }
+  .pro h2 em { font-style:italic; font-weight:600; }
+  .price { margin:22px 0 6px; font:600 40px Fraunces, serif; }
+  .price span { font:400 14px "Spline Sans Mono", monospace; color:var(--dim); }
+  .pro .fine { color:var(--faint); font-size:12.5px; margin-top:18px; }
+  footer { margin-top:110px; border-top:1px solid var(--line); padding:34px 0 46px; display:flex; gap:20px; align-items:center; color:var(--faint); font-size:12.5px; }
+  footer a { color:var(--dim); text-decoration:none; } footer a:hover { color:var(--ink); }
+  footer .right { margin-left:auto; display:flex; gap:18px; }
+</style>
 </head>
 <body>
-  <div class="desktop" id="desktop">
-    <!-- Top floating dock -->
-    <nav class="top-dock" aria-label="Navigation">
-      <a class="dock-brand" href="/">
-        <img src="/brand/logo-white.svg" alt="" width="22" height="22" />
-        Reactable
-      </a>
-      <a class="dock-btn primary" href="/api/download" id="dock-download">
-        <i data-lucide="download"></i>
-        Download
-      </a>
-      <span class="dock-sep"></span>
-      <a class="dock-btn hidden" href="/app/" id="dock-dash">
-        <i data-lucide="layout-dashboard"></i>
-        Dashboard
-      </a>
-      <a class="dock-btn" href="/app/" id="dock-signin">
-        <i data-lucide="log-in"></i>
-        Sign in
-      </a>
+<div class="wrap">
+  <header>
+    <svg class="mark" width="260" height="260" viewBox="0 0 260 260" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M0.234554 0C3.01842 0.358903 12.2517 0.14986 15.6428 0.149414L47.2922 0.145508L132.066 0.146484L159.824 0.138672C165.242 0.137785 171.004 0.0368192 176.388 0.220703C199.258 0.981506 220.871 10.8775 236.388 27.6953C248.666 40.8854 256.491 57.5988 258.759 75.4756C259.234 79.2057 259.577 82.4762 259.445 86.2207C257.902 88.3296 253.81 92.1967 251.761 94.2373L238.508 107.467L191.385 154.631L181 164.979C178.644 167.33 175.576 170.179 173.704 172.854L259.515 172.823L259.527 259.472C239.445 259.087 218.573 259.352 198.416 259.361L182.244 259.401C179.647 259.408 175.298 259.553 172.908 259.229C169.864 256.421 166.646 253.07 163.695 250.124L147.208 233.637C127.142 213.584 106.928 192.981 86.6291 173.22L86.6418 259.468C73.8499 259.194 60.5796 259.359 47.7609 259.359C31.8649 259.304 15.9681 259.334 0.0724443 259.449C0.261371 257.579 0.125693 253.601 0.121272 251.543L0.118343 236.431L0.11346 196.806C0.109702 189.09 -0.0688427 180.71 0.242366 173.063C2.35059 170.354 7.0319 165.966 9.59881 163.417L25.5324 147.509L62.4904 110.57C70.5494 102.61 78.5265 94.5671 86.4211 86.4434C83.8014 86.6854 79.2746 86.5617 76.5549 86.5615L58.9523 86.5576L0.20721 86.6035C-0.356649 65.4227 0.444868 43.9321 0.121272 22.7217C0.00699665 15.2365 0.0258954 7.47987 0.234554 0ZM86.7697 86.5723C86.2452 96.6121 86.6343 109.917 86.6232 120.141C86.6049 137.502 86.4465 155.265 86.6779 172.603C89.434 172.973 94.5764 172.852 97.5119 172.852L115.314 172.84C134.481 172.833 153.912 173.019 173.054 172.821L173.052 86.5791L86.7697 86.5723Z" fill="white"/>
+</svg><span class="word">Reactable</span>
+    <nav>
+      <a href="#studio">Studio</a><a href="#pro">Pro</a><a href="/api/auth/login">Sign in</a>
+      <a class="pill" href="/download/Reactable.dmg">Download for Mac</a>
     </nav>
+  </header>
 
-    <!-- Desktop icons -->
-    <div class="desktop-icons">
-      <div class="desk-icon" data-href="https://github.com/shinyobjectz/reactable" title="Double-click to open">
-        <div class="desk-icon-glyph"><i data-lucide="github"></i></div>
-        <span>GitHub</span>
-      </div>
-      <div class="desk-icon" data-href="https://x.com/shinyobjectz" title="Double-click to open">
-        <div class="desk-icon-glyph"><i data-lucide="twitter"></i></div>
-        <span>X</span>
-      </div>
-      <div class="desk-icon" data-href="https://youtube.com/@shinyobjectz" title="Double-click to open">
-        <div class="desk-icon-glyph"><i data-lucide="youtube"></i></div>
-        <span>YouTube</span>
-      </div>
-    </div>
-
-    <!-- Stage window — StageWindow.swift shell -->
-    <div class="win rt-stage-window focused" id="win-stage">
-      <div class="rt-stage-root">
-        <div class="rt-stage-drag-strip" title="Drag to move stage"></div>
-        <div class="rt-stage-preview">
-          <div class="reveal" id="stage-deck">
-            <div class="slides">
-              <!-- Hero -->
-              <section data-background-color="#000">
-                <div class="slide-inner slide-hero">
-                  <div class="slide-kicker">reactable · mac</div>
-                  <h2 class="slide-title">Present live.<br>Record once.</h2>
-                  <p class="slide-body slide-lead">Interactive decks — live apps, clips, prose — with your face and audio on metal. Preview and capture share the same stage.</p>
-                  <p class="slide-note">Agents optional · open source · local capture</p>
-                </div>
-              </section>
-
-              <!-- Output preview (mock take) -->
-              <section data-background-color="#050505">
-                <div class="slide-inner slide-output-wrap">
-                  <div class="slide-kicker">the take</div>
-                  <div class="slide-output">
-                    <div class="output-stage">
-                      <div class="output-slide-mock">
-                        <span class="output-tag">stage.mov</span>
-                        <p>Your deck lands here — rounded frame, no browser chrome.</p>
-                      </div>
-                      <div class="output-pip"></div>
-                      <div class="output-zoom-ring"></div>
-                    </div>
-                    <p class="slide-body">One recording → composite with PIP, click zoom, captions, and aspect exports.</p>
-                  </div>
-                </div>
-              </section>
-
-              <!-- Use cases -->
-              <section data-background-color="#000">
-                <div class="slide-inner">
-                  <div class="slide-kicker">use cases</div>
-                  <div class="slide-cards">
-                    <article class="slide-card">
-                      <span class="slide-card-num">01</span>
-                      <h3>Product demo</h3>
-                      <p>Embed a live app or dev server in-slide. Click through while you talk.</p>
-                    </article>
-                    <article class="slide-card">
-                      <span class="slide-card-num">02</span>
-                      <h3>Reaction take</h3>
-                      <p>Drop in YouTube clips, record commentary, swap hi-res source in post.</p>
-                    </article>
-                    <article class="slide-card">
-                      <span class="slide-card-num">03</span>
-                      <h3>Agent draft</h3>
-                      <p>Let Claude author <code>deck.work</code> — you hit record on the real stage.</p>
-                    </article>
-                  </div>
-                </div>
-              </section>
-
-              <!-- Author -->
-              <section data-background-color="#080808">
-                <div class="slide-inner slide-split">
-                  <div class="slide-split-copy">
-                    <div class="slide-kicker">author</div>
-                    <h2 class="slide-title slide-title-sm">deck.work</h2>
-                    <p class="slide-body">Version-controlled slides in <code>.work</code> — prose, iframes, video, client islands, speaker notes.</p>
-                  </div>
-                  <pre class="slide-code" aria-hidden="true"><code>slide do
-  id: app
-  type: iframe
-  url: /labs/demo
-end
-
-script do
-  on: deck.open
-  run: npm run dev
-  detach: true
-end</code></pre>
-                </div>
-              </section>
-
-              <!-- Stage -->
-              <section data-background-color="#000">
-                <div class="slide-inner slide-split slide-split-reverse">
-                  <div class="slide-split-visual">
-                    <div class="stage-chrome-mock">
-                      <div class="stage-chrome-strip"></div>
-                      <div class="stage-chrome-frame"></div>
-                    </div>
-                  </div>
-                  <div class="slide-split-copy">
-                    <div class="slide-kicker">preview = capture</div>
-                    <h2 class="slide-title slide-title-sm">The stage</h2>
-                    <p class="slide-body">Native chromeless window — drag strip, 1280×720 rect, reveal.js underneath. What you see is what records.</p>
-                    <ul class="slide-list">
-                      <li><code>reactable stage open</code></li>
-                      <li>Not a browser tab</li>
-                      <li>Same WKWebView on metal</li>
-                    </ul>
-                  </div>
-                </div>
-              </section>
-
-              <!-- Bar -->
-              <section data-background-color="#060606">
-                <div class="slide-inner">
-                  <div class="slide-kicker">control</div>
-                  <h2 class="slide-title slide-title-sm">The bar</h2>
-                  <p class="slide-body">Floating always-on-top surface — stage or window mode, cam, mic, slides, record.</p>
-                  <ul class="slide-pills">
-                    <li>⌘R record</li>
-                    <li>Speaker notes</li>
-                    <li>Deck picker</li>
-                    <li>Cam bubble</li>
-                  </ul>
-                </div>
-              </section>
-
-              <!-- Export -->
-              <section data-background-color="#000">
-                <div class="slide-inner">
-                  <div class="slide-kicker">export</div>
-                  <h2 class="slide-title slide-title-sm">Ship the take</h2>
-                  <div class="slide-export-grid">
-                    <div class="export-tile wide"><span>16:9</span><i>YouTube · talks</i></div>
-                    <div class="export-tile tall"><span>9:16</span><i>Reels · Shorts</i></div>
-                    <div class="export-tile sq"><span>1:1</span><i>Social</i></div>
-                    <div class="export-tile cap"><span>SRT</span><i>Captions</i></div>
-                  </div>
-                  <p class="slide-body slide-body-tight">Fast lane: <code>composite.py</code> · Rich lane: HyperFrames</p>
-                </div>
-              </section>
-
-              <!-- CTA -->
-              <section data-background-color="#000">
-                <div class="slide-inner slide-hero">
-                  <div class="slide-kicker">get started</div>
-                  <h2 class="slide-title">Download.<br>Record.</h2>
-                  <p class="slide-body slide-lead">Mac app + showcase deck included. No agents required — copy the skill when you want them.</p>
-                  <ul class="slide-list slide-list-inline">
-                    <li>Free while we build</li>
-                    <li>github.com/shinyobjectz/reactable</li>
-                  </ul>
-                </div>
-              </section>
-            </div>
-          </div>
-          <div class="slide-progress" aria-hidden="true"><i id="slide-progress"></i></div>
-          <div class="stage-keycaps" aria-label="Stage controls">
-            <button type="button" class="keycap" id="kc-prev" title="Previous slide">←</button>
-            <button type="button" class="keycap" id="kc-next" title="Next slide">→</button>
-            <button type="button" class="keycap keycap-wide on" id="kc-auto" title="Toggle auto-advance">Auto</button>
-            <button type="button" class="keycap keycap-wide" id="kc-layout" title="Cycle layout">demo</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Recording bar — bar/index.work (BarPanel WKWebView) -->
-    <div class="win rt-bar-window" id="win-bar">
-      <div class="shell">
-        <div class="bar" id="bar">
-          <div class="drag" id="drag" title="Drag to move">
-            <svg class="ic" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.25" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.25" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.25" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.25" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.25" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.25" fill="currentColor" stroke="none"/></svg>
-          </div>
-          <button class="btn picker" id="picker" type="button" title="Project and deck">
-            <svg class="ic sm" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
-            <span class="lbl" id="picker-label">showcase</span>
-          </button>
-          <div class="sep"></div>
-          <button class="btn mode on" id="mode-stage" type="button" title="Toggle stage preview (capture surface)">
-            <svg class="ic sm" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="m9 8 2 2 4-4"/></svg>
-            Stage
-          </button>
-          <button class="btn mode" id="mode-window" type="button" title="Record a specific window">
-            <svg class="ic sm" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/><circle cx="6" cy="7" r=".8" fill="currentColor" stroke="none"/><circle cx="8.5" cy="7" r=".8" fill="currentColor" stroke="none"/></svg>
-            Window
-          </button>
-          <div class="sep"></div>
-          <button class="btn icon on" id="cam" type="button" title="Camera"><svg class="ic" viewBox="0 0 24 24"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg></button>
-          <button class="btn icon on" id="mic" type="button" title="Microphone"><svg class="ic" viewBox="0 0 24 24"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></svg></button>
-          <button class="btn icon on" id="sys" type="button" title="System audio"><svg class="ic" viewBox="0 0 24 24"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 5.636a9 9 0 0 1 0 12.728"/></svg></button>
-          <div class="sep"></div>
-          <button class="btn icon" id="prev" type="button" title="Previous slide"><svg class="ic" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
-          <button class="btn icon" id="next" type="button" title="Next slide"><svg class="ic" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
-          <div class="sep"></div>
-          <span class="timer" id="timer">0:00</span>
-          <button class="btn rec icon" id="record" type="button" title="Record (⌘R)"><svg class="ic" viewBox="0 0 24 24" style="fill:currentColor;stroke:none"><circle cx="12" cy="12" r="6"/></svg></button>
-          <div class="sep"></div>
-          <button class="btn icon" id="gear" type="button" title="Settings"><svg class="ic" viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.015 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.015 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.015 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.015"/><circle cx="12" cy="12" r="3"/></svg></button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Claude Code terminal window -->
-    <div class="win term-win" id="win-term">
-      <div class="win-titlebar">
-        <span class="win-dot r"></span>
-        <span class="win-dot y"></span>
-        <span class="win-dot g"></span>
-        <img class="win-title-icon" src="/brand/claudecode.svg" alt="" width="14" height="14" />
-        <span class="win-title">claude code · terminal</span>
-      </div>
-      <div class="term-body">
-        <div class="out"># install cli + agent skill (optional)</div>
-        <div class="term-line">
-          <span class="prompt">$ </span><span class="cmd" id="term-cmd-install">npm i -g reactable-cli</span>
-          <button class="term-chip" type="button" data-copy="npm i -g reactable-cli" title="Copy">copy</button>
-        </div>
-        <div class="term-line">
-          <span class="prompt">$ </span><span class="cmd" id="term-cmd-skill">reactable skills install --user</span>
-          <button class="term-chip" type="button" data-copy="reactable skills install --user" title="Copy">copy</button>
-        </div>
-        <div class="out">→ ~/.cursor/skills/reactable</div>
-        <div class="term-line" style="margin-top:10px">
-          <span class="prompt">$ </span><span class="cmd" id="term-cmd-stage">reactable stage open --deck showcase</span>
-          <button class="term-chip" type="button" data-copy="reactable stage open --deck showcase" title="Copy">copy</button>
-        </div>
-        <div class="out">→ native stage (same surface as recording)</div>
-        <div style="margin-top:10px"><span class="prompt">$ </span><span class="cursor"></span></div>
-        <button class="term-copy" type="button" id="term-copy">
-          <i data-lucide="clipboard-copy"></i>
-          Copy skill for Claude Code
-        </button>
-      </div>
+  <div class="hero">
+    <div class="coin">&#10022;</div>
+    <h1>The studio that<br/><em>makes the video.</em></h1>
+    <p class="sub">Record interactive decks on a real stage — apps, clips, prose, your face — while an agent researches, edits, and assembles. Then post it. All on your Mac.</p>
+    <div class="cta">
+      <a class="btn light" href="/download/Reactable.dmg">Download for Mac</a>
+      <a class="btn ghost" href="/pro">Go Pro — $20/mo</a>
     </div>
   </div>
 
-  <div class="toast" id="toast" role="status"></div>
+  <div class="ticker"><div class="track">
+    <span>&#10022; Stage recording</span><span>&#10022; Agent editing</span><span>&#10022; YouTube posting</span><span>&#10022; Meta campaign intelligence</span><span>&#10022; Google Drive import</span><span>&#10022; Brand intelligence</span><span>&#10022; Consumer research</span><span>&#10022; Voice cleanup</span><span>&#10022; Auto-zoom &amp; captions</span>
+    <span>&#10022; Stage recording</span><span>&#10022; Agent editing</span><span>&#10022; YouTube posting</span><span>&#10022; Meta campaign intelligence</span><span>&#10022; Google Drive import</span><span>&#10022; Brand intelligence</span><span>&#10022; Consumer research</span><span>&#10022; Voice cleanup</span><span>&#10022; Auto-zoom &amp; captions</span>
+  </div></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
-  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
-  <script src="/brand/desktop.js"></script>
+  <section id="studio">
+    <div class="kicker">How it works</div>
+    <div class="grid">
+      <div class="cell"><span class="n">01</span><h3>Record on a stage</h3><p>Your deck is the set: live apps, dev servers, video, YouTube, prose — captured on metal at full fidelity with your camera and clean voice, every track sync-anchored.</p></div>
+      <div class="cell"><span class="n">02</span><h3>React with a brain</h3><p>The built-in agent knows your project — takes, assets, notes, decks. It researches any creator&rsquo;s content, pulls stock and Drive footage, writes and validates decks, and kicks renders.</p></div>
+      <div class="cell"><span class="n">03</span><h3>Ship anywhere</h3><p>Auto-zoom, captions, filler removal, multi-aspect export. Post straight to YouTube; pull your Meta campaigns to know what actually works. Any video, any aspect ratio.</p></div>
+    </div>
+  </section>
+
+  <section class="pro" id="pro">
+    <div class="kicker">Reactable Pro</div>
+    <h2>Next-generation<br/><em>content intelligence.</em></h2>
+    <div class="price">$20<span>/month</span></div>
+    <p class="sub" style="animation:none">Connected accounts and the research engine: post to YouTube, pull your Meta ad campaigns, drop in Drive footage, and study any creator&rsquo;s content to react, remix, or make your own. Credits included for the agent gateway.</p>
+    <div class="cta" style="animation:none"><a class="btn light" href="/pro">Go Pro</a><a class="btn ghost" href="/api/auth/login">Sign in first</a></div>
+    <p class="fine">Free tier: full recorder + local agent, bring-your-own connector keys. Cancel anytime.</p>
+  </section>
+
+  <footer>
+    <span>&copy; 2026 Shiny Objectz</span>
+    <div class="right"><a href="/download/Reactable.dmg">Download</a><a href="/pro">Pro</a><a href="mailto:shane@shinyobjectz.com">Contact</a></div>
+  </footer>
+</div>
 </body>
 </html>
