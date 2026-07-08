@@ -39,7 +39,7 @@ client :settings do
     .rlogo { width: 22px; height: 22px; flex-shrink: 0; }
     .rlogo path { fill: #e7e7e7; }
     .pc-title { font: 700 13.5px inherit; letter-spacing: .01em; }
-    .pc-pro { display: inline-block; margin-left: 2px; padding: 2px 7px; border-radius: 999px; background: #e7e7e7; color: #141414; font: 800 9.5px inherit; letter-spacing: .08em; vertical-align: 2px; }
+    .pc-pro { display: inline-block; margin-left: 3px; padding: 1.5px 5px; border-radius: 999px; background: #e7e7e7; color: #141414; font: 800 8px inherit; letter-spacing: .07em; vertical-align: 2.5px; }
     .pc-copy { margin-top: 9px; color: #9a9a9a; font-size: 11.5px; line-height: 1.55; }
     .pc-spacer { flex: 1; }
     .ticker { position: relative; display: flex; align-items: center; padding: 9px 0 10px; overflow: hidden; cursor: pointer; mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); }
@@ -50,8 +50,10 @@ client :settings do
     .titem:hover { color: #fff; }
     .tdot { color: #3a3a3a; }
     @keyframes tickerScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-    .gopro { border: 0; border-radius: 10px; padding: 10px 0; width: 100%; background: #e7e7e7; color: #141414; font: 700 12.5px inherit; cursor: pointer; }
-    .gopro:hover { background: #fff; }
+    .gopro { position: relative; overflow: hidden; border: 1px solid #333; border-radius: 10px; padding: 10px 0; width: 100%; background: #202020; color: #f0f0f0; font: 700 12.5px inherit; cursor: pointer; }
+    .gopro::after { content: ''; position: absolute; top: 0; bottom: 0; left: -60%; width: 40%; background: linear-gradient(105deg, transparent, rgba(255,255,255,.14), transparent); transform: skewX(-18deg); animation: shine 3.4s ease-in-out infinite; }
+    @keyframes shine { 0%, 55% { left: -60%; } 85%, 100% { left: 130%; } }
+    .gopro:hover { background: #262626; border-color: #454545; }
         .probadge { display: inline-block; margin-left: 6px; padding: 2px 7px; border-radius: 999px; background: #e7e7e7; color: #141414; font: 700 9.5px inherit; letter-spacing: .06em; vertical-align: 2px; }
     .avatar .alogo { width: 16px; height: 16px; }
     .avatar .alogo path { fill: #e7e7e7; }
