@@ -267,3 +267,8 @@ cli-publish:
     if [ -z "${NPM_TOKEN:-}" ]; then echo "set NPM_TOKEN" >&2; exit 1; fi
     echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > "${HOME}/.npmrc"
     npm publish --access public
+
+# Content-intel eval: G1/G5/G8 deterministic (stub, temp workspace, no credits)
+eval-intel:
+    bun scripts/test-intel.ts
+    bun scripts/eval-intel.ts

@@ -8,6 +8,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { DATA_ROOT, PROJECT } from "./paths.ts";
+import { runTools } from "./tools.ts";
 import { loadCredentials } from "./auth.ts";
 
 const INTEL_DIR = resolve(DATA_ROOT, ".reactable", "intel");
@@ -280,4 +281,143 @@ export async function ads(company: string, library = "facebook"): Promise<any> {
     ? await research("/v1/tiktok/adLibrary/search", { query: company })
     : await research("/v1/facebook/adLibrary/search", { query: company });
   return { company, library, ads: (d.ads || d.results || d.data || []).slice(0, 10) };
+}
+
+// ── P2: deconstruction — transcript → structure → remix brief ──
+function detectPlatform(url: string): "tiktok" | "youtube" | "instagram" {
+  if (/tiktok\.com/.test(url)) return "tiktok";
+  if (/instagram\.com/.test(url)) return "instagram";
+  return "youtube";
+}
+
+async function transcriptFor(url: string, platform: string): Promise<{ text: string; via: string }> {
+  // Cheap lane: the research proxy's transcript endpoints (text, not binary).
+  try {
+    const ep = platform === "tiktok" ? "/v1/tiktok/video/transcript"
+      : platform === "instagram" ? "/v1/instagram/transcript"
+      : "/v1/youtube/video/transcript";
+    const d = await research(ep, { url });
+    const text = d.transcript || d.text ||
+      (Array.isArray(d.transcripts) ? d.transcripts.map((t: any) => t.text).join(" ") : "") ||
+      (Array.isArray(d.segments) ? d.segments.map((t: any) => t.text).join(" ") : "");
+    if (text && text.length > 40) return { text, via: `research:${ep}` };
+  } catch (e) {
+    process.stderr.write(`transcript endpoint: ${e}\n`);
+  }
+  // Local lane: download media, chunked Moonshine (binary stays local).
+  if (platform === "tiktok") {
+    const d = await research("/v2/tiktok/video", { url });
+    const media = d.aweme_detail?.video?.download_no_watermark_addr?.url_list?.[0]
+      || d.aweme_detail?.video?.play_addr?.url_list?.[0];
+    if (!media) throw new Error("no transcript and no downloadable media for this video");
+    const dir = resolve(DATA_ROOT, "assets", "research");
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, `dl-${Date.now().toString(36)}.mp4`);
+    const res = await fetch(media);
+    writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+    const out = file.replace(/\.mp4$/, ".json");
+    const r = runTools(["transcribe", file, "--model", "UsefulSensors/moonshine-tiny", "--output", out], PROJECT, true);
+    if (r.status !== 0) throw new Error("local transcription failed — is reactable-tools built?");
+    const t = JSON.parse(readFileSync(out, "utf8"));
+    return { text: t.text || (t.segments || []).map((s: any) => s.text).join(" "), via: "local:moonshine" };
+  }
+  throw new Error("no transcript available — try a different video");
+}
+
+async function gatewayJson(system: string, user: string): Promise<any> {
+  if (process.env.REACTABLE_INTEL_STUB === "1") {
+    return { hook: "stub hook", beats: ["setup", "payoff"], format: "talking-head demo", title_pattern: "outcome + timeframe", cta: "subscribe", why_it_works: "stub" };
+  }
+  const creds = loadCredentials();
+  if (!creds?.access_token) throw new Error("structure pass needs a signed-in account");
+  const base = creds.api_base || "https://reactable.app";
+  const res = await fetch(`${base}/api/gateway/chat`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: `reactable_session=${creds.access_token}` },
+    body: JSON.stringify({ system, messages: [{ role: "user", content: user }], max_tokens: 1200, stream: false }),
+  });
+  const d = (await res.json()) as any;
+  const text = d.choices?.[0]?.message?.content || "";
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error("structure pass returned no JSON");
+  return JSON.parse(m[0]);
+}
+
+export async function deconstruct(url: string): Promise<string> {
+  const platform = detectPlatform(url);
+  // Metadata for citations.
+  let meta: any = {};
+  try {
+    meta = platform === "youtube" ? await research("/v1/youtube/video", { url })
+      : platform === "tiktok" ? await research("/v2/tiktok/video", { url })
+      : {};
+  } catch {}
+  const title = meta.title || meta.aweme_detail?.desc || url;
+  const views = meta.viewCountInt || meta.viewCount || meta.aweme_detail?.statistics?.play_count || "?";
+  const id = meta.id || meta.aweme_detail?.aweme_id || url.split("/").pop() || "video";
+
+  const { text, via } = await transcriptFor(url, platform);
+  const structure = await gatewayJson(
+    'You deconstruct short-form/creator video for remixing. Reply with STRICT JSON only: {"hook": "the first-3-seconds move, quoted or paraphrased", "beats": ["3-7 structural beats"], "format": "format taxonomy label", "title_pattern": "the reusable title formula", "cta": "how it closes", "why_it_works": "one paragraph"}',
+    `TITLE: ${title}\nPLATFORM: ${platform}\nTRANSCRIPT (may be truncated):\n${text.slice(0, 6000)}`,
+  );
+
+  const slug = String(id).replace(/[^a-zA-Z0-9-]/g, "").slice(0, 24) || "video";
+  const dir = resolve(DATA_ROOT, "research");
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, `remix-${slug}.md`);
+  const body = `# Remix brief — ${title}
+
+Source: ${url} (${platform}, ${views} views) · transcript via ${via} · id ${id}
+
+## Hook (first 3 seconds)
+${structure.hook}
+
+## Beats
+${(structure.beats || []).map((b: string, i: number) => `${i + 1}. ${b}`).join("\n")}
+
+## Format
+${structure.format}
+
+## Title pattern
+${structure.title_pattern}
+
+## CTA
+${structure.cta}
+
+## Why it works
+${structure.why_it_works}
+
+## Suggested deck skeleton
+${(structure.beats || []).map((b: string, i: number) => `- slide ${i + 1} (${i === 0 ? "ad register, hook" : "talk register"}): ${b}`).join("\n")}
+
+_Ours must differ: same structure, our payload. See skill/agent-skills/video-copy.md._
+`;
+  writeFileSync(path, body);
+  return `wrote research/remix-${slug}.md — feed it to video-strategy for a deck`;
+}
+
+export function brief(): string {
+  const t = trends().topics;
+  const b = breakouts().breakouts;
+  const week = (() => { const d = new Date(); const onejan = new Date(d.getFullYear(), 0, 1);
+    return `${d.getFullYear()}-W${String(Math.ceil((((+d - +onejan) / 86400000) + onejan.getDay() + 1) / 7)).padStart(2, "0")}`; })();
+  const dir = resolve(DATA_ROOT, "research");
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, `brief-${week}.md`);
+  const body = `# Intel brief — ${week}
+
+## Tracked topics
+${t.length ? t.map((x) => `- **${x.q}** — ${x.grade} · vol ${x.volume.toLocaleString()} · [${x.spark.join(" → ")}]`).join("\n") : "- none — \`reactable intel track topic\`"}
+
+## Breakouts (≥3× channel baseline)
+${b.length ? b.map((x) => `- ${x.handle}/${x.platform}: "${x.title}" — ${x.views.toLocaleString()} views (${x.ratio}×) · id ${x.video}`).join("\n") : "- none this window"}
+
+## Next moves
+${t.filter((x) => x.grade === "rising" || x.grade === "exploding").map((x) => `- Episode on **${x.q}** while it's ${x.grade}: \`reactable intel radar "${x.q}" --json\``).join("\n") || "- keep watching; snapshot daily"}
+
+_All numbers from .reactable/intel series + baselines pulled ${new Date().toISOString().slice(0, 10)}._
+`;
+  writeFileSync(path, body);
+  return `wrote research/brief-${week}.md`;
 }

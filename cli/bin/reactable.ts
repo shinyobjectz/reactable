@@ -720,7 +720,14 @@ try {
       out(await intel.ads(q, String(flags.library || "facebook")));
       process.exit(0);
     }
-    console.error("intel verbs: track · untrack · list · snapshot · trends · breakouts · radar · ads");
+    if (sub === "deconstruct") {
+      const url = String(third || "");
+      if (!url.startsWith("http")) { console.error("usage: reactable intel deconstruct <video-url>"); process.exit(1); }
+      out(await intel.deconstruct(url));
+      process.exit(0);
+    }
+    if (sub === "brief") { out(intel.brief()); process.exit(0); }
+    console.error("intel verbs: track · untrack · list · snapshot · trends · breakouts · radar · ads · deconstruct · brief");
     process.exit(1);
   }
 
