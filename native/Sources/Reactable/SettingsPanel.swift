@@ -53,6 +53,21 @@ final class SettingsPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
         win.makeKeyAndOrderFront(nil)
     }
 
+    private func pushAccount() {
+        let file = FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: ".reactable/auth.json")
+        let auth = (try? JSONSerialization.jsonObject(with: Data(contentsOf: file))) as? [String: Any] ?? [:]
+        let account: [String: Any] = [
+            "signedIn": auth["token"] != nil || auth["email"] != nil,
+            "plan": auth["plan"] as? String ?? "",
+            "email": auth["email"] as? String ?? "",
+        ]
+        if let d = try? JSONSerialization.data(withJSONObject: account),
+           let str = String(data: d, encoding: .utf8) {
+            webView?.evaluateJavaScript("window.ReactableSettings?.setAccount(\(str))")
+        }
+    }
+
     private func pushKeys() {
         let file = FileManager.default.homeDirectoryForCurrentUser
             .appending(path: ".reactable/connectors.json")
@@ -68,6 +83,7 @@ final class SettingsPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
         switch parsed.action {
         case "settings.ready":
             pushKeys()
+            pushAccount()
         case "settings.link":
             if let u = parsed.payload["url"] as? String, let url = URL(string: u) {
                 NSWorkspace.shared.open(url)

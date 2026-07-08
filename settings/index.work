@@ -29,6 +29,21 @@ client :settings do
     .profile .who { flex: 1; }
     .profile .who .n { font-weight: 600; }
     .profile .who .s { color: #6f6f6f; font-size: 11px; }
+    .row .getkey { display: none; margin-left: auto; border: 0; background: none; color: #8a8a8a; font: 600 11px inherit; cursor: pointer; padding: 4px 6px; }
+    .row:hover .getkey { display: inline; }
+    .row .getkey:hover { color: #fff; }
+    .row .getkey + .chev { margin-left: 0; }
+    .pro { display: flex; align-items: center; gap: 12px; margin: 8px 12px 2px; padding: 12px; border-radius: 12px; background: #191919; border: 1px solid #242424; }
+    .pro-icons { position: relative; width: 26px; height: 26px; flex-shrink: 0; }
+    .pro-icons svg { position: absolute; inset: 3px; width: 20px; height: 20px; fill: #9a9a9a; opacity: 0; animation: proCycle 9s infinite; }
+    .pro-icons svg:nth-child(2) { animation-delay: 3s; }
+    .pro-icons svg:nth-child(3) { animation-delay: 6s; }
+    @keyframes proCycle { 0%, 30% { opacity: 1; transform: scale(1); } 33%, 97% { opacity: 0; transform: scale(.8); } 100% { opacity: 1; } }
+    .pro-copy { flex: 1; min-width: 0; }
+    .pro-copy .t { font-weight: 600; font-size: 12.5px; }
+    .pro-copy .s { color: #6f6f6f; font-size: 11px; }
+    .gopro { border: 0; border-radius: 999px; padding: 7px 14px; background: #e7e7e7; color: #141414; font: 600 12px inherit; cursor: pointer; flex-shrink: 0; }
+    .probadge { display: inline-block; margin-left: 6px; padding: 2px 7px; border-radius: 999px; background: #e7e7e7; color: #141414; font: 700 9.5px inherit; letter-spacing: .06em; vertical-align: 2px; }
     .profile button { border: 0; border-radius: 8px; padding: 7px 14px; background: #e7e7e7; color: #141414; font: 600 12px inherit; cursor: pointer; }
     .tool { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px; }
     .tool:hover { background: #242424; }
@@ -48,6 +63,14 @@ client :settings do
       <div class="avatar">R</div>
       <div class="who"><div class="n">Not signed in</div><div class="s">Sync settings and credits with reactable.app</div></div>
       <button onclick="window.webkit?.messageHandlers?.reactable?.postMessage({action:'settings.link',payload:{url:'https://reactable.app/signin'}})">Sign in</button>
+    </div>
+    <div class="pro" id="pro">
+      <div class="pro-icons" id="pro-icons"></div>
+      <div class="pro-copy">
+        <div class="t">Connected accounts</div>
+        <div class="s">Post to YouTube, pull your ad account, research any creator's content.</div>
+      </div>
+      <button class="gopro" onclick="window.webkit?.messageHandlers?.reactable?.postMessage({action:'settings.link',payload:{url:'https://reactable.app/pro'}})">Go Pro</button>
     </div>
     <div class="tabs" id="tabs"></div>
     <div class="body" id="body"></div>
@@ -78,10 +101,20 @@ client :settings do
     const TABS = {
       Account() {
         const els = [];
+        const SIGNUP = {
+          pexels: 'https://www.pexels.com/api/',
+          unsplash: 'https://unsplash.com/developers',
+          elevenlabs: 'https://elevenlabs.io/app/settings/api-keys',
+          fal: 'https://fal.ai/dashboard/keys',
+        };
         const mk = (icon, label, expandable, onOpen) => {
           const d = document.createElement('div');
           d.className = 'row';
-          d.innerHTML = `${icon}<span>${label}</span><span class="chev">›</span>`;
+          const get = expandable && SIGNUP[expandable]
+            ? `<button class="getkey" title="Open ${label} API keys page">Get yours ↗</button>` : '';
+          d.innerHTML = `${icon}<span>${label}</span>${get}<span class="chev">›</span>`;
+          const gk = d.querySelector('.getkey');
+          if (gk) gk.onclick = (e) => { e.stopPropagation(); send('settings.link', { url: SIGNUP[expandable] }); };
           els.push(d);
           if (expandable) {
             const box = document.createElement('div');
@@ -121,7 +154,6 @@ client :settings do
         const PICONS = {"youtube": "<svg class=\"picon\" fill=\"currentColor\" role=\"img\" viewBox=\"0 0 24 24\" xmlns=\"http://www.w3.org/2000/svg\"><title>YouTube</title><path d=\"M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z\"/></svg>", "pexels": "<svg class=\"picon\" fill=\"currentColor\" role=\"img\" viewBox=\"0 0 24 24\" xmlns=\"http://www.w3.org/2000/svg\"><title>Pexels</title><path d=\"M1.5 0A1.5 1.5 0 000 1.5v21A1.5 1.5 0 001.5 24h21a1.5 1.5 0 001.5-1.5v-21A1.5 1.5 0 0022.5 0h-21zm6.75 6.75h5.2715a3.843 3.843 0 01.627 7.6348V17.25H8.25V6.75zm1.5 1.5v7.5h2.8984v-2.8145h.873a2.343 2.343 0 100-4.6855H9.75Z\"/></svg>", "unsplash": "<svg class=\"picon\" fill=\"currentColor\" role=\"img\" viewBox=\"0 0 24 24\" xmlns=\"http://www.w3.org/2000/svg\"><title>Unsplash</title><path d=\"M7.5 6.75V0h9v6.75h-9zm9 3.75H24V24H0V10.5h7.5v6.75h9V10.5z\"/></svg>", "elevenlabs": "<svg class=\"picon\" fill=\"currentColor\" fill-rule=\"evenodd\" height=\"1em\" style=\"flex:none;line-height:1\" viewBox=\"0 0 24 24\" width=\"1em\" xmlns=\"http://www.w3.org/2000/svg\"><title>ElevenLabs</title><path d=\"M5 0h5v24H5V0zM14 0h5v24h-5V0z\"></path></svg>", "fal": "<svg class=\"picon\" fill=\"currentColor\" fill-rule=\"evenodd\" height=\"1em\" style=\"flex:none;line-height:1\" viewBox=\"0 0 24 24\" width=\"1em\" xmlns=\"http://www.w3.org/2000/svg\"><title>Fal</title><path clip-rule=\"evenodd\" d=\"M15.477 0c.415 0 .749.338.788.752a7.775 7.775 0 006.985 6.984c.413.04.752.373.752.788v6.952c0 .415-.338.748-.752.788a7.775 7.775 0 00-6.985 6.984c-.04.414-.373.752-.788.752H8.525c-.416 0-.749-.338-.789-.752a7.775 7.775 0 00-6.984-6.984c-.414-.04-.752-.373-.752-.788V8.524c0-.415.338-.748.752-.788A7.775 7.775 0 007.736.752C7.776.338 8.11 0 8.526 0h6.95zM4.819 11.98a7.226 7.226 0 007.223 7.23 7.226 7.226 0 007.223-7.23c0-3.994-3.234-7.23-7.223-7.23a7.227 7.227 0 00-7.223 7.23z\"></path></svg>"};
         const P = (n) => PICONS[n] || '';
         mk(IC.card, 'Top up credits', null, () => send('settings.link', { url: 'https://reactable.app/credits' }));
-        mk(P('youtube'), 'Connect YouTube', null, () => send('settings.youtube'));
         mk(P('pexels'), 'Pexels', 'pexels');
         mk(P('unsplash'), 'Unsplash', 'unsplash');
         mk(P('elevenlabs'), 'ElevenLabs', 'elevenlabs');
@@ -160,7 +192,29 @@ client :settings do
       TABS[active]().forEach((el) => body.appendChild(el));
     }
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') send('settings.close'); });
-    window.ReactableSettings = { setKeys(k) { keys = k || {}; render(); } };
+    // Rotating integration marks in the upsell (YouTube / Meta / Drive).
+    document.getElementById('pro-icons').innerHTML = [
+      '<svg viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>',
+      '<svg viewBox="0 0 24 24"><path d="M6.915 4.03c-1.968 0-3.683 1.28-4.871 3.113C.704 9.208 0 11.883 0 14.449c0 .706.07 1.369.21 1.973a6.624 6.624 0 0 0 .265.86 5.297 5.297 0 0 0 .371.761c.696 1.159 1.818 1.927 3.593 1.927 1.497 0 2.633-.671 3.965-2.444.76-1.012 1.144-1.626 2.663-4.32l.756-1.339.186-.325c.061.1.121.196.183.3l2.152 3.595c.724 1.21 1.665 2.556 2.47 3.314 1.046.987 1.992 1.22 3.06 1.22 1.075 0 1.876-.355 2.455-.843a3.743 3.743 0 0 0 .81-.973c.542-.939.861-2.127.861-3.745 0-2.72-.681-5.357-2.084-7.45-1.282-1.912-2.957-2.93-4.716-2.93-1.047 0-2.088.467-3.053 1.308-.652.57-1.257 1.29-1.82 2.05-.69-.875-1.335-1.547-1.958-2.056-1.182-.966-2.315-1.303-3.454-1.303z"/></svg>',
+      '<svg viewBox="0 0 24 24"><path d="M8.01 1.485 0 15.36l4.005 6.93h.006L12 8.415 8.01 1.485zm7.98 0-4.006 6.93 8.01 13.875L24 15.36 15.99 1.485zM7.155 15.36l-2.72 4.71h13.13l2.72-4.71H7.155z"/></svg>',
+    ].join('');
+
+    let account = { signedIn: false, plan: '' };
+    function applyAccount() {
+      const pro = (account.plan || '').toLowerCase() === 'pro';
+      document.getElementById('pro').style.display = pro ? 'none' : 'flex';
+      const n = document.querySelector('.profile .who .n');
+      if (n) {
+        n.querySelector('.probadge')?.remove();
+        if (pro) n.insertAdjacentHTML('beforeend', '<span class="probadge">PRO</span>');
+      }
+    }
+    applyAccount();
+
+    window.ReactableSettings = {
+      setKeys(k) { keys = k || {}; render(); },
+      setAccount(a) { account = a || account; applyAccount(); },
+    };
     send('settings.ready');
     render();
   </script>
