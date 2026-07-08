@@ -180,6 +180,7 @@ final class SettingsPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
                 try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
                 if let d = try? JSONSerialization.data(withJSONObject: all, options: [.prettyPrinted]) {
                     try? d.write(to: file)
+                    try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
                 }
                 pushKeys()
             }

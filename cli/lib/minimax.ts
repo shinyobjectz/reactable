@@ -31,7 +31,7 @@ function cfg(): Record<string, string> {
 
 function saveCfg(patch: Record<string, string>) {
   mkdirSync(DIR, { recursive: true });
-  writeFileSync(CFG_PATH, JSON.stringify({ ...cfg(), ...patch }, null, 2) + "\n");
+  writeFileSync(CFG_PATH, JSON.stringify({ ...cfg(), ...patch }, null, 2) + "\n", { mode: 0o600 });
 }
 
 export async function minimaxChat(
