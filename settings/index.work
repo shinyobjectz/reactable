@@ -13,10 +13,17 @@ client :settings do
     .row:hover { background: #262626; }
     .row .chev { margin-left: auto; color: #565656; }
     .row svg, .tool svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: .75; flex-shrink: 0; }
-    .keybox { display: none; gap: 8px; padding: 4px 10px 10px 35px; }
-    .keybox.open { display: flex; }
-    .keybox input { flex: 1; padding: 8px 10px; border: 0; border-radius: 8px; background: #141414; color: #fff; font: 12px inherit; outline: none; }
-    .keybox button { border: 0; border-radius: 8px; padding: 0 14px; background: #e7e7e7; color: #141414; font: 600 12px inherit; cursor: pointer; }
+    .keybox { display: none; padding: 2px 10px 12px 35px; }
+    .keybox.open { display: block; }
+    .keybox input { width: 100%; padding: 11px 13px; border: 0; border-radius: 10px; background: #101010; color: #fff; font: 12.5px ui-monospace, monospace; outline: none; }
+    .keybox input::placeholder { color: #4a4a4a; font-family: inherit; }
+    .picon { width: 16px; height: 16px; border-radius: 4px; flex-shrink: 0; filter: invert(0.85); }
+    .profile { display: flex; align-items: center; gap: 10px; margin: 12px 12px 2px; padding: 12px; border-radius: 12px; background: #1d1d1d; }
+    .avatar { width: 30px; height: 30px; border-radius: 50%; background: #2c2c2c; display: flex; align-items: center; justify-content: center; color: #8a8a8a; font: 600 13px inherit; }
+    .profile .who { flex: 1; }
+    .profile .who .n { font-weight: 600; }
+    .profile .who .s { color: #6f6f6f; font-size: 11px; }
+    .profile button { border: 0; border-radius: 8px; padding: 7px 14px; background: #e7e7e7; color: #141414; font: 600 12px inherit; cursor: pointer; }
     .tool { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px; }
     .tool:hover { background: #242424; }
     .tool .name { flex: 1; }
@@ -31,6 +38,11 @@ client :settings do
     .prompt textarea { width: 100%; min-height: 44px; background: #141414; border: 0; border-radius: 8px; color: #ddd; font: 12px/1.4 inherit; padding: 7px 9px; resize: vertical; }
   </style>
   <div class="wrap">
+    <div class="profile">
+      <div class="avatar">R</div>
+      <div class="who"><div class="n">Not signed in</div><div class="s">Sync settings and credits with reactable.app</div></div>
+      <button onclick="window.webkit?.messageHandlers?.reactable?.postMessage({action:'settings.link',payload:{url:'https://reactable.app/signin'}})">Sign in</button>
+    </div>
     <div class="tabs" id="tabs"></div>
     <div class="body" id="body"></div>
   </div>
@@ -67,29 +79,31 @@ client :settings do
           if (expandable) {
             const box = document.createElement('div');
             box.className = 'keybox';
-            box.innerHTML = `<input placeholder="Paste API key…" /><button>Save</button>`;
+            box.innerHTML = `<input placeholder="Paste API key and press ⏎" />`;
             const input = box.querySelector('input');
-            box.querySelector('button').onclick = () => {
-              if (input.value.trim()) {
-                send('settings.connector', { id: expandable, key: input.value.trim() });
-                input.value = '';
-                box.classList.remove('open');
-                d.querySelector('.chev').textContent = '✓';
-              }
+            const commit = () => {
+              if (!input.value.trim()) return;
+              send('settings.connector', { id: expandable, key: input.value.trim() });
+              input.value = '';
+              box.classList.remove('open');
+              d.querySelector('.chev').textContent = '✓';
             };
-            d.onclick = () => box.classList.toggle('open');
+            input.addEventListener('keydown', (e) => { if (e.key === 'Enter') commit(); });
+            input.addEventListener('blur', commit);
+            d.onclick = () => { box.classList.toggle('open'); if (box.classList.contains('open')) input.focus(); };
             els.push(box);
           } else if (onOpen) {
             d.onclick = onOpen;
           }
           return d;
         };
+        const P = (n) => `<img class="picon" src="LOBE${'{'}n}.svg" onerror="this.style.display='none'"/>`.replace('LOBE', 'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/').replace('{n}', n);
         mk(IC.card, 'Top up credits', null, () => send('settings.link', { url: 'https://reactable.app/credits' }));
-        mk(IC.youtube, 'Connect YouTube (OAuth)', null, () => send('settings.youtube'));
-        mk(IC.image, 'Pexels API key', 'pexels');
-        mk(IC.image, 'Unsplash API key', 'unsplash');
-        mk(IC.voice, 'ElevenLabs API key', 'elevenlabs');
-        mk(IC.spark, 'FAL API key', 'fal');
+        mk(P('youtube'), 'Connect YouTube', null, () => send('settings.youtube'));
+        mk(P('pexels'), 'Pexels', 'pexels');
+        mk(P('unsplash'), 'Unsplash', 'unsplash');
+        mk(P('elevenlabs'), 'ElevenLabs', 'elevenlabs');
+        mk(P('fal'), 'FAL', 'fal');
         return els;
       },
       Tools() {

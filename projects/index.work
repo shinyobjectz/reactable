@@ -11,9 +11,10 @@ client :projects do
     .wrap { display: flex; flex-direction: column; height: 100vh; }
     .switcher { padding: 8px 10px 6px; }
     .switch-row { display: flex; gap: 8px; }
-    .current { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px; background: #1d1d1d; cursor: pointer; }
+    .current { flex: 1 1 0; min-width: 0; overflow: hidden; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px; background: #1d1d1d; cursor: pointer; }
     .current:hover { background: #222; }
     .status { position: relative; }
+    .status { flex-shrink: 0; }
     .status > button { display: flex; align-items: center; gap: 6px; height: 100%; padding: 0 12px; border: 0; border-radius: 10px; background: #1d1d1d; color: #d4d4d4; font: 600 11px inherit; cursor: pointer; text-transform: capitalize; }
     .status .dot { width: 8px; height: 8px; border-radius: 50%; }
     .status .menu { display: none; position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; background: #202020; border-radius: 10px; padding: 4px; min-width: 130px; box-shadow: 0 12px 30px rgba(0,0,0,.5); }
@@ -24,8 +25,10 @@ client :projects do
     .current .chev { color: #6f6f6f; transition: transform .15s; }
     .current.open .chev { transform: rotate(180deg); }
     .stagebar { padding: 6px 2px 0; }
-    .plist { display: none; margin-top: 4px; border-radius: 10px; background: #191919; overflow: hidden; }
-    .plist.open { display: block; }
+    .plist { display: none; }
+    body.pick .plist { display: block; flex: 1; overflow-y: auto; padding: 0 10px 10px; }
+    body.pick .search, body.pick .files, body.pick .drop-hint, body.pick .stagebar { display: none !important; }
+    .prow { border-radius: 9px; }
     .prow { display: flex; align-items: center; gap: 8px; padding: 9px 12px; cursor: pointer; }
     .prow:hover { background: #222; }
     .prow .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -36,12 +39,13 @@ client :projects do
     .searchbox { flex: 1; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 10px; background: #1d1d1d; }
     .searchbox svg { width: 14px; height: 14px; stroke: #6f6f6f; fill: none; stroke-width: 1.8; flex-shrink: 0; }
     .searchbox input { flex: 1; padding: 9px 0; border: 0; background: none; color: #fff; font: inherit; outline: none; }
-    .addbtn { width: 36px; border: 0; border-radius: 10px; background: #1d1d1d; color: #9a9a9a; font-size: 17px; cursor: pointer; }
+    .addbtn { flex-shrink: 0; width: 36px; border: 0; border-radius: 10px; background: #1d1d1d; color: #9a9a9a; font-size: 17px; cursor: pointer; }
     .addbtn:hover { color: #fff; background: #242424; }
     .files { flex: 1; overflow-y: auto; padding: 0 10px 10px; }
     .group { font: 600 10px/1 ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; color: #6f6f6f; padding: 12px 4px 6px; }
     .file { display: flex; align-items: center; gap: 9px; padding: 8px 9px; border-radius: 9px; }
-    .file:hover { background: #1d1d1d; }
+    .file:hover { background: #1a1a1a; }
+    .empty:hover, .files:hover { background: transparent; }
     .file svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: .7; flex-shrink: 0; }
     .file .fname { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; }
     .file .sub { color: #6b6b6b; font-size: 10.5px; flex-shrink: 0; }
@@ -120,10 +124,10 @@ client :projects do
         const stage = data.stages[key] || 'idea';
         const row = document.createElement('div');
         row.className = 'prow';
-        row.innerHTML = `<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6;opacity:.6"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m10 9 5 3-5 3z"/></svg><span class="name">${p.title || p.slug}</span><span class="chip">${stage}</span>`;
+        row.innerHTML = `<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6;opacity:.6"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m10 9 5 3-5 3z"/></svg><span class="name">${p.title || p.slug}</span>`;
         row.addEventListener('click', () => {
           send('projects.select', { root: p.root, slug: p.slug });
-          list.classList.remove('open');
+          document.body.classList.remove('pick');
           document.getElementById('current').classList.remove('open');
         });
         list.appendChild(row);
@@ -176,7 +180,7 @@ client :projects do
     }
 
     document.getElementById('current').onclick = () => {
-      document.getElementById('plist').classList.toggle('open');
+      document.body.classList.toggle('pick');
       document.getElementById('current').classList.toggle('open');
     };
     document.getElementById('q').oninput = renderFiles;
