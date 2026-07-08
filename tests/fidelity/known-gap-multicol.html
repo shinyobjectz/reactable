@@ -1,0 +1,15 @@
+<!doctype html>
+<!-- KNOWN GAP comp: CSS multi-column layout (columns/column-gap). Blitz
+     0.3-alpha renders single-column. Kept as an expected-fail tripwire: if
+     this ever PASSES, upstream added multicol — promote it to the corpus. -->
+<html><head><style>
+  html, body { margin:0; width:100%; height:100%; background:#101018; color:#d4d4d8; font:15px/1.5 sans-serif; }
+  main { padding:28px 36px; columns:2; column-gap:28px; }
+  p { margin:0 0 12px; }
+</style></head>
+<body><main>
+  <p>Multi-column paragraph one with enough words to wrap across several lines and fill the first column.</p>
+  <p>Second paragraph continues the filler so both columns receive text in a balanced multicol layout.</p>
+  <p>Third paragraph keeps the columns fed. Fourth sentence for length. Fifth for good measure.</p>
+  <p>Fourth paragraph so the balancing algorithm has material on both sides of the gap.</p>
+</main></body></html>

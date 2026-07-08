@@ -4,12 +4,17 @@ Generated 2026-07-08 · viewport 1280×800 · fonts normalized to bundled Geist 
 
 | comp | SSIM vs Chrome | threshold | deterministic | verdict |
 |---|---|---|---|---|
+| counters-list | 0.9917 | 0.95 | yes | pass |
+| anim-steps | 0.9937 | 0.95 | yes | pass |
 | layout-grid | 0.9889 | 0.985 | yes | pass |
-| prose | 0.9666 | 0.95 | yes | pass |
-| text-styles | 0.9750 | 0.96 | yes | pass |
+| prose | 0.9679 | 0.95 | yes | pass |
+| img-data-uri | 1.0000 | 0.95 | yes | pass |
+| fixed-overlay | 0.9902 | 0.95 | yes | pass |
+| text-styles | 0.9820 | 0.96 | yes | pass |
 | pulse | 0.9825 | 0.96 | yes | pass |
-| real-app-panel | 0.9963 | 0.93 | yes | pass |
-| perf 72f@1080p30 | 290ms | ≤1500ms | — | pass |
+| real-app-panel | 0.9965 | 0.93 | yes | pass |
+| known-gap-multicol | 0.9422 | 0.95 | yes | pass |
+| perf 72f@1080p30 | 305ms | ≤1500ms | — | pass |
 
 Overall: **PASS**
 

@@ -1,0 +1,22 @@
+<!doctype html>
+<!-- gate comp: deck-list grammar — ol counters via ::before, ul dot markers,
+     nesting, borders between items. -->
+<html><head><style>
+  html, body { margin:0; width:100%; height:100%; background:#0c0c12; color:#d4d4d8; font:17px/1.5 sans-serif; }
+  main { padding:36px 48px; max-width:640px; }
+  ul.deck, ol.deck { margin:0 0 24px; padding:0; list-style:none; }
+  .deck li { position:relative; padding:9px 0 9px 26px; border-bottom:1px solid rgba(255,255,255,.07); }
+  .deck li:last-child { border-bottom:0; }
+  ul.deck li::before { content:''; position:absolute; left:0; top:17px; width:6px; height:6px; border-radius:50%; background:#6366f1; }
+  ol.deck { counter-reset: deck; }
+  ol.deck li::before { counter-increment: deck; content: counter(deck); position:absolute; left:0; top:9px; color:#818cf8; font:600 14px monospace; }
+  ul.inner { margin:6px 0 0; padding:0 0 0 18px; list-style:none; }
+  ul.inner li { border:0; padding:4px 0 4px 16px; color:#8b8b94; }
+  ul.inner li::before { content:''; position:absolute; left:0; top:12px; width:4px; height:4px; border-radius:50%; background:#52525b; }
+</style></head>
+<body>
+<main>
+  <ul class="deck"><li>Unordered one</li><li>Unordered two with a longer line that wraps to check hanging indent behavior</li><li>Unordered three<ul class="inner"><li>Nested a</li><li>Nested b</li></ul></li></ul>
+  <ol class="deck"><li>Counter one</li><li>Counter two</li><li>Counter three</li><li>Counter four</li></ol>
+</main>
+</body></html>

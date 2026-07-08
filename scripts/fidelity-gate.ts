@@ -41,6 +41,13 @@ const SSIM_THRESHOLDS: Record<string, number> = {
   "real-app-panel": 0.93, // captured real-world page — scored 0.996 at calibration
 };
 const DEFAULT_THRESHOLD = 0.95;
+
+// Expected-fail comps documenting KNOWN engine gaps. They run and report, but
+// a low score doesn't fail the gate — and an unexpectedly HIGH score DOES fail
+// it (the gap closed upstream; promote the comp to the main corpus).
+const KNOWN_GAPS: Record<string, string> = {
+  "known-gap-multicol": "blitz 0.3-alpha has no CSS multi-column layout",
+};
 const PERF_BUDGET_MS = 1500; // 72 frames @ 1920x1080
 
 function run(cmd: string[], quiet = true): { ok: boolean; out: string } {
@@ -119,9 +126,17 @@ for (const file of comps) {
 
   const score = ssim(chromePng, wlPng);
   const deterministic = sha(wl1) === sha(wl2);
-  const pass = score >= threshold && deterministic;
+  const gap = KNOWN_GAPS[name];
+  let pass: boolean;
+  if (gap) {
+    pass = score < threshold && deterministic; // xpass = gap closed upstream → surface it
+  } else {
+    pass = score >= threshold && deterministic;
+  }
   rows.push({ name, ssim: score, threshold, deterministic, pass });
-  console.log(`${pass ? "PASS" : "FAIL"}  ${name.padEnd(18)} ssim=${score.toFixed(4)} (need ${threshold}) deterministic=${deterministic}`);
+  const tag = gap ? (pass ? "XFAIL" : "XPASS") : pass ? "PASS" : "FAIL";
+  const note = gap ? (pass ? ` — known gap: ${gap}` : " — GAP CLOSED UPSTREAM: promote comp to corpus") : "";
+  console.log(`${tag}  ${name.padEnd(18)} ssim=${score.toFixed(4)} (need ${threshold}) deterministic=${deterministic}${note}`);
 }
 
 // perf budget — 72 frames of the prose comp at 1080p30

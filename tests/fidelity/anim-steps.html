@@ -1,0 +1,34 @@
+<!doctype html>
+<!-- gate comp: the take-compiler's animation grammar — steps() visibility
+     hard-cuts, animation-delay one-shots, transform-origin zoom. Checked at
+     the settled end-state (all 'both' fill). -->
+<html><head><style>
+  html, body { margin:0; width:100%; height:100%; background:#0b0b12; overflow:hidden; }
+  .stage { position:absolute; inset:0; animation: zoom 3s linear both; }
+  @keyframes zoom { 0% { transform:scale(1); transform-origin:30% 40%; }
+    20% { transform:scale(1.5); transform-origin:30% 40%; animation-timing-function:ease-in-out; }
+    40% { transform:scale(1.5); transform-origin:30% 40%; } 60% { transform:scale(1); } 100% { transform:scale(1); } }
+  .slide { position:absolute; inset:0; visibility:hidden; display:flex; align-items:center; justify-content:center; }
+  .s0 { animation: cut0 3s steps(1,end) both; background:linear-gradient(180deg,#101024,#0b0b12); }
+  .s1 { animation: cut1 3s steps(1,end) both; background:linear-gradient(180deg,#0b1a14,#0b0b12); }
+  @keyframes cut0 { 0% { visibility:visible; } 50% { visibility:hidden; } 100% { visibility:hidden; } }
+  @keyframes cut1 { 0% { visibility:hidden; } 50% { visibility:visible; } 100% { visibility:visible; } }
+  .card { width:420px; height:200px; border-radius:16px; }
+  .s0 .card { background:#312e81; }
+  .s1 .card { background:#14532d; border:2px solid #34d399; }
+  .ripple { position:absolute; left:60%; top:35%; width:60px; height:60px; margin:-30px; border-radius:50%;
+    border:3px solid #818cf8; opacity:0; animation: rip 0.6s ease-out both; animation-delay: 2.0s; }
+  @keyframes rip { 0% { opacity:.8; transform:scale(.3);} 100% { opacity:0; transform:scale(2.4);} }
+  .chip { position:absolute; left:50%; bottom:6%; transform:translateX(-50%); padding:12px 26px; border-radius:999px;
+    background:rgba(12,12,20,.85); border:1px solid rgba(129,140,248,.5); color:#fff; font:600 20px sans-serif;
+    animation: chip 3s linear both; }
+  @keyframes chip { 0% { opacity:0; } 10% { opacity:1; } 100% { opacity:1; } }
+</style></head>
+<body>
+  <div class="stage">
+    <section class="slide s0"><div class="card"></div></section>
+    <section class="slide s1"><div class="card"></div></section>
+    <div class="ripple"></div>
+  </div>
+  <div class="chip">Step two — settled state</div>
+</body></html>
