@@ -13,7 +13,8 @@ client :projects do
     /* header: project selector + status, wraps instead of clipping */
     .switcher { padding: 6px 8px 4px; }
     .switch-row { display: flex; gap: 6px; flex-wrap: wrap; min-width: 0; }
-    .current { flex: 1 1 120px; min-width: 0; display: flex; align-items: center; gap: 7px; padding: 9px 10px; border-radius: 10px; background: #1b1b1b; cursor: pointer; }
+    .switch-row { justify-content: space-between; }
+    .current { flex: 0 1 auto; min-width: 90px; max-width: calc(100% - 110px); display: flex; align-items: center; gap: 7px; padding: 9px 10px; border-radius: 10px; background: #1b1b1b; cursor: pointer; }
     .current .name { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .current .chev { color: #6f6f6f; flex-shrink: 0; transition: transform .15s; }
     .current.open .chev { transform: rotate(180deg); }
@@ -74,7 +75,13 @@ client :projects do
     }
     @media (max-width: 190px) {
       .addbtn { display: none; }
-      .current { padding: 9px 8px; }
+      .current { padding: 9px 8px; max-width: calc(100% - 52px); }
+    }
+    /* wide: content scales up instead of stretching one button */
+    @media (min-width: 420px) {
+      .file { padding: 9px 10px; }
+      .files { padding: 0 10px 10px; }
+      .switcher, .search { padding-left: 10px; padding-right: 10px; }
     }
   </style>
   <div class="wrap">

@@ -17,8 +17,9 @@ client :settings do
     .keybox { display: none; padding: 2px 10px 12px; }
     .keybox.open { display: block; }
     .keyrow { display: flex; align-items: center; gap: 6px; background: #101010; border-radius: 10px; padding-right: 6px; }
-    .keyrow .eye { border: 0; background: none; cursor: pointer; font-size: 13px; opacity: .5; }
-    .keyrow .eye:hover { opacity: 1; }
+    .keyrow .eye { border: 0; background: none; cursor: pointer; padding: 4px; color: #6f6f6f; display: flex; }
+    .keyrow .eye:hover { color: #fff; }
+    .keyrow .eye svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
     .keybox input { flex: 1; width: 100%; padding: 11px 13px; border: 0; border-radius: 10px; background: transparent; color: #fff; font: 12.5px ui-monospace, monospace; outline: none; }
     .keybox input::placeholder { color: #4a4a4a; font-family: inherit; }
     .picon { width: 16px; height: 16px; flex-shrink: 0; color: #c9c9c9; }
@@ -84,16 +85,21 @@ client :settings do
           if (expandable) {
             const box = document.createElement('div');
             box.className = 'keybox';
-            box.innerHTML = `<div class="keyrow"><input type="password" placeholder="Paste API key and press ⏎" /><button class="eye" title="Show">👁</button></div>`;
+            box.innerHTML = `<div class="keyrow"><input type="password" placeholder="Paste API key and press ⏎" /><button class="eye" title="Show"></button></div>`;
             const input = box.querySelector('input');
             const eye = box.querySelector('.eye');
+            const EYE = '<svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+            const EYE_OFF = '<svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7c2 0 3.8.7 5.3 1.7M22 12s-4 7-10 7c-2 0-3.8-.7-5.3-1.7"/><path d="m3 3 18 18"/></svg>';
+            eye.innerHTML = EYE;
             if (keys[expandable]) {
               input.value = keys[expandable];
               d.querySelector('.chev').textContent = '✓';
             }
             eye.onclick = (e) => {
               e.stopPropagation();
-              input.type = input.type === 'password' ? 'text' : 'password';
+              const show = input.type === 'password';
+              input.type = show ? 'text' : 'password';
+              eye.innerHTML = show ? EYE_OFF : EYE;
             };
             const commit = () => {
               const v = input.value.trim();
