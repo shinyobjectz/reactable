@@ -1,0 +1,356 @@
+registry/remocn-ui/core/timeline.ts
+import { useCurrentFrame, useVideoConfig } from "remotion";
+import type { Step } from "./types";
+
+export function framesFor(
+  d: number | { seconds: number },
+  fps: number,
+): number {
+  return typeof d === "number" ? d : Math.round(d.seconds * fps);
+}
+
+export function revealCount(
+  localFrame: number,
+  fps: number,
+  len: number,
+  cps: number,
+): number {
+  const over = (len / cps) * fps;
+  if (over <= 0) return len;
+  return Math.max(0, Math.min(len, Math.floor((localFrame / over) * len)));
+}
+
+export function clamp01(t: number): number {
+  return Math.max(0, Math.min(1, t));
+}
+
+export function revealedText(full: string, count: number): string {
+  const c = Math.max(0, Math.min(full.length, Math.floor(count)));
+  return full.slice(0, c);
+}
+
+export interface TypewriterOptions {
+  cps?: number;
+  speed?: number;
+  startFrame?: number;
+}
+
+export interface TypewriterState {
+  text: string;
+  count: number;
+  done: boolean;
+  typing: boolean;
+}
+
+export function useTypewriter(
+  full: string,
+  options: TypewriterOptions = {},
+): TypewriterState {
+  const { cps = 20, speed = 1, startFrame = 0 } = options;
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const local = frame * speed - startFrame;
+  const count = local <= 0 ? 0 : revealCount(local, fps, full.length, cps);
+  return {
+    text: revealedText(full, count),
+    count,
+    done: count >= full.length,
+    typing: count > 0 && count < full.length,
+  };
+}
+
+export function useCurrentState<S extends string>(
+  steps: Step<S>[],
+  defaultState: S,
+  speed = 1,
+): S {
+  const effectiveFrame = useCurrentFrame() * speed;
+  let current = defaultState;
+  let bestAt = -Infinity;
+  steps.forEach((step) => {
+    if (step.at <= effectiveFrame && step.at >= bestAt) {
+      bestAt = step.at;
+      current = step.state;
+    }
+  });
+  return current;
+}
+
+export function useStateTransition<S extends string>(
+  steps: Step<S>[],
+  defaultState: S,
+  speed = 1,
+  defaultDuration = 8,
+): { from: S; to: S; progress: number } {
+  const effectiveFrame = useCurrentFrame() * speed;
+  const started = steps
+    .map((step, index) => ({ step, index }))
+    .sort((a, b) => a.step.at - b.step.at || a.index - b.index)
+    .filter((e) => e.step.at <= effectiveFrame);
+  if (started.length === 0)
+    return { from: defaultState, to: defaultState, progress: 1 };
+  const to = started[started.length - 1].step;
+  const from = started.length >= 2 ? started[started.length - 2].step : null;
+  const dur = to.duration ?? defaultDuration;
+  const progress = dur > 0 ? clamp01((effectiveFrame - to.at) / dur) : 1;
+  return { from: from ? from.state : defaultState, to: to.state, progress };
+}
+
+
+registry/remocn-ui/core/theme.ts
+"use client";
+
+import type { ReactNode } from "react";
+import { createContext, createElement, useContext } from "react";
+
+export interface RemocnTheme {
+  background: string;
+  foreground: string;
+  card: string;
+  cardForeground: string;
+  popover: string;
+  popoverForeground: string;
+  primary: string;
+  primaryForeground: string;
+  secondary: string;
+  secondaryForeground: string;
+  muted: string;
+  mutedForeground: string;
+  accent: string;
+  accentForeground: string;
+  destructive: string;
+  destructiveForeground: string;
+  border: string;
+  input: string;
+  ring: string;
+  radius: number;
+}
+
+export const defaultLightTheme: RemocnTheme = {
+  background: "oklch(1 0 0)",
+  foreground: "oklch(0.145 0 0)",
+  card: "oklch(1 0 0)",
+  cardForeground: "oklch(0.145 0 0)",
+  popover: "oklch(1 0 0)",
+  popoverForeground: "oklch(0.145 0 0)",
+  primary: "oklch(0.205 0 0)",
+  primaryForeground: "oklch(0.985 0 0)",
+  secondary: "oklch(0.97 0 0)",
+  secondaryForeground: "oklch(0.205 0 0)",
+  muted: "oklch(0.97 0 0)",
+  mutedForeground: "oklch(0.556 0 0)",
+  accent: "oklch(0.97 0 0)",
+  accentForeground: "oklch(0.205 0 0)",
+  destructive: "oklch(0.577 0.245 27.325)",
+  destructiveForeground: "oklch(0.985 0 0)",
+  border: "oklch(0.922 0 0)",
+  input: "oklch(0.922 0 0)",
+  ring: "oklch(0.708 0 0)",
+  radius: 10,
+};
+
+export const defaultDarkTheme: RemocnTheme = {
+  background: "oklch(0.145 0 0)",
+  foreground: "oklch(0.985 0 0)",
+  card: "oklch(0.205 0 0)",
+  cardForeground: "oklch(0.985 0 0)",
+  popover: "oklch(0.205 0 0)",
+  popoverForeground: "oklch(0.985 0 0)",
+  primary: "oklch(0.922 0 0)",
+  primaryForeground: "oklch(0.205 0 0)",
+  secondary: "oklch(0.269 0 0)",
+  secondaryForeground: "oklch(0.985 0 0)",
+  muted: "oklch(0.269 0 0)",
+  mutedForeground: "oklch(0.708 0 0)",
+  accent: "oklch(0.269 0 0)",
+  accentForeground: "oklch(0.985 0 0)",
+  destructive: "oklch(0.704 0.191 22.216)",
+  destructiveForeground: "oklch(0.985 0 0)",
+  border: "oklch(1 0 0 / 10%)",
+  input: "oklch(1 0 0 / 15%)",
+  ring: "oklch(0.556 0 0)",
+  radius: 10,
+};
+
+interface RemocnThemeContextValue {
+  theme?: Partial<RemocnTheme>;
+  mode?: "light" | "dark";
+}
+
+const RemocnThemeContext = createContext<RemocnThemeContextValue>({});
+
+export interface RemocnUIProviderProps {
+  theme?: Partial<RemocnTheme>;
+  mode?: "light" | "dark";
+  children: ReactNode;
+}
+
+export function RemocnUIProvider({
+  theme,
+  mode,
+  children,
+}: RemocnUIProviderProps) {
+  return createElement(
+    RemocnThemeContext.Provider,
+    { value: { theme, mode } },
+    children,
+  );
+}
+
+export function useRemocnTheme(
+  override?: Partial<RemocnTheme>,
+  modeOverride?: "light" | "dark",
+): RemocnTheme {
+  const ctx = useContext(RemocnThemeContext);
+  const mode = modeOverride ?? ctx.mode ?? "light";
+  const base = mode === "dark" ? defaultDarkTheme : defaultLightTheme;
+  return { ...base, ...ctx.theme, ...override };
+}
+
+
+registry/remocn-ui/core/color.ts
+import {
+  clampChroma,
+  converter,
+  formatRgb,
+  interpolate,
+  type Oklch,
+  parse,
+  type Rgb,
+} from "culori";
+
+const toRgb = converter("rgb");
+const toOklch = converter("oklch");
+
+const BLACK: Rgb = { mode: "rgb", r: 0, g: 0, b: 0, alpha: 1 };
+
+export function parseColor(c: string): Rgb {
+  const s = c.trim();
+
+  if (s.startsWith("var(")) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(
+        `[remocn-ui] parseColor cannot resolve CSS variable "${s}" under Remotion's per-frame render. ` +
+          "Animated colors must be concrete oklch/hex/rgb values supplied via the theme. " +
+          "Falling back to the JS default.",
+      );
+    }
+    return { ...BLACK };
+  }
+
+  const rgb = toRgb(parse(s));
+  if (!rgb) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(
+        `[remocn-ui] parseColor could not parse "${s}"; using black.`,
+      );
+    }
+    return { ...BLACK };
+  }
+
+  return { mode: "rgb", r: rgb.r, g: rgb.g, b: rgb.b, alpha: rgb.alpha ?? 1 };
+}
+
+export function oklchToRgb(l: number, c: number, h: number): Rgb {
+  const mapped = clampChroma({ mode: "oklch", l, c, h }, "oklch", "rgb");
+  return toRgb(mapped);
+}
+
+export function rgbToOklch(rgb: Rgb): Oklch {
+  const { l, c, h } = toOklch(rgb);
+  return { mode: "oklch", l, c, h: Number.isFinite(h) ? h : 0 };
+}
+
+function resolveColorString(s: string): string {
+  const trimmed = s.trim();
+  if (trimmed.startsWith("var(")) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(
+        `[remocn-ui] mixOklch cannot resolve CSS variable "${trimmed}" under Remotion's per-frame render. ` +
+          "Animated colors must be concrete oklch/hex/rgb values supplied via the theme. " +
+          "Falling back to the JS default.",
+      );
+    }
+    return "#000";
+  }
+  if (!parse(trimmed)) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(
+        `[remocn-ui] mixOklch could not parse "${trimmed}"; using black.`,
+      );
+    }
+    return "#000";
+  }
+  return trimmed;
+}
+
+export function mixOklch(a: string, b: string, t: number): string {
+  const mixed = clampChroma(
+    interpolate([resolveColorString(a), resolveColorString(b)], "oklch")(t),
+    "oklch",
+    "rgb",
+  );
+  return toCss(toRgb(mixed));
+}
+
+export function toCss(color: Rgb): string {
+  return formatRgb(color);
+}
+
+
+registry/remocn-ui/core/motion.ts
+export const easings = {
+  linear: (t: number): number => t,
+  out: (t: number): number => 1 - (1 - t) ** 3,
+  in: (t: number): number => t * t * t,
+  inOut: (t: number): number =>
+    t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2,
+} as const;
+
+export type EasingName = keyof typeof easings;
+
+export const springs = {
+  snappy: { damping: 18, stiffness: 220, mass: 0.7 },
+  soft: { damping: 14, stiffness: 120, mass: 0.9 },
+  bouncy: { damping: 10, stiffness: 180, mass: 0.8 },
+} as const;
+
+export type SpringName = keyof typeof springs;
+
+
+registry/remocn-ui/core/types.ts
+export interface Step<S extends string = string> {
+  at: number;
+  state: S;
+  duration?: number;
+}
+
+
+registry/remocn-ui/core/index.ts
+export {
+  mixOklch,
+  oklchToRgb,
+  parseColor,
+  rgbToOklch,
+  toCss,
+} from "./color";
+export type { EasingName, SpringName } from "./motion";
+export { easings, springs } from "./motion";
+export type { RemocnTheme, RemocnUIProviderProps } from "./theme";
+export {
+  defaultDarkTheme,
+  defaultLightTheme,
+  RemocnUIProvider,
+  useRemocnTheme,
+} from "./theme";
+export type { TypewriterOptions, TypewriterState } from "./timeline";
+export {
+  clamp01,
+  framesFor,
+  revealCount,
+  revealedText,
+  useCurrentState,
+  useStateTransition,
+  useTypewriter,
+} from "./timeline";
+export type { Step } from "./types";

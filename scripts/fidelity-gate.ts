@@ -17,6 +17,7 @@
 // than pure-layout comps). Raising a threshold requires a human eyeball.
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { launchShotBrowser } from "./lib/cdp-shot.ts";
 import { join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -24,7 +25,13 @@ const CORPUS = join(ROOT, "tests", "fidelity");
 const WORK = join(CORPUS, ".gate");
 const CHROME =
   process.env.CHROME_BIN ??
-  ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome", "/usr/bin/chromium-browser"].find(existsSync) ??
+  [
+    // purpose-built headless shell first — immune to desktop-Chrome singleton/crashpad wedges
+    `${process.env.HOME}/.cache/puppeteer/chrome-headless-shell/mac_arm-150.0.7871.24/chrome-headless-shell-mac-arm64/chrome-headless-shell`,
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/usr/bin/google-chrome",
+    "/usr/bin/chromium-browser",
+  ].find(existsSync) ??
   "";
 const TOOLS = [
   join(ROOT, "tools", "target", "release", "reactable-tools"),
@@ -53,12 +60,13 @@ const KNOWN_GAPS: Record<string, string> = {
 };
 const PERF_BUDGET_MS = Number(process.env.PERF_BUDGET_MS ?? 1500); // 72 frames @ 1920x1080 (override for slower CI runners)
 
-function run(cmd: string[], quiet = true): { ok: boolean; out: string } {
-  const p = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "pipe" });
+function run(cmd: string[], quiet = true, timeoutMs = 120_000): { ok: boolean; out: string } {
+  const p = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "pipe", timeout: timeoutMs, killSignal: "SIGKILL" });
   const out = new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr);
   if (!quiet && p.exitCode !== 0) console.error(out);
   return { ok: p.exitCode === 0, out };
 }
+
 
 // Font normalization: force one family (the bundled Geist) on BOTH engines so
 // the gate measures ENGINE fidelity, not macOS-font-vs-Geist deltas. Chrome
@@ -66,12 +74,17 @@ function run(cmd: string[], quiet = true): { ok: boolean; out: string } {
 function normalizedComp(src: string, name: string): string {
   const html = readFileSync(src, "utf8");
   const fontUrl = `file://${join(CORPUS, "assets", "Geist.ttf")}`;
-  const inject = `<style>
+  // keep-alive: virtual-time shortcuts to t=0 if no animation is RUNNING at
+  // load (all-delayed comps screenshot blank) — pin an invisible 4s animation
+  // NB: the style goes in <head> — blitz mislays out documents with a <style>
+  // element inside <body> (absolute containing blocks shrink to a quadrant)
+  const injectHead = `<style>
     @font-face { font-family: '__gate'; src: url('${fontUrl}'); }
     * { font-family: '__gate', sans-serif !important; }
     html { scrollbar-width: none; } ::-webkit-scrollbar { display: none; }
   </style>`;
-  const out = /<\/head>/i.test(html) ? html.replace(/<\/head>/i, `${inject}</head>`) : inject + html;
+  
+  const out = /<\/head>/i.test(html) ? html.replace(/<\/head>/i, `${injectHead}</head>`) : injectHead + html;
   const p = join(WORK, `${name}.norm.html`);
   writeFileSync(p, out);
   return p;
@@ -99,6 +112,9 @@ if (!CHROME || !existsSync(CHROME)) {
   process.exit(2);
 }
 mkdirSync(WORK, { recursive: true });
+// one CDP-driven browser for the whole run: explicit virtual-time (pause →
+// navigate → spend exactly 3000ms → capture) — no --screenshot heuristics
+const browser = await launchShotBrowser(CHROME, W, H);
 
 const REGISTRY = join(CORPUS, "registry");
 const comps: { file: string; dir: string }[] = [
@@ -124,11 +140,8 @@ for (const { file, dir } of comps) {
   // chrome truth (virtual-time lets CSS animations settle to their final state
   // is not available via CLI — gate comps must be static or 'both'-filled)
   const chromePng = join(WORK, `${name}.chrome.png`);
-  run([
-    CHROME, "--headless=new", `--screenshot=${chromePng}`, `--window-size=${W},${H}`,
-    "--hide-scrollbars", "--force-device-scale-factor=1", "--default-background-color=00000000",
-    "--virtual-time-budget=3000" /* = wavelet compare frame: render_seq frames are t=0..duration-1/fps, last = 3s — mismatch phase-shifts looping comps */, `file://${norm}`,
-  ]);
+  // virtual-time budget = wavelet compare frame (t=3s, render_seq's last frame)
+  await browser.shot(`file://${norm}`, chromePng, 3000);
 
   // wavelet render — two passes for the determinism check, LAST frame compared
   // (animations declared `both` have settled by the end of a 4s window)
@@ -181,4 +194,5 @@ const report = [
 ].join("\n");
 writeFileSync(join(CORPUS, "REPORT.md"), report + "\n");
 console.log(`\nreport → tests/fidelity/REPORT.md · overall ${allPass ? "PASS" : "FAIL"}`);
+browser.close();
 process.exit(allPass ? 0 : 1);

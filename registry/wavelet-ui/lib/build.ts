@@ -68,6 +68,8 @@ writeFileSync(SKILL_REF, skill + "\n");
 // ── port-status ledger ──
 const all = existsSync(VENDOR_R) ? readdirSync(VENDOR_R).filter((f) => f.endsWith(".json")).map((f) => f.replace(/\.json$/, "")) : [];
 const ported = new Set(COMPONENTS.map((c) => c.source));
+// registry plumbing (not visual components) + sub-items covered by a parent port
+for (const k of ["registry", "remocn-ui", "dropdown-menu-item", "command-menu-item", "cursor"]) ported.add(k);
 const status = {
   source: "github.com/Remocn/remocn",
   total: all.length,
