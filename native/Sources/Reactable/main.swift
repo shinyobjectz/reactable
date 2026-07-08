@@ -268,6 +268,10 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
                 self.projectsBoard?.pushData()
             }
             board.onDelete = { [weak self] p in self?.deleteProjectItem(p) }
+            board.onPreview = { [weak self] p in
+                guard let self else { return }
+                TakePreviewWindow.show(takeDir: self.activeProjectURL.appending(path: p))
+            }
             board.onReveal = { [weak self] p in
                 guard let self else { return }
                 NSWorkspace.shared.activateFileViewerSelecting([self.activeProjectURL.appending(path: p)])

@@ -230,7 +230,10 @@ client :projects do
           };
           card.querySelector('.more').onclick = (e) => { e.stopPropagation(); openCtx(e.clientX, e.clientY); };
           card.addEventListener('contextmenu', (e) => { e.preventDefault(); openCtx(e.clientX, e.clientY); });
-          card.addEventListener('dblclick', () => note.classList.toggle('open'));
+          card.addEventListener('dblclick', () => {
+            if (f.path.startsWith('takes/')) send('projects.preview', { path: f.path });
+            else note.classList.toggle('open');
+          });
           grid.appendChild(card);
           grid.appendChild(note);
           note.style.gridColumn = '1 / -1';
