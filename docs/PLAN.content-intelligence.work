@@ -1,0 +1,139 @@
+# PLAN — Content Intelligence, local-first
+
+Revision of [[docs/explorations/CONTENT-INTELLIGENCE]] per ruling: **keep it
+local.** The intelligence lives in the app's own stack — CLI verbs, the local
+nexus, reactable-tools, project files. The cloud's only job is holding the
+vendor key and metering. Built around agent ergonomics: every capability is a
+verb the agent can discover, invoke with --json, and be graded on.
+
+## Division of labor (final)
+
+| Piece | Where | Why |
+|-------|-------|-----|
+| Vendor key + metering | CF worker `/api/research/raw` | key can't ship in the app; charges the DO ledger |
+| Series, grading, briefs | LOCAL — project files + CLI | user's data in the user's project; digest reads it |
+| Snapshot scheduling | LOCAL — app timer on launch/daily | no cloud cron; the studio is open when the user works |
+| Media (video/audio/frames) | LOCAL — reactable-tools | binary never transits our cloud (policy) |
+| Deep open-web crawl | deferred P3 (hosted 3w nexus) | only breadth we can't reach locally |
+
+## 1. The one cloud route
+
+`GET/POST /api/research/raw?platform=tiktok&endpoint=/v1/tiktok/video/transcript&…`
+- Session + pro gate (same as drive/meta), forwards querystring to
+  `api.scrapecreators.com` with `x-api-key` (worker secret), returns JSON.
+- Endpoint allowlist by prefix (per-platform table) — no arbitrary paths.
+- Meters the ledger: flat 3 credits/call; 30 for audience-demographics; 12
+  for AI-fallback transcript (mirrors upstream cost + margin).
+- File: `web/src/research.ts`; route in worker.ts beside drive/meta.
+
+## 2. CLI verbs (the agent's hands) — `cli/lib/intel.ts`
+
+All read/write inside the active project. All support `--json`. All errors
+teach the next verb.
+
+```
+reactable intel track topic "<q>" [--platforms tiktok,youtube,reddit]
+reactable intel track competitor <handle|channel-url> [--platform]
+reactable intel untrack <id>
+reactable intel list [--json]                # tracked topics + competitors + grades
+reactable intel snapshot [--budget 40]       # pull today's counts, append series, regrade
+reactable intel trends [--json]              # graded topics, sparkline data
+reactable intel radar "<topic>" [--platform] [--json]   # top content now
+reactable intel breakouts [--json]           # competitor videos beating their own baseline
+reactable intel ads "<company>" [--library facebook|tiktok|google|linkedin]
+reactable intel deconstruct <url>            # download→transcribe→structure→remix brief
+reactable intel brief [--week]               # compile research/brief-YYYY-Www.md
+```
+
+Implementation notes:
+- HTTP: verbs call the worker route with the session cookie from
+  `~/.reactable/auth.json` (same pattern as the nexus `drive` provider).
+- `snapshot` respects `--budget` (max upstream calls) and records spend; a
+  second run the same day is a no-op unless `--force`.
+- `deconstruct`: SC video-info gives a direct media URL → download to
+  `assets/research/` → `reactable-tools transcribe` (chunked Moonshine) →
+  structure pass via the agent gateway → writes
+  `research/remix-<slug>.md` (hook, beats, format, title/thumbnail pattern,
+  suggested deck skeleton).
+
+## 3. Storage shapes (project-local)
+
+```
+.reactable/intel/topics.json        [{id, q, platforms, firstSeen, grade,
+                                      series:[{d, src:{tiktok:n, youtube:n, reddit:n}}]}]
+.reactable/intel/competitors.json   [{id, platform, handle, baseline:{p50, p90},
+                                      lastVideos:[{id, views, at}]}]
+research/brief-YYYY-Www.md          the weekly brief (digest-visible)
+research/remix-<slug>.md            deconstruction briefs
+assets/research/                    downloaded media (panel-visible, deletable)
+```
+
+Grading (in intel.ts, pure function, unit-tested):
+slope7/slope30 on normalized series, accel = slope7-slope30, breadth =
+platforms with positive slope. `watching→rising` slope7>0.15; `→exploding`
+accel>0.25 && breadth≥2; `→peaked` volume>p75(all) && slope7<0;
+`evergreen` age>180d && stable. Deterministic: same series → same grade.
+
+## 4. Nexus + digest (agent ergonomics core)
+
+- `agent_context_digest` gains one line when intel exists:
+  `Intel: 2 exploding (ai-avatars, cursor-tips) · 1 breakout (MKBHD short 4.2×) · brief 3d old`
+  — enough for the agent to know to reach for the verbs.
+- Connector provider `research` (nexus → worker raw route) for anything the
+  verbs don't wrap; path allowlist mirrors the worker's.
+- Skill `skill/agent-skills/content-intel.md`: WHEN each verb (trends for
+  planning, radar for a topic deep-dive, breakouts before scripting, ads
+  before an ad take, deconstruct to remix); how a remix brief feeds
+  [[video-strategy]] → deck skeleton; budget etiquette (snapshot 1×/day,
+  radar before deconstruct, never deconstruct >2 videos per ask unless told).
+- Vendor Scrape Creators' official Agent Skill into skill/vendored/
+  (REVIEW.md addendum) as the deep endpoint reference; ours never names it
+  in user-facing copy.
+
+## 5. Scheduling (local)
+
+Swift: on app launch + every 24h while running, if signed-in && pro &&
+tracked items exist → spawn `reactable intel snapshot --budget 40` (detached,
+logged to nexus.log). No launchd, no cloud cron. Miss a day = the series has
+a gap; grading tolerates gaps (date-indexed, not tick-indexed).
+
+## 6. Dashboard (thin mirror, not the home)
+
+/dashboard/research reads a worker mirror ONLY of what the app chooses to
+sync (optional P2): topic grades + last brief timestamp. The truth lives in
+the project. v1: the page teaches the agent phrases instead of showing data.
+
+## 7. Agent ergonomics acceptance (AX bar)
+
+- Stub mode `REACTABLE_INTEL_STUB=1`: verbs read fixtures from
+  `scripts/eval/fixture/intel/` — deterministic, no network, no key.
+- Eval tasks added to `scripts/eval/`: (a) "what's rising this week?" →
+  agent runs `intel trends --json` and names the exploding topics; (b)
+  "make me a take about the rising one" → trends → radar → deck skeleton
+  chain; (c) "why did competitor X pop?" → breakouts → deconstruct. Graded
+  by deterministic checkers (files written, verbs invoked, grade names
+  correct) like the existing 21/21 suite.
+- Error-message ergonomics: every failure names the fixing verb
+  ("no tracked topics — `reactable intel track topic \"…\"`").
+
+## Phases + DoD
+
+**P0 — raw reach (1 day):** worker research.ts + allowlist + metering;
+`research` connector; content-intel skill v0; vendored SC skill.
+DoD: agent, asked "pull the transcript of <tiktok url>", calls the connector,
+answer includes real transcript text; ledger shows the charge.
+
+**P1 — tracked intelligence (2–3 days):** intel.ts verbs (track/list/
+snapshot/trends/radar/breakouts/ads), storage, grading + unit tests, digest
+line, app timer, stub fixtures + 3 eval tasks.
+DoD: track 2 topics + 1 competitor → 3 synthetic snapshots (stub) → trends
+shows correct grades; live: one real snapshot within budget; eval 3/3.
+
+**P2 — deconstruction (2 days):** intel deconstruct end-to-end local
+(download → chunked transcribe → structure via gateway → remix brief) +
+`intel brief` weekly compile; brief lands in research/ and the digest.
+DoD: deconstruct a real short → remix-<slug>.md with hook/beats/format +
+suggested deck skeleton; "make a take like this" produces a valid deck.
+
+**P3 — breadth (later):** hosted 3w nexus for open-web discovery, alerts,
+forecasting; dashboard mirror sync.
