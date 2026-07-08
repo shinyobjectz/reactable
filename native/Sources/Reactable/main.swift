@@ -257,6 +257,8 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             board.onSelect = { [weak self] root, slug in self?.selectProjectDeck(root: root, slug: slug) }
             board.onStage = { [weak self] id, stage in self?.setProjectStage(id: id, stage: stage) }
             board.onNew = { [weak self] in self?.createProject() }
+            board.onNote = { [weak self] p, note in self?.saveAssetNote(path: p, note: note) }
+            board.onDrop = { [weak self] urls in self?.importAssets(urls) }
             projectsBoard = board
             syncBar()
             arrangeDefaultLayout()
@@ -861,7 +863,62 @@ final class AppController: NSObject, NSApplicationDelegate, ReactableBridgeDeleg
             "deckSlug": state.deckSlug,
             "tabs": tabs,
             "lineup": lineup,
+            "files": projectFiles(),
+            "notes": loadAssetNotes(),
         ] as [String: Any]
+    }
+
+    private var assetNotesURL: URL { activeProjectURL.appending(path: ".reactable/asset-notes.json") }
+
+    private func loadAssetNotes() -> [String: String] {
+        (try? JSONSerialization.jsonObject(with: Data(contentsOf: assetNotesURL))) as? [String: String] ?? [:]
+    }
+
+    private func saveAssetNote(path: String, note: String) {
+        var notes = loadAssetNotes()
+        if note.isEmpty { notes.removeValue(forKey: path) } else { notes[path] = note }
+        try? FileManager.default.createDirectory(
+            at: assetNotesURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let d = try? JSONSerialization.data(withJSONObject: notes, options: [.prettyPrinted]) {
+            try? d.write(to: assetNotesURL)
+        }
+    }
+
+    private func importAssets(_ urls: [URL]) {
+        let dest = activeProjectURL.appending(path: "assets")
+        try? FileManager.default.createDirectory(at: dest, withIntermediateDirectories: true)
+        for url in urls {
+            let to = dest.appending(path: url.lastPathComponent)
+            try? FileManager.default.copyItem(at: url, to: to)
+        }
+        fputs("reactable: imported \(urls.count) asset(s)\n", stderr)
+        projectsBoard?.pushData()
+    }
+
+    /// The project's media, code abstracted away: takes + assets (+ root media).
+    private func projectFiles() -> [[String: Any]] {
+        var out: [[String: Any]] = []
+        let fm = FileManager.default
+        let takes = activeProjectURL.appending(path: "takes")
+        if let items = try? fm.contentsOfDirectory(atPath: takes.path) {
+            for t in items.sorted(by: >) where t.hasPrefix("take") {
+                out.append(["name": t, "path": "takes/\(t)", "group": "Takes", "icon": "take", "sub": ""])
+            }
+        }
+        let assets = activeProjectURL.appending(path: "assets")
+        if let en = fm.enumerator(at: assets, includingPropertiesForKeys: nil) {
+            for case let f as URL in en where !f.hasDirectoryPath {
+                let rel = f.path.replacingOccurrences(of: assets.path + "/", with: "")
+                let ext = f.pathExtension.lowercased()
+                let icon = ["mov", "mp4", "webm"].contains(ext) ? "video"
+                    : ["wav", "mp3", "m4a", "aiff"].contains(ext) ? "audio"
+                    : ["png", "jpg", "jpeg", "gif", "webp"].contains(ext) ? "image" : "file"
+                let group = rel.contains("/") ? "assets/" + rel.components(separatedBy: "/")[0] : "Assets"
+                out.append(["name": f.lastPathComponent, "path": "assets/\(rel)", "group": group, "icon": icon, "sub": ext])
+                if out.count > 240 { break }
+            }
+        }
+        return out
     }
 
     private func saveStageLineup(_ newLineup: [[String: Any]]) {

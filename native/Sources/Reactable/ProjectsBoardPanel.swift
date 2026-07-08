@@ -20,6 +20,8 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
     var onSelect: ((String, String) -> Void)?
     var onStage: ((String, String) -> Void)?
     var onNew: (() -> Void)?
+    var onNote: ((String, String) -> Void)?
+    var onDrop: (([URL]) -> Void)?
 
     init(port: Int) {
         self.port = port
@@ -96,6 +98,10 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
             }
         case "projects.new":
             onNew?()
+        case "projects.note":
+            if let p = parsed.payload["path"] as? String {
+                onNote?(p, parsed.payload["note"] as? String ?? "")
+            }
         case "projects.stage":
             if let id = parsed.payload["id"] as? String,
                let stage = parsed.payload["stage"] as? String {
@@ -115,5 +121,29 @@ final class ProjectsBoardPanel: NSObject, NSWindowDelegate, WKScriptMessageHandl
         default:
             break
         }
+    }
+}
+
+
+// Transparent drag-and-drop catcher: invisible to clicks, receives file drags.
+@MainActor
+final class FileDropView: NSView {
+    var onDrop: (([URL]) -> Void)?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        registerForDraggedTypes([.fileURL])
+    }
+    required init?(coder: NSCoder) { nil }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { .copy }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self]) as? [URL] ?? []
+        guard !urls.isEmpty else { return false }
+        onDrop?(urls)
+        return true
     }
 }

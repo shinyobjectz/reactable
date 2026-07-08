@@ -1,73 +1,137 @@
-# Projects panel — vertical switcher + pipeline
+# Projects panel — switcher + asset browser
 
-A project is what the stage shows (showcase is a project). This panel lists
-every project across registered roots, switches the whole app to it, cycles
-its pipeline stage, and creates new ones. Same pipeline state as
-`reactable projects board` via ~/Reactable/pipeline.json.
+One project switcher pinned at the top; below it, search over the project's
+media: takes and assets (code directories abstracted away). Each item takes a
+context note (rides agent context like tool prompts).
 
 client :projects do
   <style>
     * { box-sizing: border-box; margin: 0; }
-    html, body { height: 100%; background: #141414; font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; color: #e7e7e7; -webkit-font-smoothing: antialiased; user-select: none; }
-    .shell { display: flex; flex-direction: column; height: 100%; background: #141414; }
-    .top { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #1f1f1f; }
-    .shell { border-top-left-radius: 0; border-top-right-radius: 0; }
-    .top h2 { font: 600 13px ui-sans-serif, system-ui; flex: 1; color: #fafafa; }
-    .top #close { width: 28px; height: 28px; border: 0; border-radius: 8px; background: #161616; color: #8a8a8a; cursor: pointer; font: inherit; }
-    .top #close:hover { color: #fff; background: #222; }
-    .list { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 4px; }
-    .proj { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border-radius: 9px; cursor: pointer; border: 1px solid transparent; }
-    .proj:hover { background: #191919; }
-    .proj.active { background: #1d1d1d; border-color: #333; }
-    .proj .name { flex: 1; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .proj .root { color: #6b6b6b; font-size: 10.5px; white-space: nowrap; }
-    .stage-chip { font: 600 9px/1 ui-monospace, monospace; letter-spacing: .06em; text-transform: uppercase; padding: 4px 7px; border-radius: 999px; border: 1px solid #333; color: #9a9a9a; background: #171717; cursor: pointer; flex-shrink: 0; }
-    .stage-chip:hover { color: #fff; border-color: #4a4a4a; }
-    .stage-chip.editing { color: #d4d4d4; border-color: #4a4a4a; }
-    .stage-chip.done { color: #0a0a0a; background: #e7e7e7; border-color: #e7e7e7; }
-    .foot { padding: 10px; border-top: 1px solid #1f1f1f; }
-    .new { width: 100%; padding: 9px; border: 1px dashed #333; border-radius: 9px; background: none; color: #9a9a9a; cursor: pointer; font: inherit; }
-    .new:hover { color: #fff; border-color: #555; }
-    .hint { color: #565656; font-size: 10.5px; padding: 8px 12px 2px; }
+    html, body { height: 100%; background: #141414; color: #e7e7e7; font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; user-select: none; }
+    .wrap { display: flex; flex-direction: column; height: 100%; }
+    .switcher { padding: 8px 10px 6px; }
+    .current { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px; background: #1d1d1d; cursor: pointer; }
+    .current:hover { background: #232323; }
+    .current .name { flex: 1; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .current .chev { color: #6f6f6f; transition: transform .15s; }
+    .current.open .chev { transform: rotate(180deg); }
+    .plist { display: none; margin-top: 4px; border-radius: 10px; background: #191919; overflow: hidden; }
+    .plist.open { display: block; }
+    .prow { display: flex; align-items: center; gap: 8px; padding: 9px 12px; cursor: pointer; }
+    .prow:hover { background: #222; }
+    .prow .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .chip { font: 600 9px/1 ui-monospace, monospace; letter-spacing: .06em; text-transform: uppercase; padding: 4px 7px; border-radius: 999px; color: #9a9a9a; background: #242424; cursor: pointer; flex-shrink: 0; }
+    .chip:hover { color: #fff; }
+    .prow.new { color: #8a8a8a; }
+    .search { padding: 4px 10px 8px; }
+    .search input { width: 100%; padding: 9px 12px; border: 0; border-radius: 10px; background: #1d1d1d; color: #fff; font: inherit; outline: none; }
+    .files { flex: 1; overflow-y: auto; padding: 0 10px 10px; }
+    .group { font: 600 10px/1 ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; color: #6f6f6f; padding: 12px 4px 6px; }
+    .file { display: flex; align-items: center; gap: 9px; padding: 8px 9px; border-radius: 9px; }
+    .file:hover { background: #1d1d1d; }
+    .file svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: .7; flex-shrink: 0; }
+    .file .fname { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; }
+    .file .sub { color: #6b6b6b; font-size: 10.5px; flex-shrink: 0; }
+    .file .more { border: 0; background: none; color: #6f6f6f; cursor: pointer; font-size: 15px; }
+    .file .more:hover { color: #fff; }
+    .note { display: none; padding: 2px 9px 8px 33px; }
+    .note.open { display: block; }
+    .note textarea { width: 100%; min-height: 40px; background: #1d1d1d; border: 0; border-radius: 8px; color: #ddd; font: 12px/1.4 inherit; padding: 7px 9px; resize: vertical; }
+    .empty { color: #565656; font-size: 12px; padding: 16px 6px; text-align: center; }
+    .drop-hint { color: #444; font-size: 11px; text-align: center; padding: 8px; }
   </style>
-  <div class="shell">
-    <div class="hint">Click to switch · chip cycles the pipeline stage</div>
-    <div class="list" id="list"></div>
-    <div class="foot"><button class="new" id="new">＋ New project</button></div>
+  <div class="wrap">
+    <div class="switcher">
+      <div class="current" id="current"><span class="name" id="cur-name">—</span><span class="chev">▾</span></div>
+      <div class="plist" id="plist"></div>
+    </div>
+    <div class="search"><input id="q" placeholder="Search takes and assets…" /></div>
+    <div class="files" id="files"></div>
+    <div class="drop-hint">Drop files anywhere to add them to assets/</div>
   </div>
   <script>
-    const send = (action, payload = {}) =>
-      window.webkit?.messageHandlers?.reactable?.postMessage({ action, payload });
+    const send = (a, p = {}) => window.webkit?.messageHandlers?.reactable?.postMessage({ action: a, payload: p });
     const COLS = ['idea', 'recording', 'editing', 'done'];
-    let data = { projects: [], stages: {}, active: '' };
+    let data = { projects: [], stages: {}, active: '', files: [], notes: {} };
+    const ICONS = {
+      take: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>',
+      video: '<svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m10 9 5 3-5 3z"/></svg>',
+      audio: '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
+      image: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>',
+      file: '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>',
+    };
 
-    function render() {
-      const list = document.getElementById('list');
+    function renderSwitcher() {
+      const cur = data.projects.find((p) => p.root + '/' + p.slug === data.active);
+      document.getElementById('cur-name').textContent = cur ? (cur.title || cur.slug) : '—';
+      const list = document.getElementById('plist');
       list.innerHTML = '';
       for (const p of data.projects) {
         const key = p.root + '/' + p.slug;
         const stage = data.stages[key] || 'idea';
         const row = document.createElement('div');
-        row.className = 'proj' + (key === data.active ? ' active' : '');
-        row.innerHTML = `<span class="name">${p.title || p.slug}</span>
-          <span class="root">${p.root}</span>
-          <button class="stage-chip ${stage}">${stage}</button>`;
+        row.className = 'prow';
+        row.innerHTML = `<span class="name">${p.title || p.slug}</span><button class="chip">${stage}</button>`;
         row.addEventListener('click', (e) => {
-          if (e.target.classList.contains('stage-chip')) return;
+          if (e.target.classList.contains('chip')) return;
           send('projects.select', { root: p.root, slug: p.slug });
+          list.classList.remove('open');
+          document.getElementById('current').classList.remove('open');
         });
-        row.querySelector('.stage-chip').addEventListener('click', () => {
+        row.querySelector('.chip').onclick = () => {
           const next = COLS[(COLS.indexOf(stage) + 1) % COLS.length];
           data.stages[key] = next;
           send('projects.stage', { id: key, stage: next });
-          render();
-        });
+          renderSwitcher();
+        };
         list.appendChild(row);
       }
+      const add = document.createElement('div');
+      add.className = 'prow new';
+      add.textContent = '＋ New project';
+      add.onclick = () => send('projects.new');
+      list.appendChild(add);
     }
-    document.getElementById('new').onclick = () => send('projects.new');
+
+    function renderFiles() {
+      const q = document.getElementById('q').value.trim().toLowerCase();
+      const box = document.getElementById('files');
+      box.innerHTML = '';
+      const items = (data.files || []).filter((f) => !q || f.name.toLowerCase().includes(q));
+      const groups = {};
+      for (const f of items) (groups[f.group] = groups[f.group] || []).push(f);
+      for (const [group, files] of Object.entries(groups)) {
+        const h = document.createElement('div');
+        h.className = 'group';
+        h.textContent = group;
+        box.appendChild(h);
+        for (const f of files) {
+          const row = document.createElement('div');
+          row.className = 'file';
+          row.innerHTML = `${ICONS[f.icon] || ICONS.file}<span class="fname">${f.name}</span><span class="sub">${f.sub || ''}</span><button class="more">⋯</button>`;
+          const note = document.createElement('div');
+          note.className = 'note';
+          note.innerHTML = `<textarea placeholder="Context note for the agent…">${data.notes[f.path] || ''}</textarea>`;
+          row.querySelector('.more').onclick = () => note.classList.toggle('open');
+          note.querySelector('textarea').oninput = (e) => {
+            data.notes[f.path] = e.target.value;
+            clearTimeout(note._t);
+            note._t = setTimeout(() => send('projects.note', { path: f.path, note: e.target.value }), 400);
+          };
+          box.appendChild(row);
+          box.appendChild(note);
+        }
+      }
+      if (!box.children.length) box.innerHTML = '<div class="empty">No media yet — record a take or drop files in.</div>';
+    }
+
+    document.getElementById('current').onclick = () => {
+      document.getElementById('plist').classList.toggle('open');
+      document.getElementById('current').classList.toggle('open');
+    };
+    document.getElementById('q').oninput = renderFiles;
     send('projects.ready');
-    window.ReactableProjects = { setData(d) { data = { ...data, ...d }; render(); } };
-    render();
+    window.ReactableProjects = { setData(d) { data = { ...data, ...d }; renderSwitcher(); renderFiles(); } };
+    renderSwitcher(); renderFiles();
   </script>
 end
