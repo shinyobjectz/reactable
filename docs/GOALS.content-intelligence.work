@@ -1,0 +1,84 @@
+# GOALS — proving the intelligence in content intelligence
+
+Companion to [[docs/PLAN.content-intelligence]]. Features working is P0–P2;
+these goals prove the system is INTELLIGENT — every one is graded against
+external truth (forward outcomes, blind human ratings, the channel's own
+baselines), never against our own vibes. House style: each has a DoD you can
+run.
+
+## G1 — Grounded recall: beats searching by hand
+The agent answers niche questions from pulled data with receipts.
+**Build:** eval set of 20 questions about a real niche ("fastest-growing
+creator in X this month", "which format wins for topic Y", "what audio is
+riding right now") + hand-verified answer key (2h of human research).
+**DoD:** ≥16/20 factually correct, EVERY claim cites a stored pull
+(post id / profile / series point). A wrong-but-cited answer counts half;
+an uncited claim counts zero.
+
+## G2 — Trend calls that come true (the Exploding Topics bar)
+Grades are predictions; score them forward, never backfit.
+**Build:** prediction log — every `intel snapshot` freezes that day's grades.
+**DoD:** over 8 weeks across ≥30 tracked topics: topics graded `exploding`
+show ≥2× the median forward growth (next 14 days) of `watching` topics, and
+`peaked` calls decline within 30 days ≥60% of the time. Precision@5 for
+"exploding" ≥0.6. Published as a table in research/, auto-computed.
+
+## G3 — Breakout explanations that survive scrutiny
+Not "it went viral" — the actual mechanism.
+**Build:** for 10 real competitor breakouts (video ≥3× channel baseline),
+agent produces a one-paragraph explanation (hook, format, timing, audio,
+thumbnail pattern) from deconstruction.
+**DoD:** blind review (user or a hired marketer): ≥7/10 rated "that's the
+actual reason", 0/10 containing fabricated metrics.
+
+## G4 — Remix briefs that outperform (the money goal)
+The system's advice must beat the channel's own baseline.
+**Build:** 5 takes produced from remix briefs (deconstruct → brief → deck →
+record → publish), tagged in the publishing queue.
+**DoD:** at 7 days, ≥3/5 beat the channel's median views AND median
+retention for comparable-length videos. Control: the user's next 5
+un-assisted takes — the assisted set must win on median.
+
+## G5 — One sentence to shipped, unaided
+"Make me a take about what's rising in my niche this week."
+**Build:** 3 chain eval tasks (trends→radar→brief→deck; breakout→
+deconstruct→remix→deck; ads→counter-angles→ad-take deck) with
+deterministic checkers (verbs invoked, files written, deck validates).
+**DoD:** ≥90% unaided completion over 10 runs each (stub mode), and 3/3
+once live against real data; zero human repair steps mid-chain.
+
+## G6 — Ad intelligence with receipts
+"What are competitors paying to say?"
+**Build:** ad-library pulls stored with ids; synthesis into angles/hooks/
+offers + 3 counter-angles.
+**DoD:** every synthesized claim traceable to a stored ad id (checker-
+verified); blind marketer rates the counter-angles ≥4/5 usable.
+
+## G7 — Intelligence per credit
+All of it inside budgets, or it's not shippable intelligence.
+**Build:** cost accounting on every eval run (ledger deltas).
+**DoD:** daily snapshot ≤40 upstream calls; any G1 answer ≤15 credits; a
+full G5 chain ≤60 credits; a G4 remix pipeline ≤120 credits. Regressions
+fail the eval like a wrong answer does.
+
+## G8 — Calibrated honesty (hard gate)
+Thin data must produce "I don't know + the verb that fixes it", never
+invented numbers.
+**Build:** probe battery: 10 questions about untracked topics/creators, 5
+questions where sources disagree, 5 where the series has gaps.
+**DoD:** ZERO fabricated metrics across the entire suite (any fabrication =
+suite failure); disagreement acknowledged when present; every "can't answer"
+names the tracking verb. This gate runs on every eval, forever.
+
+## Sequencing
+
+G8 + G1 land with P1 (they're eval harness work). G5 lands with P2 (chains
+need deconstruct). G2 starts logging at P1 and matures at +8 weeks — start
+the clock EARLY. G3/G6 need one afternoon of human grading each. G4 is the
+long pole (needs published takes + 7-day windows) and is the goal that makes
+the Pro pitch true: run it on our own channel first.
+
+## The honest bar
+
+BuzzSumo-parity = G1+G6 green. Exploding-Topics-parity = G2 green.
+Better-than-both = G4 green, because neither of them can make the video.
