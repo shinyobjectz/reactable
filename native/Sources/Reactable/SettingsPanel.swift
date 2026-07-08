@@ -53,9 +53,21 @@ final class SettingsPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
         win.makeKeyAndOrderFront(nil)
     }
 
+    private func pushKeys() {
+        let file = FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: ".reactable/connectors.json")
+        let keys = (try? JSONSerialization.jsonObject(with: Data(contentsOf: file))) as? [String: String] ?? [:]
+        if let d = try? JSONSerialization.data(withJSONObject: keys),
+           let str = String(data: d, encoding: .utf8) {
+            webView?.evaluateJavaScript("window.ReactableSettings?.setKeys(\(str))")
+        }
+    }
+
     func userContentController(_ c: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let parsed = BridgeMessage.parse(message.body) else { return }
         switch parsed.action {
+        case "settings.ready":
+            pushKeys()
         case "settings.link":
             if let u = parsed.payload["url"] as? String, let url = URL(string: u) {
                 NSWorkspace.shared.open(url)
@@ -70,6 +82,7 @@ final class SettingsPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
                 if let d = try? JSONSerialization.data(withJSONObject: all, options: [.prettyPrinted]) {
                     try? d.write(to: file)
                 }
+                pushKeys()
             }
         case "settings.youtube":
             let home = FileManager.default.homeDirectoryForCurrentUser.path
