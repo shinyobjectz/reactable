@@ -84,7 +84,7 @@ client :settings do
 <path d="M0.234554 0C3.01842 0.358903 12.2517 0.14986 15.6428 0.149414L47.2922 0.145508L132.066 0.146484L159.824 0.138672C165.242 0.137785 171.004 0.0368192 176.388 0.220703C199.258 0.981506 220.871 10.8775 236.388 27.6953C248.666 40.8854 256.491 57.5988 258.759 75.4756C259.234 79.2057 259.577 82.4762 259.445 86.2207C257.902 88.3296 253.81 92.1967 251.761 94.2373L238.508 107.467L191.385 154.631L181 164.979C178.644 167.33 175.576 170.179 173.704 172.854L259.515 172.823L259.527 259.472C239.445 259.087 218.573 259.352 198.416 259.361L182.244 259.401C179.647 259.408 175.298 259.553 172.908 259.229C169.864 256.421 166.646 253.07 163.695 250.124L147.208 233.637C127.142 213.584 106.928 192.981 86.6291 173.22L86.6418 259.468C73.8499 259.194 60.5796 259.359 47.7609 259.359C31.8649 259.304 15.9681 259.334 0.0724443 259.449C0.261371 257.579 0.125693 253.601 0.121272 251.543L0.118343 236.431L0.11346 196.806C0.109702 189.09 -0.0688427 180.71 0.242366 173.063C2.35059 170.354 7.0319 165.966 9.59881 163.417L25.5324 147.509L62.4904 110.57C70.5494 102.61 78.5265 94.5671 86.4211 86.4434C83.8014 86.6854 79.2746 86.5617 76.5549 86.5615L58.9523 86.5576L0.20721 86.6035C-0.356649 65.4227 0.444868 43.9321 0.121272 22.7217C0.00699665 15.2365 0.0258954 7.47987 0.234554 0ZM86.7697 86.5723C86.2452 96.6121 86.6343 109.917 86.6232 120.141C86.6049 137.502 86.4465 155.265 86.6779 172.603C89.434 172.973 94.5764 172.852 97.5119 172.852L115.314 172.84C134.481 172.833 153.912 173.019 173.054 172.821L173.052 86.5791L86.7697 86.5723Z" fill="white"/>
 </svg></div>
       <div class="who"><div class="n">Not signed in</div><div class="s">Sync settings and credits with reactable.app</div></div>
-      <button onclick="window.webkit?.messageHandlers?.reactable?.postMessage({action:'settings.link',payload:{url:'https://reactable.app/signin'}})">Sign in</button>
+      <button id="authbtn">Sign in</button>
     </div>
 
     <div class="procard" id="pro">
@@ -225,17 +225,34 @@ client :settings do
     function applyAccount() {
       const pro = (account.plan || '').toLowerCase() === 'pro';
       updateProCard();
-      const n = document.querySelector('.profile .who .n');
-      if (n) {
-        n.querySelector('.probadge')?.remove();
-        if (pro) n.insertAdjacentHTML('beforeend', ' <span class="pc-coin" style="display:inline-flex;width:15px;height:15px;font-size:7px;vertical-align:-2px">✦</span>');
+      const who = document.querySelector('.profile .who');
+      const btn = document.getElementById('authbtn');
+      if (account.signedIn) {
+        who.querySelector('.n').textContent = account.email || 'Signed in';
+        who.querySelector('.s').textContent = pro ? 'Pro plan' : 'Free plan — settings and credits sync';
+        btn.textContent = 'Sign out';
+        btn.onclick = () => send('settings.signout');
+      } else {
+        who.querySelector('.n').textContent = 'Not signed in';
+        who.querySelector('.s').textContent = 'Sync settings and credits with reactable.app';
+        btn.textContent = 'Sign in';
+        btn.onclick = () => { btn.textContent = 'Waiting…'; send('settings.signin'); };
       }
+      const n = who.querySelector('.n');
+      n.querySelector('.pc-coin')?.remove();
+      if (pro) n.insertAdjacentHTML('beforeend', ' <span class="pc-coin" style="display:inline-flex;width:15px;height:15px;font-size:7px;vertical-align:-2px">✦</span>');
     }
     applyAccount();
 
     window.ReactableSettings = {
       setKeys(k) { keys = k || {}; render(); },
       setAccount(a) { account = a || account; applyAccount(); },
+      setSignin(state) {
+        const btn = document.getElementById('authbtn');
+        if (!btn || account.signedIn) return;
+        if (state === 'waiting') btn.textContent = 'Waiting…';
+        else btn.textContent = state === 'timeout' ? 'Timed out — retry' : 'Sign in';
+      },
     };
     send('settings.ready');
     render();

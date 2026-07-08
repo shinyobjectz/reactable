@@ -53,12 +53,88 @@ final class SettingsPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
         win.makeKeyAndOrderFront(nil)
     }
 
+    private let apiBase = ProcessInfo.processInfo.environment["REACTABLE_API"] ?? "https://reactable.app"
+    private var signingIn = false
+
+    // Device flow against reactable.app: start → open browser → poll → save
+    // ~/.reactable/auth.json (the same file the CLI reads) → push to the page.
+    private func startDeviceFlow() {
+        guard !signingIn else { return }
+        signingIn = true
+        pushSigninState("waiting")
+        Task { [weak self] in
+            guard let self else { return }
+            defer { Task { @MainActor in self.signingIn = false } }
+            do {
+                var req = URLRequest(url: URL(string: "\(apiBase)/api/auth/cli/start")!)
+                req.httpMethod = "POST"
+                let (data, _) = try await URLSession.shared.data(for: req)
+                guard let start = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let device = start["device_code"] as? String,
+                      let verify = start["verification_url"] as? String
+                else { throw URLError(.badServerResponse) }
+
+                await MainActor.run { NSWorkspace.shared.open(URL(string: verify)!) }
+
+                let interval = max(2.0, (start["interval"] as? Double) ?? 3.0)
+                let deadline = Date().addingTimeInterval((start["expires_in"] as? Double) ?? 600)
+                while Date() < deadline {
+                    try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                    var poll = URLRequest(url: URL(string: "\(apiBase)/api/auth/cli/poll")!)
+                    poll.httpMethod = "POST"
+                    poll.setValue("application/json", forHTTPHeaderField: "content-type")
+                    poll.httpBody = try JSONSerialization.data(withJSONObject: ["device_code": device])
+                    let (pd, _) = try await URLSession.shared.data(for: poll)
+                    guard let res = try JSONSerialization.jsonObject(with: pd) as? [String: Any] else { continue }
+                    if res["pending"] as? Bool == true { continue }
+                    guard res["ok"] as? Bool == true,
+                          let token = res["access_token"] as? String,
+                          let email = res["email"] as? String
+                    else { throw URLError(.userAuthenticationRequired) }
+
+                    var plan = ""
+                    var me = URLRequest(url: URL(string: "\(apiBase)/api/auth/me")!)
+                    me.setValue("reactable_session=\(token)", forHTTPHeaderField: "cookie")
+                    if let (md, _) = try? await URLSession.shared.data(for: me),
+                       let body = try? JSONSerialization.jsonObject(with: md) as? [String: Any],
+                       let user = body["user"] as? [String: Any] {
+                        plan = user["plan"] as? String ?? ""
+                    }
+
+                    let creds: [String: Any] = [
+                        "access_token": token,
+                        "email": email,
+                        "session_id": res["session_id"] as? String ?? "",
+                        "api_base": apiBase,
+                        "saved_at": ISO8601DateFormatter().string(from: Date()),
+                        "plan": plan,
+                    ]
+                    let file = FileManager.default.homeDirectoryForCurrentUser
+                        .appending(path: ".reactable/auth.json")
+                    let data = try JSONSerialization.data(withJSONObject: creds, options: [.prettyPrinted])
+                    try data.write(to: file, options: [.completeFileProtection])
+                    try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+                    await MainActor.run { self.pushAccount() }
+                    return
+                }
+                await MainActor.run { self.pushSigninState("timeout") }
+            } catch {
+                await MainActor.run { self.pushSigninState("error") }
+            }
+        }
+    }
+
+    private func pushSigninState(_ state: String) {
+        webView?.evaluateJavaScript("window.ReactableSettings?.setSignin('\(state)')")
+    }
+
     private func pushAccount() {
         let file = FileManager.default.homeDirectoryForCurrentUser
             .appending(path: ".reactable/auth.json")
         let auth = (try? JSONSerialization.jsonObject(with: Data(contentsOf: file))) as? [String: Any] ?? [:]
+        let token = auth["access_token"] as? String ?? ""
         let account: [String: Any] = [
-            "signedIn": auth["token"] != nil || auth["email"] != nil,
+            "signedIn": !token.isEmpty,
             "plan": auth["plan"] as? String ?? "",
             "email": auth["email"] as? String ?? "",
         ]
@@ -83,6 +159,13 @@ final class SettingsPanel: NSObject, NSWindowDelegate, WKScriptMessageHandler {
         switch parsed.action {
         case "settings.ready":
             pushKeys()
+            pushAccount()
+        case "settings.signin":
+            startDeviceFlow()
+        case "settings.signout":
+            let file = FileManager.default.homeDirectoryForCurrentUser
+                .appending(path: ".reactable/auth.json")
+            try? "{}".data(using: .utf8)?.write(to: file)
             pushAccount()
         case "settings.link":
             if let u = parsed.payload["url"] as? String, let url = URL(string: u) {

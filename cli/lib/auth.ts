@@ -7,7 +7,9 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 export const CRED_DIR = join(homedir(), ".reactable");
-export const CRED_FILE = join(CRED_DIR, "credentials.json");
+// Canonical credential file — the app's Settings panel reads the same one.
+export const CRED_FILE = join(CRED_DIR, "auth.json");
+const LEGACY_CRED_FILE = join(CRED_DIR, "credentials.json");
 
 export type Credentials = {
   access_token: string;
@@ -15,6 +17,7 @@ export type Credentials = {
   session_id: string;
   api_base: string;
   saved_at: string;
+  plan?: string;
 };
 
 export function apiSite(): string {
@@ -22,9 +25,12 @@ export function apiSite(): string {
 }
 
 export function loadCredentials(): Credentials | null {
-  if (!existsSync(CRED_FILE)) return null;
+  const path = existsSync(CRED_FILE) ? CRED_FILE : existsSync(LEGACY_CRED_FILE) ? LEGACY_CRED_FILE : null;
+  if (!path) return null;
   try {
-    return JSON.parse(readFileSync(CRED_FILE, "utf8")) as Credentials;
+    const creds = JSON.parse(readFileSync(path, "utf8")) as Credentials;
+    if (path === LEGACY_CRED_FILE && creds.access_token) saveCredentials(creds);
+    return creds;
   } catch {
     return null;
   }
@@ -32,11 +38,13 @@ export function loadCredentials(): Credentials | null {
 
 export function saveCredentials(creds: Credentials) {
   mkdirSync(CRED_DIR, { recursive: true });
-  writeFileSync(CRED_FILE, JSON.stringify(creds, null, 2));
+  writeFileSync(CRED_FILE, JSON.stringify(creds, null, 2), { mode: 0o600 });
 }
 
 export function clearCredentials() {
-  if (existsSync(CRED_FILE)) writeFileSync(CRED_FILE, "");
+  for (const f of [CRED_FILE, LEGACY_CRED_FILE]) {
+    if (existsSync(f)) writeFileSync(f, "{}");
+  }
 }
 
 /** Device flow against reactable.app (when deployed). YouTube stays local. */
@@ -71,14 +79,22 @@ export async function authLogin(): Promise<number> {
       console.error("auth poll failed:", res.error);
       return 1;
     }
+    let plan = "";
+    try {
+      const me = await fetch(`${base}/api/auth/me`, {
+        headers: { cookie: `reactable_session=${String(res.access_token)}` },
+      });
+      plan = String(((await me.json()) as any)?.user?.plan || "");
+    } catch {}
     saveCredentials({
       access_token: String(res.access_token),
       email: String(res.email),
       session_id: String(res.session_id),
       api_base: base,
       saved_at: new Date().toISOString(),
+      plan,
     });
-    console.log(`Signed in as ${res.email}`);
+    console.log(`Signed in as ${res.email}${plan ? ` (${plan})` : ""}`);
     return 0;
   }
   console.error("auth timed out");
