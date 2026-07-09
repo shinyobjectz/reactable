@@ -12,7 +12,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { DATA_ROOT } from "./paths.ts";
 import { readIndex, readTracks, resolveRef } from "./video.ts";
-import { decompile } from "./decompile.ts";
+import { decompile, mvcGroups, mvcTags } from "./decompile.ts";
 import { serializeSidecar, RECONSTRUCT_SYSTEM } from "./baseline.ts";
 import { editIntelDir } from "./edit-intel.ts";
 
@@ -39,7 +39,7 @@ export function exportDataset(opts: { valFrac?: number } = {}): any {
         const ref = resolveRef(media);
         const idx = readIndex(ref);
         const tracks = readTracks(ref);
-        const input = serializeSidecar(idx, tracks);
+        const input = serializeSidecar(idx, tracks, mvcGroups(ref, idx.shots ?? []), mvcTags(ref, idx.shots ?? []));
         const target = decompile(ref); // clean skeleton (tracklet-merged)
         rows.push({
           messages: [

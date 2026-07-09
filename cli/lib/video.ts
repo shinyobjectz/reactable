@@ -413,20 +413,35 @@ export function find(ref: Ref, query: string, opts: { visual?: boolean } = {}): 
       hits.push({ t_ms: trk.in_ms, tc: tc(trk.in_ms, idx), source: `track/${trk.pass}`, quote: trk.concept, track: trk.id });
     }
   }
-  // motion layer: camera-move labels + cut-on-action points
+  // motion layer: camera moves · subject direction · cut-on-motion · match-cuts
   const motion = idx.passes?.motion;
   if (motion) {
+    const wantDir = ["right", "left", "up", "down"].find((d) => new RegExp(`\\b${d}\\b|moving ${d}|going ${d}`).test(q));
     for (const cm of motion.camera_moves ?? []) {
-      if (cameraMoveMatches(q, cm.move)) {
-        const sh = (idx.shots ?? []).find((s: any) => s.id === cm.shot);
-        hits.push({ t_ms: sh?.in_ms ?? 0, tc: tc(sh?.in_ms ?? 0, idx), source: "motion/camera", quote: cm.move, shot: cm.shot });
+      const sh = (idx.shots ?? []).find((s: any) => s.id === cm.shot);
+      const at = { t_ms: sh?.in_ms ?? 0, tc: tc(sh?.in_ms ?? 0, idx), shot: cm.shot };
+      if (cameraMoveMatches(q, cm.move)) hits.push({ ...at, source: "motion/camera", quote: cm.move });
+      // subject moving in a queried direction ("moving right", "walking left")
+      if (wantDir && (cm.subject?.dir?.includes(wantDir) || cm.primary_dir?.includes(wantDir))) {
+        hits.push({ ...at, source: "motion/direction", quote: `${cm.subject?.dir ? "subject" : "motion"} ${cm.subject?.dir ?? cm.primary_dir}` });
       }
     }
     if (/\b(action|motion|cut|peak|movement|moment)\b/.test(q)) {
       for (const c of motion.cut_points ?? []) {
-        hits.push({ t_ms: c.t_ms, tc: tc(c.t_ms, idx), source: "motion/action", quote: `motion peak (${c.mag})` });
+        hits.push({ t_ms: c.t_ms, tc: tc(c.t_ms, idx), source: "motion/action", quote: `motion peak (${c.mag})${c.dir ? ", " + c.dir : ""}` });
       }
     }
+    // match-cut candidates ("match cut", "cut on motion")
+    if (/match.?cut|carry|continu/.test(q)) {
+      for (const mc of motion.match_cuts ?? []) {
+        const sh = (idx.shots ?? []).find((s: any) => s.id === mc.from);
+        hits.push({ t_ms: sh?.out_ms ?? 0, tc: tc(sh?.out_ms ?? 0, idx), source: "motion/match-cut", quote: `${mc.from}→${mc.to} carries ${mc.dir ?? "motion"} (${mc.score})` });
+      }
+    }
+  }
+  // action text-query layer (MobileViCLIP): "find where X happens" by meaning
+  if (idx.passes?.mvc) {
+    for (const h of mvcActionHits(ref, query)) hits.push({ ...h, quote: query });
   }
   hits.sort((x, y) => x.t_ms - y.t_ms);
   return { query, media: idx.source.file, hits, searched: searchedLayers(idx) };
@@ -450,7 +465,8 @@ function searchedLayers(idx: any): string[] {
   if (idx.ocr?.length) layers.push("ocr");
   if (idx.passes?.t1) layers.push("captions", "visual");
   else layers.push("captions+visual:missing — reactable video index <ref> --tier t1");
-  if (idx.passes?.motion) layers.push("motion (camera-moves + cut-on-action)");
+  if (idx.passes?.motion) layers.push("motion (camera + subject direction · cut-on-motion · match-cuts)");
+  if (idx.passes?.mvc) layers.push("action (MobileViCLIP text→video)");
   return layers;
 }
 
@@ -521,7 +537,7 @@ export function sweep(root = DATA_ROOT): { indexed: string[]; skipped: number; f
 
 // ── passes (GPU lane lands in P2 — queue + honest error) ──────────────
 
-const PASS_KINDS = new Set(["sam31", "depth", "matte", "motion", "vjepa"]);
+const PASS_KINDS = new Set(["sam31", "segment", "rvm", "depth", "matte", "motion", "mvc"]);
 
 export function estimatePass(ref: Ref, kind: string): any {
   const idx = readIndex(ref);
@@ -554,6 +570,20 @@ export function estimatePass(ref: Ref, kind: string): any {
       ? (NATIVE_ANE_KINDS.has(kind) ? "native ANE tool not built (just vision)" : "local MLX runner not set up (just mlx-setup)")
       : "needs Apple Silicon",
   };
+}
+
+// BiRefNet (MIT) production matte — torch/MPS pass (CoreML blocked by
+// deform_conv). Writes the sidecar's soft matte-person.mov + person tracklet.
+export function matteHq(ref: Ref, opts: { fps?: number } = {}): any {
+  const script = join(PROJECT, "gpu", "birefnet_matte.py");
+  if (!existsSync(script)) throw new Error("gpu/birefnet_matte.py missing");
+  const deps = ["torch", "torchvision", "transformers>=4.40", "timm", "einops", "kornia", "av", "pillow", "numpy"];
+  const args = ["run", "--python", "3.11", ...deps.flatMap((d) => ["--with", d]), "python3", script, ref.media, sidecarDir(ref.media), String(opts.fps ?? 0)];
+  console.error("running BiRefNet matte (torch/MPS) — production quality, ~2s/frame…");
+  const r = spawnSync("uv", args, { encoding: "utf8", stdio: ["inherit", "pipe", "inherit"], maxBuffer: 64 * 1024 * 1024 });
+  if (r.status !== 0) throw new Error(`birefnet matte failed (${r.status})`);
+  const lines = (r.stdout || "").trim().split("\n");
+  return JSON.parse(lines[lines.length - 1]);
 }
 
 export function requestPass(ref: Ref, kind: string, params: Record<string, unknown>, run = false): any {
@@ -639,10 +669,9 @@ function nativeVisionBin(): string | null {
   return null;
 }
 
-// depth (Depth-Anything) + sam31 (EdgeTAM box-tracking) + motion (Vision
-// optical flow) + vjepa (V-JEPA 2 clip embeddings) all run natively on-device
-// (ANE/GPU) — no download, no gate. vjepa uses CPU+GPU (too big for the ANE).
-const NATIVE_ANE_KINDS = new Set(["depth", "sam31", "motion", "vjepa"]);
+// depth · sam31 (EdgeTAM) · segment (native person-seg matte) · motion (optical
+// flow) · mvc (MobileViCLIP) all run natively on-device (ANE/GPU) — no gate.
+const NATIVE_ANE_KINDS = new Set(["depth", "sam31", "segment", "rvm", "motion", "mvc"]);
 
 function runPass(ref: Ref, kind: string, params: Record<string, unknown>, est: any): any {
   if (kind === "matte") throw new Error("matte pass lands in footage-intel P3 — run sam31 first");
@@ -686,11 +715,20 @@ function runPassAne(ref: Ref, kind: string, bin: string, outPath: string, params
     args = ["edgetam", ref.media, "--box", box, "--label", label, "--out", outPath];
     if (params["sample-fps"]) args.push("--sample-fps", String(params["sample-fps"]));
     if (params["max-frames"]) args.push("--max-frames", String(params["max-frames"]));
-  } else if (kind === "vjepa") {
+  } else if (kind === "mvc") {
     // one clip embedding per shot (fall back to auto 5s windows if unshot)
     const shots = readIndex(ref).shots ?? [];
-    args = ["vjepa", ref.media, "--out", outPath];
+    args = [kind, ref.media, "--out", outPath];
     if (shots.length) args.push("--windows", shots.map((s: any) => `${s.in_ms}:${s.out_ms}`).join(","));
+  } else if (kind === "rvm") {
+    // RVM native temporal matte → crisp soft matte-person.mov + tracklet
+    const adir = join(sidecarDir(ref.media), "assets"); mkdirSync(adir, { recursive: true });
+    args = ["rvm", ref.media, "--out", outPath, "--matte-out", join(adir, "matte-person.mov")];
+  } else if (kind === "segment") {
+    // also emit the SOFT alpha as a matte .mov → clean feathered compositing edges
+    const adir = join(sidecarDir(ref.media), "assets");
+    mkdirSync(adir, { recursive: true });
+    args = ["segment", ref.media, "--out", outPath, "--matte-out", join(adir, "matte-person.mov")];
   } else {
     args = [kind, ref.media, "--out", outPath];
   }
@@ -725,7 +763,8 @@ function runPassLocal(ref: Ref, kind: string, params: Record<string, unknown>, p
 function foldPass(ref: Ref, kind: string, result: any): any {
   const dir = sidecarDir(ref.media);
   const idx = readIndex(ref);
-  if (kind === "sam31") {
+  // segment (native person-seg) produces the same tracklet shape as sam31
+  if (kind === "sam31" || kind === "segment" || kind === "rvm") {
     const incoming = result.tracklets ?? [];
     const incomingConcepts = new Set(incoming.map((t: any) => t.concept));
     // re-runs replace tracklets for the same concepts instead of duplicating
@@ -760,22 +799,61 @@ function foldPass(ref: Ref, kind: string, result: any): any {
     writeFileSync(join(dir, "index.json"), JSON.stringify(idx, null, 2));
     return { pass: kind, signals: result.frames.length, model: result.model, camera_moves: cameraMoves, cut_points: cuts.length, match_cuts: matchCuts.length };
   }
-  if (kind === "vjepa") {
+  if (kind === "mvc") {
     mkdirSync(join(dir, "assets"), { recursive: true });
-    writeFileSync(join(dir, "assets", "vjepa-clips.json"), JSON.stringify(result));
-    idx.passes.vjepa = { at: new Date().toISOString(), model: result.model, dim: result.dim, clips: result.clips.length };
+    writeFileSync(join(dir, "assets", "mvc-clips.json"), JSON.stringify(result));
+    idx.passes.mvc = { at: new Date().toISOString(), model: result.model, dim: result.dim, clips: result.clips.length };
     writeFileSync(join(dir, "index.json"), JSON.stringify(idx, null, 2));
     return { pass: kind, clips: result.clips.length, dim: result.dim, model: result.model };
   }
   return result;
 }
 
-// "find clips like this one" — cosine over stored V-JEPA clip embeddings.
+// text→embedding via MobileViCLIP (native). Shared by action queries (find)
+// and closed-vocab shot tagging (the skeleton's semantic `tags`).
+export function mvcTextEmbed(query: string): number[] | null {
+  const vbin = nativeVisionBin();
+  if (!vbin) return null;
+  try {
+    const r = spawnSync(vbin, ["mvc-text", query], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
+    if (r.status !== 0) return null;
+    return JSON.parse(r.stdout).emb ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// action text-query: MobileViCLIP text embedding (via reactable-vision mvc-text)
+// → cosine (×100 logit scale) vs stored clip embeddings → the moments where the
+// described action happens. This is the "find where X happens" tier.
+function mvcActionHits(ref: Ref, query: string): any[] {
+  const dir = sidecarDir(ref.media);
+  const p = join(dir, "assets", "mvc-clips.json");
+  const vbin = nativeVisionBin();
+  if (!existsSync(p) || !vbin) return [];
+  let textEmb: number[];
+  try {
+    const r = spawnSync(vbin, ["mvc-text", query], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
+    if (r.status !== 0) return [];
+    textEmb = JSON.parse(r.stdout).emb;
+  } catch { return []; }
+  const clips: any[] = JSON.parse(readFileSync(p, "utf8")).clips ?? [];
+  const idx = readIndex(ref);
+  const cos = (a: number[], b: number[]) => a.reduce((s, x, i) => s + x * b[i], 0);
+  return clips
+    .map((c) => ({ t_ms: c.in_ms, tc: tc(c.in_ms, idx), source: "action", score: +(cos(textEmb, c.emb) * 100).toFixed(2) }))
+    .filter((h) => h.score > 1.5) // logit-scaled; keep clips the action actually matches
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8);
+}
+
+// "find clips like this one" — cosine over stored MobileViCLIP clip embeddings
+// (same video encoder that powers text→video search, so similarity is semantic).
 // target = a shot id (s0…) or a timestamp in ms.
 export function similar(ref: Ref, target: string, opts: { k?: number } = {}): any {
   const dir = sidecarDir(ref.media);
-  const p = join(dir, "assets", "vjepa-clips.json");
-  if (!existsSync(p)) throw new Error("no vjepa pass — run: reactable video pass <ref> vjepa --run");
+  const p = join(dir, "assets", "mvc-clips.json");
+  if (!existsSync(p)) throw new Error("no mvc pass — run: reactable video pass <ref> mvc --run");
   const idx = readIndex(ref);
   const clips: any[] = JSON.parse(readFileSync(p, "utf8")).clips ?? [];
   let q: any;
@@ -793,53 +871,88 @@ export function similar(ref: Ref, target: string, opts: { k?: number } = {}): an
     .map((c) => ({ in_ms: c.in_ms, out_ms: c.out_ms, tc: tc(c.in_ms, idx), score: +cos(q.emb, c.emb).toFixed(3) }))
     .sort((a, b) => b.score - a.score)
     .slice(0, opts.k ?? 5);
-  return { query: { in_ms: q.in_ms, out_ms: q.out_ms, tc: tc(q.in_ms, idx) }, model: "V-JEPA 2 (temporal similarity)", similar: ranked };
+  return { query: { in_ms: q.in_ms, out_ms: q.out_ms, tc: tc(q.in_ms, idx) }, model: "MobileViCLIP (semantic similarity)", similar: ranked };
 }
 
-interface MotionFrame { t_ms: number; mag: number; gx: number; gy: number; div: number }
+interface MotionFrame { t_ms: number; mag: number; gx: number; gy: number; div: number; sx: number; sy: number; smag: number; scov: number }
 
-// classify each shot's dominant camera move from its optical-flow signals
+// on-screen motion vector → 8-way compass label ("right", "up-left"…), or null
+// if the motion is too weak to have a direction.
+const DIRS8: [string, number, number][] = [
+  ["right", 1, 0], ["up-right", 1, -1], ["up", 0, -1], ["up-left", -1, -1],
+  ["left", -1, 0], ["down-left", -1, 1], ["down", 0, 1], ["down-right", 1, 1],
+];
+function dirLabel(x: number, y: number, minMag = 0.8): string | null {
+  if (Math.hypot(x, y) < minMag) return null;
+  let best = DIRS8[0], bestDot = -Infinity;
+  for (const d of DIRS8) {
+    const dot = (x * d[1] + y * d[2]) / Math.hypot(d[1], d[2]);
+    if (dot > bestDot) { bestDot = dot; best = d; }
+  }
+  return best[0];
+}
+const avg = (seg: MotionFrame[], k: keyof MotionFrame) => seg.reduce((a, f) => a + (f[k] as number), 0) / Math.max(1, seg.length);
+
+// dominant on-screen motion of a segment: the SUBJECT's motion if something is
+// moving independently of the camera in enough frames, else the camera's.
+function dominantVec(seg: MotionFrame[]): { x: number; y: number; kind: string } {
+  const subj = seg.filter((f) => f.smag > 0);
+  if (subj.length >= Math.max(1, Math.ceil(seg.length * 0.3))) {
+    return { x: avg(subj, "sx"), y: avg(subj, "sy"), kind: "subject" };
+  }
+  return { x: avg(seg, "gx"), y: avg(seg, "gy"), kind: "camera" };
+}
+
+// per-shot motion: camera move + independent subject motion + the in/out
+// vectors used to test match-cut continuity across a cut.
 function classifyCameraMoves(shots: any[], frames: MotionFrame[]): any[] {
   const out: any[] = [];
   for (const sh of shots) {
     const seg = frames.filter((f) => f.t_ms >= sh.in_ms && f.t_ms < sh.out_ms);
     if (!seg.length) continue;
-    const n = seg.length;
-    const mag = seg.reduce((a, f) => a + f.mag, 0) / n;
-    const gx = seg.reduce((a, f) => a + f.gx, 0) / n;
-    const gy = seg.reduce((a, f) => a + f.gy, 0) / n;
-    const div = seg.reduce((a, f) => a + f.div, 0) / n;
-    // directional jitter: variance of per-frame global vector vs the mean
-    const jitter = Math.sqrt(seg.reduce((a, f) => a + (f.gx - gx) ** 2 + (f.gy - gy) ** 2, 0) / n);
+    const mag = avg(seg, "mag"), gx = avg(seg, "gx"), gy = avg(seg, "gy"), div = avg(seg, "div");
+    const jitter = Math.sqrt(seg.reduce((a, f) => a + (f.gx - gx) ** 2 + (f.gy - gy) ** 2, 0) / seg.length);
     let move = "static";
     if (mag < 0.9) move = "static";
     else if (jitter > 2 * (Math.hypot(gx, gy) + 0.5)) move = "shaky";
     else if (Math.abs(div) > 0.6 && Math.abs(div) > 0.5 * Math.hypot(gx, gy)) move = div > 0 ? "zoom-in" : "zoom-out";
     else if (Math.abs(gx) >= Math.abs(gy)) move = gx < 0 ? "pan-left" : "pan-right";
     else move = gy < 0 ? "tilt-up" : "tilt-down";
-    out.push({ shot: sh.id, move, mag: +mag.toFixed(2), gx: +gx.toFixed(2), gy: +gy.toFixed(2), div: +div.toFixed(2) });
+    // independent subject motion (present in ≥30% of frames)
+    const subjF = seg.filter((f) => f.smag > 0);
+    const subject = subjF.length >= Math.max(2, Math.ceil(seg.length * 0.3))
+      ? { dir: dirLabel(avg(subjF, "sx"), avg(subjF, "sy")), sx: +avg(subjF, "sx").toFixed(2), sy: +avg(subjF, "sy").toFixed(2), mag: +avg(subjF, "smag").toFixed(2), coverage: +avg(subjF, "scov").toFixed(2) }
+      : null;
+    const third = Math.max(1, Math.floor(seg.length / 3));
+    const inV = dominantVec(seg.slice(0, third)), outV = dominantVec(seg.slice(-third));
+    const dom = dominantVec(seg);
+    out.push({
+      shot: sh.id, move, mag: +mag.toFixed(2), gx: +gx.toFixed(2), gy: +gy.toFixed(2), div: +div.toFixed(2),
+      subject, primary_dir: dirLabel(dom.x, dom.y) ?? (["pan-left", "pan-right", "tilt-up", "tilt-down"].includes(move) ? move.split("-")[1] : null),
+      in: { x: +inV.x.toFixed(2), y: +inV.y.toFixed(2), kind: inV.kind },
+      out: { x: +outV.x.toFixed(2), y: +outV.y.toFixed(2), kind: outV.kind },
+    });
   }
   return out;
 }
 
-// match-cut candidates: shot pairs sharing a camera move + similar direction
-// (motion continuity across a cut reads as a match-cut). Within one clip.
-function findMatchCuts(moves: any[]): any[] {
-  const dynamic = moves.filter((m) => m.move !== "static");
+// match-cut candidates: motion *continuity* across a cut — shot A's outgoing
+// motion direction lines up with shot B's incoming motion, so the eye carries
+// through the cut ("walking right → cut → still moving right").
+function findMatchCuts(perShot: any[]): any[] {
   const pairs: any[] = [];
-  for (let i = 0; i < dynamic.length; i++) {
-    for (let j = i + 1; j < dynamic.length; j++) {
-      const a = dynamic[i], b = dynamic[j];
-      if (a.move !== b.move) continue;
-      // direction agreement for pans/tilts; for zoom/shaky the class match is enough
-      const dirOk = a.move.startsWith("pan") || a.move.startsWith("tilt")
-        ? (a.gx * b.gx + a.gy * b.gy) > 0 && Math.hypot(a.gx - b.gx, a.gy - b.gy) < 3
-        : true;
-      if (!dirOk) continue;
-      pairs.push({ a: a.shot, b: b.shot, move: a.move, score: +(1 / (1 + Math.hypot(a.gx - b.gx, a.gy - b.gy))).toFixed(3) });
+  for (let i = 0; i < perShot.length; i++) {
+    for (let j = 0; j < perShot.length; j++) {
+      if (i === j) continue;
+      const ao = perShot[i].out, bi = perShot[j].in;
+      const am = Math.hypot(ao.x, ao.y), bm = Math.hypot(bi.x, bi.y);
+      if (am < 0.9 || bm < 0.9) continue;         // both sides need real motion
+      const cosang = (ao.x * bi.x + ao.y * bi.y) / (am * bm);
+      if (cosang < 0.6) continue;                  // directions must line up
+      pairs.push({ from: perShot[i].shot, to: perShot[j].shot, dir: dirLabel(ao.x, ao.y), carry: `${ao.kind}→${bi.kind}`, score: +cosang.toFixed(3) });
     }
   }
-  return pairs.sort((x, y) => y.score - x.score).slice(0, 8);
+  return pairs.sort((x, y) => y.score - x.score).slice(0, 10);
 }
 
 // cut-on-action candidates: local maxima of the motion-energy curve that stand
@@ -853,7 +966,10 @@ function findCutPoints(frames: MotionFrame[]): any[] {
   const peaks: any[] = [];
   for (let i = 1; i < frames.length - 1; i++) {
     if (mags[i] > thresh && mags[i] >= mags[i - 1] && mags[i] >= mags[i + 1]) {
-      peaks.push({ t_ms: frames[i].t_ms, mag: +mags[i].toFixed(2) });
+      // cut-on-motion: which way is the motion headed at the peak (subject-first)
+      const f = frames[i];
+      const dir = f.smag > 0 ? dirLabel(f.sx, f.sy) : dirLabel(f.gx, f.gy);
+      peaks.push({ t_ms: f.t_ms, mag: +mags[i].toFixed(2), dir });
     }
   }
   return peaks.sort((a, b) => b.mag - a.mag).slice(0, 12).sort((a, b) => a.t_ms - b.t_ms);
@@ -905,6 +1021,25 @@ export function stabilize(ref: Ref, opts: { out?: string; shakiness?: number; sm
 }
 
 /// fg/mid/bg per tracklet frame from the depth grids (near=1 … far=0)
+// compact COCO-RLE decode (matches matte.ts) → binary mask, for sampling depth
+// inside the actual subject silhouette (not the bbox, which includes bg).
+function decodeRleLocal(countsB64: string, h: number, w: number): Uint8Array {
+  const s = Buffer.from(countsB64, "base64").toString("latin1");
+  const counts: number[] = []; let i = 0;
+  while (i < s.length) {
+    let x = 0, k = 0, more = true;
+    while (more) { const c = s.charCodeAt(i) - 48; x |= (c & 0x1f) << (5 * k); more = (c & 0x20) !== 0; i++; k++; if (!more && c & 0x10) x |= -1 << (5 * k); }
+    if (counts.length > 2) x += counts[counts.length - 2];
+    counts.push(x);
+  }
+  const mask = new Uint8Array(h * w); let pos = 0, val = 0;
+  for (const run of counts) { for (let j = 0; j < run; j++) { const col = Math.floor(pos / h), row = pos % h; if (val) mask[row * w + col] = 1; pos++; } val = 1 - val; }
+  return mask;
+}
+
+// G3: per-object depth + z-order. Depth is sampled INSIDE each subject's mask
+// (median, robust) → a real z per object per frame; the tracklet's median z is
+// its depth, and objects in a shot get a front-to-back z_order.
 function zoneTracklets(ref: Ref, depthResult: any): number {
   const tracks = readTracks(ref);
   if (!tracks.length) return 0;
@@ -914,32 +1049,50 @@ function zoneTracklets(ref: Ref, depthResult: any): number {
   if (!grids.length) return 0;
   const gridAt = (t_ms: number) =>
     grids.reduce((best: any, g: any) => (Math.abs(g.t_ms - t_ms) < Math.abs(best.t_ms - t_ms) ? g : best), grids[0]);
+  const med = (a: number[]) => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
   for (const trk of tracks) {
     const series: any[] = [];
     for (const f of trk.frames ?? []) {
       const g = gridAt(f.t_ms);
       const buf = Buffer.from(g.f32, "base64");
-      const [x, y, w, h] = f.bbox;
-      const gx0 = Math.max(0, Math.floor((x / width) * g.w));
-      const gx1 = Math.min(g.w - 1, Math.ceil(((x + w) / width) * g.w));
-      const gy0 = Math.max(0, Math.floor((y / height) * g.h));
-      const gy1 = Math.min(g.h - 1, Math.ceil(((y + h) / height) * g.h));
-      let sum = 0;
-      let n = 0;
-      for (let gy = gy0; gy <= gy1; gy++) {
-        for (let gx = gx0; gx <= gx1; gx++) {
-          sum += buf.readFloatLE((gy * g.w + gx) * 4);
-          n++;
+      const vals: number[] = [];
+      if (f.rle?.counts) {
+        // sample depth only where the mask is set (map grid cell → mask pixel)
+        const [mh, mw] = f.rle.size;
+        const mask = decodeRleLocal(f.rle.counts, mh, mw);
+        for (let gy = 0; gy < g.h; gy++) {
+          for (let gx = 0; gx < g.w; gx++) {
+            const mx = Math.min(mw - 1, Math.floor(((gx + 0.5) / g.w) * mw));
+            const my = Math.min(mh - 1, Math.floor(((gy + 0.5) / g.h) * mh));
+            if (mask[my * mw + mx]) vals.push(buf.readFloatLE((gy * g.w + gx) * 4));
+          }
         }
       }
-      const mean = n ? sum / n : 0;
-      series.push({ t_ms: f.t_ms, zone: mean > 0.66 ? "fg" : mean > 0.33 ? "mid" : "bg", mean: Number(mean.toFixed(3)) });
+      if (!vals.length) {
+        // fall back to bbox mean if no mask
+        const [x, y, w, h] = f.bbox;
+        const gx0 = Math.max(0, Math.floor((x / width) * g.w)), gx1 = Math.min(g.w - 1, Math.ceil(((x + w) / width) * g.w));
+        const gy0 = Math.max(0, Math.floor((y / height) * g.h)), gy1 = Math.min(g.h - 1, Math.ceil(((y + h) / height) * g.h));
+        for (let gy = gy0; gy <= gy1; gy++) for (let gx = gx0; gx <= gx1; gx++) vals.push(buf.readFloatLE((gy * g.w + gx) * 4));
+      }
+      const z = med(vals); // 0 = far … 1 = near
+      series.push({ t_ms: f.t_ms, z: Number(z.toFixed(3)), zone: z > 0.66 ? "fg" : z > 0.33 ? "mid" : "bg" });
     }
-    if (series.length) trk.depth = { zone_series: series };
+    if (series.length) {
+      const zMed = med(series.map((s) => s.z));
+      trk.depth = { z: Number(zMed.toFixed(3)), zone: zMed > 0.66 ? "fg" : zMed > 0.33 ? "mid" : "bg", z_series: series };
+    }
   }
-  writeFileSync(
-    join(sidecarDir(ref.media), "tracks.jsonl"),
-    tracks.map((t) => JSON.stringify(t)).join("\n") + "\n",
-  );
+  // per-shot z-order: objects present in a shot, ranked near→far
+  const zOrder: any[] = [];
+  for (const sh of idx.shots ?? []) {
+    const present = tracks.filter((t) => t.depth && t.in_ms < sh.out_ms && t.out_ms > sh.in_ms)
+      .map((t) => ({ track: t.id, concept: t.concept, z: t.depth.z }))
+      .sort((a, b) => b.z - a.z); // nearest first
+    if (present.length) zOrder.push({ shot: sh.id, order: present });
+  }
+  idx.passes.depth = { ...(idx.passes.depth ?? {}), z_order: zOrder };
+  writeFileSync(join(sidecarDir(ref.media), "index.json"), JSON.stringify(idx, null, 2));
+  writeFileSync(join(sidecarDir(ref.media), "tracks.jsonl"), tracks.map((t) => JSON.stringify(t)).join("\n") + "\n");
   return tracks.filter((t) => t.depth).length;
 }

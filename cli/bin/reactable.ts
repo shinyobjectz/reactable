@@ -63,7 +63,7 @@ import { minimaxChat, minimaxKey } from "../lib/minimax.ts";
 import { CONNECTORS, connectorStatus, setConnector } from "../lib/connectors.ts";
 import * as intel from "../lib/intel.ts";
 import * as video from "../lib/video.ts";
-import { compose, motionPlan, renderMatte } from "../lib/matte.ts";
+import { compose, composeBehind, zRender, motionPlan, renderMatte } from "../lib/matte.ts";
 import { autoEdit } from "../lib/autoedit.ts";
 import { captureEpisode, editIntelStats } from "../lib/edit-intel.ts";
 import { decompile, writeSkeleton } from "../lib/decompile.ts";
@@ -168,7 +168,7 @@ Usage: reactable <command> [args]
   video motion <ref> <track-id> [--style punch-in|follow]  keyframed transform plan
   video compose <ref> <track-id> [--bg <path|gradient>] [--out <mp4>]  finished render: cutout + bg-swap + fg punch-in
   video stabilize <ref> [--out <mp4>] [--shakiness 1-10] [--smoothing N]  two-pass vidstab (targets shaky shots from the motion pass)
-  video similar <ref> <shot-id|ms> [--k N]    find clips like this one (V-JEPA 2 temporal similarity — run 'pass <ref> vjepa' first)
+  video similar <ref> <shot-id|ms> [--k N]    find clips like this one (MobileViCLIP semantic similarity — run 'pass <ref> mvc' first)
   video autoedit <take-id> [--render]         authored edit from ground-truth events: cursor punch-ins + silence trims
   video audio <ref>                           audio understanding: kind (speech/silence/sound) · onsets/tempo · turns
   video decompile <ref> [--verify]            reverse a clip → abstract edit skeleton (structure kept, content stripped)
@@ -825,8 +825,34 @@ try {
       process.exit(0);
     }
     if (sub === "similar") {
-      if (!third || !fourth) { console.error("usage: reactable video similar <ref> <shot-id|ms> [--k N]  (needs: video pass <ref> vjepa --run)"); process.exit(1); }
+      if (!third || !fourth) { console.error("usage: reactable video similar <ref> <shot-id|ms> [--k N]  (needs: video pass <ref> mvc --run)"); process.exit(1); }
       out(video.similar(video.resolveRef(String(third)), String(fourth), { k: flags.k ? Number(flags.k) : undefined }));
+      process.exit(0);
+    }
+    if (sub === "zrender") {
+      if (!third || !fourth) { console.error("usage: reactable video zrender <ref> <spec.json>  (spec: {inserts:[{z,text|image,pos,fontSize,color}]})"); process.exit(1); }
+      const spec = JSON.parse(readFileSync(String(fourth), "utf8"));
+      out(zRender(video.resolveRef(String(third)), spec));
+      process.exit(0);
+    }
+    if (sub === "matte-hq") {
+      if (!third) { console.error("usage: reactable video matte-hq <ref> [--fps N]  (BiRefNet production matte → sidecar; every frame by default)"); process.exit(1); }
+      out(video.matteHq(video.resolveRef(String(third)), { fps: flags.fps ? Number(flags.fps) : undefined }));
+      process.exit(0);
+    }
+    if (sub === "behind") {
+      if (!third) { console.error("usage: reactable video behind <ref> [track-id|people] --text \"…\"|--image <path> [--pos center|lower-third|upper-third] [--font-size N] [--color white] [--depth off] [--out <mp4>]  (depth-aware: occluded by the subjects + anything nearer)"); process.exit(1); }
+      // track arg optional — a bare 4th token that isn't a flag names a track; else "people"
+      const trackArg = (fourth && !String(fourth).startsWith("--")) ? String(fourth) : "people";
+      out(composeBehind(video.resolveRef(String(third)), trackArg, {
+        text: flags.text ? String(flags.text) : undefined,
+        image: flags.image ? String(flags.image) : undefined,
+        pos: flags.pos ? String(flags.pos) : undefined,
+        fontSize: flags["font-size"] ? Number(flags["font-size"]) : undefined,
+        color: flags.color ? String(flags.color) : undefined,
+        depth: flags.depth ? String(flags.depth) : undefined,
+        out: flags.out ? String(flags.out) : undefined,
+      }));
       process.exit(0);
     }
     if (sub === "stabilize") {

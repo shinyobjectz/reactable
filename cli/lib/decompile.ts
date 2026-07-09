@@ -12,9 +12,10 @@
 // A skeleton is a structural transcription, not a reconstruction — so training
 // on it learns *editing grammar*, not anyone's copyrighted expression. The
 // `--verify` leak check proves no stripped string survives in the output.
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { readIndex, readTracks, sidecarDir, type Ref } from "./video.ts";
+import { readIndex, readTracks, sidecarDir, mvcTextEmbed, type Ref } from "./video.ts";
+import { editIntelDir } from "./edit-intel.ts";
 
 export const SKELETON_SCHEMA = "edit-skeleton/1";
 
@@ -80,6 +81,85 @@ function centroidN(frames: any[], W: number, H: number): [number, number] | null
   return [cx / fs.length, cy / fs.length];
 }
 
+// Shot grouping — cluster shots by MobileViCLIP clip-embedding cosine so
+// recurring / visually-similar shots share a group id (callbacks, A/B cutaways).
+// Semantic STRUCTURE (group ids, not vectors). V-JEPA2 dropped (2026-07-08): MVC
+// embeddings subsume clip similarity, so one model covers the whole semantic
+// tier. Returns shotId → group index.
+export function mvcGroups(ref: Ref, shots: any[]): Map<string, number> {
+  const map = new Map<string, number>();
+  const p = join(sidecarDir(ref.media), "assets", "mvc-clips.json");
+  if (!existsSync(p)) return map;
+  let clips: any[];
+  try { clips = JSON.parse(readFileSync(p, "utf8")).clips ?? []; } catch { return map; }
+  if (!clips.length) return map;
+  const clipFor = (s: any) => clips.find((c) => s.in_ms >= c.in_ms && s.in_ms < c.out_ms) ?? clips.find((c) => c.in_ms === s.in_ms);
+  const norm = (a: number[]) => Math.sqrt(a.reduce((s, x) => s + x * x, 0)) || 1;
+  const cos = (a: number[], b: number[]) => a.reduce((s, x, i) => s + x * b[i], 0) / (norm(a) * norm(b));
+  const reps: { emb: number[]; g: number }[] = [];
+  let g = 0;
+  for (const sh of shots) {
+    const c = clipFor(sh);
+    if (!c?.emb) continue;
+    let best: any = null, bs = 0.85; // cosine threshold for "same visual group"
+    for (const r of reps) { const sc = cos(c.emb, r.emb); if (sc > bs) { bs = sc; best = r; } }
+    if (best) map.set(sh.id, best.g);
+    else { reps.push({ emb: c.emb, g }); map.set(sh.id, g); g++; }
+  }
+  return map;
+}
+
+// Closed action/semantic vocabulary (ad/creator-editing relevant). Closed-vocab
+// → content-safe even for procured clips (our labels, not source text).
+const ACTION_VOCAB = [
+  "person talking to camera", "close-up of a face", "product close-up",
+  "hands using a product", "unboxing a product", "text on screen", "logo",
+  "before and after comparison", "food or drink", "people outdoors",
+  "lifestyle scene", "fast motion action", "wide establishing shot",
+  "crowd of people", "walking", "driving a car",
+];
+
+// vocab text-embeddings, cached to edit-intel/mvc-vocab.json (embed once, reuse)
+function loadVocabEmb(): Record<string, number[]> {
+  const cachePath = join(editIntelDir(), "mvc-vocab.json");
+  let cached: Record<string, number[]> = {};
+  if (existsSync(cachePath)) { try { cached = JSON.parse(readFileSync(cachePath, "utf8")); } catch { /* rebuild */ } }
+  let dirty = false;
+  for (const term of ACTION_VOCAB) {
+    if (!cached[term]) { const e = mvcTextEmbed(term); if (e) { cached[term] = e; dirty = true; } }
+  }
+  if (dirty) { try { mkdirSync(editIntelDir(), { recursive: true }); writeFileSync(cachePath, JSON.stringify(cached)); } catch { /* best effort */ } }
+  return cached;
+}
+
+// MobileViCLIP text→action tags: score the closed vocab against each shot's MVC
+// clip embedding → the labels the shot actually matches. Semantic STRUCTURE
+// (closed labels, not free text). Returns shotId → tags[].
+export function mvcTags(ref: Ref, shots: any[]): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  const p = join(sidecarDir(ref.media), "assets", "mvc-clips.json");
+  if (!existsSync(p)) return map;
+  let clips: any[];
+  try { clips = JSON.parse(readFileSync(p, "utf8")).clips ?? []; } catch { return map; }
+  if (!clips.length) return map;
+  const vocab = Object.entries(loadVocabEmb());
+  if (!vocab.length) return map;
+  const clipFor = (s: any) => clips.find((c) => s.in_ms >= c.in_ms && s.in_ms < c.out_ms) ?? clips.find((c) => c.in_ms === s.in_ms);
+  const cos = (a: number[], b: number[]) => a.reduce((s, x, i) => s + x * b[i], 0);
+  for (const sh of shots) {
+    const c = clipFor(sh);
+    if (!c?.emb) continue;
+    const tags = vocab
+      .map(([label, emb]) => ({ label, score: cos(c.emb, emb) * 100 }))
+      .filter((t) => t.score > 2.0) // logit-scaled; keep confident matches
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3)
+      .map((t) => t.label);
+    if (tags.length) map.set(sh.id, tags);
+  }
+  return map;
+}
+
 // Merge co-moving tracklets → one subject layer per entity. Trackers fragment a
 // single object into many short tracklets; without this the skeleton emits
 // dozens of near-duplicate "subject" layers (noise that would poison training
@@ -135,6 +215,9 @@ export function decompile(ref: Ref, opts: { verify?: boolean } = {}): any {
   const W = idx.probe.width;
   const H = idx.probe.height;
   const imported = !ref.take;
+  const motion = idx.passes?.motion; // camera_moves · cut_points · match_cuts
+  const groups = mvcGroups(ref, idx.shots ?? []); // shotId → visual group id (MobileViCLIP)
+  const tagMap = mvcTags(ref, idx.shots ?? []); // shotId → MobileViCLIP action tags
 
   // segments = shots. kind is a COARSE content-type cue, never an identity.
   const timeline = (idx.shots ?? []).map((shot: any, i: number) => {
@@ -156,16 +239,26 @@ export function decompile(ref: Ref, opts: { verify?: boolean } = {}): any {
       .filter((t) => t.frames.length);
     for (const subj of mergeSubjects(windowed, W, H)) layers.push(subj);
 
+    // temporal: camera move (from optical-flow motion pass) + whether this
+    // cut lands on an action beat (a cut_point near the shot boundary).
+    const cm = (motion?.camera_moves ?? []).find((c: any) => c.shot === shot.id);
+    const onAction = i > 0 && (motion?.cut_points ?? []).some((c: any) => Math.abs(c.t_ms - shot.in_ms) <= 400);
     return {
       id: `seg${i}`,
       shot: shot.id,
       in_ms: shot.in_ms,
       out_ms: shot.out_ms,
       kind,
-      transition_in: i === 0 ? null : "cut", // scene-cut detection only yields hard cuts
+      camera_move: cm?.move ?? null, // pan/tilt/zoom/shaky/static (label only)
+      transition_in: i === 0 ? null : onAction ? "cut-on-action" : "cut",
+      visual_group: groups.get(shot.id) ?? null, // MobileViCLIP recurrence/grouping
+      tags: tagMap.get(shot.id) ?? [], // semantic action tags (MobileViCLIP text→action)
       layers,
     };
   });
+
+  // match-cut candidates (shot pairs with continuous motion across the cut)
+  const match_cuts = (motion?.match_cuts ?? []).map((m: any) => ({ a: m.a, b: m.b, move: m.move }));
 
   // audio: STRUCTURE only — timing + labels, never the words. Uses the audio
   // pass (kind_segments / beats / turns) when present, else transcript timing.
@@ -200,6 +293,7 @@ export function decompile(ref: Ref, opts: { verify?: boolean } = {}): any {
     },
     stripped: { footage: true, ocr_text: true, transcript_text: true, captions: true, source_filename: imported },
     timeline,
+    match_cuts,
     audio,
     provenance: {
       indexed_passes: Object.entries(idx.passes ?? {}).filter(([, v]) => v).map(([k]) => k),

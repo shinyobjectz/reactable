@@ -19,6 +19,7 @@ import { resolveFfmpeg } from "./tools.ts";
 import { resolveRef, indexT0, sidecarDir } from "./video.ts";
 import { decompile, SKELETON_SCHEMA } from "./decompile.ts";
 import { captureEpisode, editIntelDir } from "./edit-intel.ts";
+import { captureTrajectory } from "./trajectory.ts";
 
 const W = 1280;
 const H = 720;
@@ -138,6 +139,63 @@ export function synthPair(seed: number): any {
   });
 
   return { seed, clip, shots: spec.segs.length, fidelity };
+}
+
+// Engine A for the EDITOR — gold CUT-DOWN trajectories (SPEC.action-space.work).
+// Author a source, pose a DETERMINISTIC selection task, mint the EXACT gold
+// keep-plan. Unlimited, exact, cut-oriented → the SFT behavior-cloning target.
+const SHOT_KINDS = ["product", "action", "talking", "broll", "logo"];
+const SHOT_MOTION = ["static", "pan", "push"];
+
+export function synthEditPair(seed: number): { seed: number; intent: string; keeps: number; reward?: number } {
+  // Author an ABSTRACT labeled source (4–8 shots) — the cut-decision gold trains
+  // over the source *description* (skeleton), not pixels, so no render needed.
+  const rand = rng((seed * 2654435761) >>> 0);
+  const n = 4 + Math.floor(rand() * 5); // 4..8 shots
+  let t = 0;
+  const shots = Array.from({ length: n }, (_, i) => {
+    const dur = 1500 + Math.floor(rand() * 3000);
+    const s: any = { shot: `s${i}`, in_ms: t, out_ms: t + dur, kind: SHOT_KINDS[Math.floor(rand() * SHOT_KINDS.length)], energy: +rand().toFixed(2), luma: i % 2 ? "bright" : "dark", motion: SHOT_MOTION[Math.floor(rand() * 3)] };
+    t += dur;
+    return s;
+  });
+  const durMs = t;
+  const byKind = (k: string) => shots.filter((s) => s.kind === k);
+
+  let intent = "", keep: any[] = [];
+  switch (seed % 8) {
+    case 0: intent = "Keep only the product shots, in order."; keep = byKind("product"); break;
+    case 1: intent = "Keep only the action shots, in order."; keep = byKind("action"); break;
+    case 2: intent = "Reverse the shot order."; keep = [...shots].reverse(); break;
+    case 3: intent = "Drop the first shot, keep the rest in order."; keep = shots.slice(1); break;
+    case 4: {
+      const target = 6000 + (seed % 3) * 2000;
+      intent = `Make a ${Math.round(target / 1000)}-second cut from the highest-energy shots, in play order.`;
+      const ranked = [...shots].sort((a, b) => b.energy - a.energy);
+      const chosen = new Set<string>(); let acc = 0;
+      for (const s of ranked) { if (acc >= target) break; chosen.add(s.shot); acc += s.out_ms - s.in_ms; }
+      keep = shots.filter((s) => chosen.has(s.shot)); break;
+    }
+    case 5: intent = "Keep every other shot, starting from the first."; keep = shots.filter((_, i) => i % 2 === 0); break;
+    case 6: intent = "Keep the product and action shots, and punch in on each."; keep = shots.filter((s) => s.kind === "product" || s.kind === "action").map((s) => ({ ...s, zoom: { cx: 0.5, cy: 0.45, scale: 1.3 } })); break;
+    default: {
+      if (!byKind("logo").length) shots[shots.length - 1].kind = "logo"; // guarantee a logo to end on
+      intent = "Assemble the shots and end on the logo shot."; keep = [...shots.filter((s) => s.kind !== "logo"), ...shots.filter((s) => s.kind === "logo")]; break;
+    }
+  }
+  if (!keep.length) { intent = "Keep all shots in play order."; keep = shots; } // guard unsatisfiable selections
+
+  const plan = { keep: keep.map((s) => ({ shot: s.shot, in_ms: s.in_ms, out_ms: s.out_ms, ...(s.zoom ? { zoom: s.zoom } : {}) })), notes: "synthetic gold cut-down" };
+  const digest = `synth-${seed} [${shots.map((s) => `${s.shot}:${s.kind}/${s.luma}/e${s.energy}/${s.motion}(${s.in_ms}-${s.out_ms})`).join(" ")}]`;
+  const tr = captureTrajectory({ sourceDigest: digest, intent, plan, render: null, producer: "synth", label: "gold", sourceDurationMs: durMs });
+  return { seed, intent, keeps: plan.keep.length, reward: tr?.reward };
+}
+
+export function synthEditBatch(n: number, seed0 = 1): { minted: number; by_task: Record<string, number> } {
+  const out: any[] = [];
+  for (let i = 0; i < n; i++) out.push(synthEditPair(seed0 + i));
+  const by_task = out.reduce((m: Record<string, number>, x) => ((m[x.intent] = (m[x.intent] || 0) + 1), m), {});
+  return { minted: out.length, by_task };
 }
 
 export function synthBatch(startSeed: number, n: number): any {

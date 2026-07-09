@@ -8,6 +8,7 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "
 import { dirname, join } from "node:path";
 import { PROJECT, takePath } from "./paths.ts";
 import { resolveFfmpeg } from "./tools.ts";
+import { captureTrajectory } from "./trajectory.ts";
 
 type Ev = { t: number; type: string; [k: string]: any };
 
@@ -171,6 +172,27 @@ export function autoEdit(takeId: string, opts: { render?: boolean } = {}) {
 
   let render: string | null = null;
   if (opts.render) render = renderAutoEdit(takeId, plan);
+
+  // GOLD trajectory (SPEC.action-space.work) — autoedit is ground-truth
+  // (deterministic, no inference), so these are the behavior-cloning target.
+  // Punches are attached to the keep they fall inside → keep-plan shape.
+  const keepPlan = {
+    keep: keep.map((k) => {
+      const pz = punches.find((p: any) => p.t_ms >= k.in_ms && p.t_ms <= k.out_ms);
+      return { shot: null, in_ms: k.in_ms, out_ms: k.out_ms, ...(pz ? { zoom: { cx: pz.nx, cy: pz.ny, scale: +(1 + Math.min(0.6, pz.w * 0.2)).toFixed(2) } } : {}) };
+    }),
+    notes: plan.notes.join("; "),
+  };
+  captureTrajectory({
+    sourceDigest: `take:${takeId} ${Math.round(durMs / 1000)}s ${keep.length}seg`,
+    intent: "Auto-cut: trim silences and punch in on cursor/click activity.",
+    plan: keepPlan,
+    render,
+    producer: "autoedit",
+    label: "gold",
+    sourceDurationMs: durMs,
+  });
+
   return { ...plan, plan: out, ...(render ? { render } : {}) };
 }
 
