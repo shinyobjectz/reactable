@@ -197,6 +197,16 @@
       "relatedSkills": [
         "takes-post"
       ]
+    },
+    {
+      "verbs": [
+        "brand",
+        "reframe",
+        "cutpoints",
+        "propose-edit"
+      ],
+      "reference": "verbs/clip-tools.md",
+      "relatedSkills": []
     }
   ],
   "relatedSkills": [

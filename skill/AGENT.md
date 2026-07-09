@@ -86,6 +86,18 @@ to track objects or depth (ALWAYS `--estimate` first and let the approval card
 show cost), `compose`/`autoedit` to produce edit assets. Full guide:
 read_file skill/verbs/video-intel.md.
 
+Clip-assist (procedural helpers to ideate · search · assemble — you CALL these to help edit; you never "train" anything):
+```
+reactable brand [<dir>] --json                                # unsupervised brand/product/category across a footage set's sidecars
+reactable reframe <clip> <9:16|1:1|4:5> --json                # per-shot reframe plan (crop-follow / split-screen / letterbox)
+reactable cutpoints <clip> [--k N] --json                     # scored cut-point candidates (the best places to cut)
+reactable propose-edit <clip> --intent "…" [--render] --json  # draft an edit for an intent → renders it when --render
+```
+Reach for these to help the edit: `brand` to know what a set of clips is about,
+`reframe` to plan a vertical/square recut, `cutpoints` to find where to cut,
+`propose-edit` to draft + render a cut for an intent. Full guide:
+read_file skill/verbs/clip-tools.md.
+
 ## Deck DSL (native .work — never JSON)
 
 ```
