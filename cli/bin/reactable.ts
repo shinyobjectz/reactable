@@ -65,8 +65,12 @@ import * as intel from "../lib/intel.ts";
 import * as video from "../lib/video.ts";
 import { compose, composeBehind, zRender, motionPlan, renderMatte } from "../lib/matte.ts";
 import { autoEdit } from "../lib/autoedit.ts";
-import { captureEpisode, editIntelStats } from "../lib/edit-intel.ts";
+import { captureEpisode, editIntelStats, editIntelDir } from "../lib/edit-intel.ts";
 import { decompile, writeSkeleton } from "../lib/decompile.ts";
+import { brandProfile } from "../lib/brand.ts";
+import { composeShot } from "../lib/reframe.ts";
+import { motionSeries, cutFeatures, predict, trainCutHead } from "../lib/cutpoint.ts";
+import { proposeEdit } from "../lib/edit.ts";
 import { synthBatch } from "../lib/synth.ts";
 import { baselineRun } from "../lib/baseline.ts";
 import { exportDataset } from "../lib/dataset.ts";
@@ -177,6 +181,12 @@ Usage: reactable <command> [args]
   baseline <ref> [--k N]                      frozen-base go/no-go: can an off-the-shelf model emit a valid edit-skeleton?
   dataset export [--val F]                    corpus → SFT jsonl (train: modal run gpu/modal_train.py [--run])
   procure "<brand>" [--library fb|tiktok] [--n N] | --url <u>   real clips → skeletons → corpus (content-stripped)
+
+ clip-assist tools (agent helpers — ideate · search · assemble):
+  brand [<dir>]                               unsupervised brand/product/category across a set's sidecars
+  reframe <clip> <9:16|1:1|4:5>               procedural reframe plan (crop-follow / split-screen / letterbox) per shot
+  cutpoints <clip> [--k N]                    score candidate cut points (needs a head: edit-intel cutpoint <clip…>)
+  propose-edit <clip> --intent "…" [--render] MiniMax proposes an edit → edit-render executes it
   video sweep [--json]                        index everything un-indexed (takes/ + assets/)
 
   takes list [--json]
@@ -938,7 +948,13 @@ try {
       emit(editIntelStats());
       process.exit(0);
     }
-    console.error("edit-intel verbs: stats   (the training flywheel — docs/PLAN.omni-editing-model.work)");
+    if (sub === "cutpoint") {
+      const clips = rest.slice(2).filter((x) => !x.startsWith("-"));
+      if (!clips.length) { console.error("usage: reactable edit-intel cutpoint <clip…>   (train the cut-point head)"); process.exit(1); }
+      emit(trainCutHead(clips));
+      process.exit(0);
+    }
+    console.error("edit-intel verbs: stats · cutpoint <clip…>   (the training flywheel — docs/PLAN.omni-editing-model.work)");
     process.exit(1);
   }
 
@@ -977,6 +993,55 @@ try {
     if (!sub) { console.error("usage: reactable baseline <ref> [--k N] [--model <id>]   (frozen-base go/no-go — §9-P3)"); process.exit(1); }
     const report = await baselineRun(video.resolveRef(String(sub)), { k: flags.k ? Number(flags.k) : 3, model: flags.model ? String(flags.model) : undefined });
     console.log(Boolean(flags.json) ? JSON.stringify(report) : JSON.stringify(report, null, 2));
+    process.exit(0);
+  }
+
+  // ── clip-assist tools (procedural helpers for the agent: ideate · search · assemble) ──
+  if (cmd === "brand") {
+    const dir = sub ? String(sub) : "assets/brand";
+    const r = brandProfile(dir);
+    console.log(flags.json === true ? JSON.stringify(r) : JSON.stringify(r, null, 2));
+    process.exit(0);
+  }
+
+  if (cmd === "reframe") {
+    if (!sub || !third) { console.error("usage: reactable reframe <clip> <9:16|1:1|4:5> [--json]"); process.exit(1); }
+    const aspect = String(third);
+    const ref = video.resolveRef(String(sub));
+    let skel: any;
+    try { skel = decompile(ref); } catch { video.indexT0(ref); skel = decompile(ref); }
+    const { width, height } = skel.source;
+    if (!width || !height) { console.error("clip has no source dimensions — index it first: reactable video index <clip>"); process.exit(1); }
+    const plan = skel.timeline.map((sh: any) => ({ t_ms: sh.in_ms, ...composeShot(sh, aspect, width, height) }));
+    const comp: Record<string, number> = {};
+    for (const p of plan) comp[p.verb] = (comp[p.verb] || 0) + 1;
+    const r = { clip: String(sub).split("/").pop(), aspect, source: `${width}x${height}`, compositions: comp, plan };
+    console.log(flags.json === true ? JSON.stringify(r) : JSON.stringify(r, null, 2));
+    process.exit(0);
+  }
+
+  if (cmd === "cutpoints") {
+    if (!sub) { console.error("usage: reactable cutpoints <clip> [--k N]"); process.exit(1); }
+    const headPath = join(editIntelDir(), "cutpoint-head.json");
+    if (!existsSync(headPath)) { console.error("no cut-point head trained yet — train one: reactable edit-intel cutpoint <clip…>"); process.exit(1); }
+    const { model } = JSON.parse(readFileSync(headPath, "utf8"));
+    const s = motionSeries(String(sub));
+    if (s.t.length < 5) { console.error("not enough motion signal in clip"); process.exit(1); }
+    const clipMean = s.m.reduce((a: number, b: number) => a + b, 0) / s.m.length;
+    const dur = s.t[s.t.length - 1];
+    const cands: { t_ms: number; score: number }[] = [];
+    for (let t = 800; t < dur - 800; t += 500) cands.push({ t_ms: Math.round(t), score: +predict(model, cutFeatures(s, t, clipMean)).toFixed(3) });
+    cands.sort((a, b) => b.score - a.score);
+    const r = { clip: String(sub).split("/").pop(), candidates: cands.length, top_cut_points: cands.slice(0, flags.k ? Number(flags.k) : 8) };
+    console.log(flags.json === true ? JSON.stringify(r) : JSON.stringify(r, null, 2));
+    process.exit(0);
+  }
+
+  if (cmd === "propose-edit") {
+    if (!sub) { console.error('usage: reactable propose-edit <clip> --intent "…" [--render] [--k N]'); process.exit(1); }
+    const intent = flags.intent ? String(flags.intent) : "Cut a punchy short clip that serves the footage.";
+    const r = await proposeEdit(video.resolveRef(String(sub)), intent, { render: flags.render === true, k: flags.k ? Number(flags.k) : undefined });
+    console.log(flags.json === true ? JSON.stringify(r) : JSON.stringify(r, null, 2));
     process.exit(0);
   }
 

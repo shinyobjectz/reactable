@@ -9,6 +9,7 @@ import { writeFileSync } from "node:fs";
 import { resolveRef } from "./video.ts";
 import { decompile } from "./decompile.ts";
 import { editIntelDir } from "./edit-intel.ts";
+import { resolveFfmpeg } from "./tools.ts";
 import { join } from "node:path";
 
 export type MSeries = { t: number[]; m: number[] };
@@ -16,7 +17,7 @@ export type MSeries = { t: number[]; m: number[] };
 export function motionSeries(clip: string): MSeries {
   let out = "";
   try {
-    out = execFileSync("ffmpeg", ["-hide_banner", "-i", clip, "-vf", "fps=8,tblend=all_mode=difference,signalstats,metadata=print:file=-", "-an", "-f", "null", "-"], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] });
+    out = execFileSync(resolveFfmpeg() ?? "ffmpeg", ["-hide_banner", "-i", clip, "-vf", "fps=8,tblend=all_mode=difference,signalstats,metadata=print:file=-", "-an", "-f", "null", "-"], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] });
   } catch (e: any) { out = e.stdout?.toString() || ""; }
   const t: number[] = [], m: number[] = [];
   let cur: number | null = null;
